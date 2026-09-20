@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# YOLO Model Weights (auto-downloaded on first run)
+*.pt
+
+# Local test output artifacts
+output_*.jpg
+
+# Environment & OS
+.env
+.DS_Store
+Thumbs.db

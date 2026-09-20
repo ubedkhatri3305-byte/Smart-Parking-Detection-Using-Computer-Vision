@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Parking Detection Using Computer Vision</title>
+  <meta name="description" content="AI and Computer Vision system for real-time parking space detection using YOLO, perspective geometry, homography, vehicle dimension matching, and GPS routing.">
+  
+  <!-- Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <div class="brand-logo">
+        <span class="logo-icon">🅿️</span>
+      </div>
+      <div class="brand-text">
+        <div class="brand-title">PARKVISION <span class="brand-accent">CV</span></div>
+        <div class="brand-subtitle">Computer Vision & Smart Space Detection</div>
+      </div>
+    </div>
+
+    <!-- Active Vehicle Quick-Pill -->
+    <div class="nav-vehicle-selector">
+      <span class="selector-label">My Vehicle:</span>
+      <div class="vehicle-pill" id="nav-vehicle-pill">
+        <span class="vehicle-icon" id="nav-veh-icon">🚙</span>
+        <span class="vehicle-name" id="nav-veh-name">SUV / 4x4</span>
+        <span class="vehicle-dims" id="nav-veh-dims">(4.6 × 1.9m)</span>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="cv-lab" id="tab-btn-cv">
+        <span class="tab-icon">🔬</span>
+        <span>CV Analysis Lab</span>
+      </button>
+      <button class="tab-btn" data-tab="gps-map" id="tab-btn-map">
+        <span class="tab-icon">📍</span>
+        <span>GPS & Nearby Lots</span>
+      </button>
+      <button class="tab-btn" data-tab="driver-flow" id="tab-btn-flow">
+        <span class="tab-icon">🚀</span>
+        <span>Full 8-Step Driver Flow</span>
+      </button>
+      <button class="tab-btn" data-tab="rules-info" id="tab-btn-rules">
+        <span class="tab-icon">⚖️</span>
+        <span>Parking Rules</span>
+      </button>
+      <button class="tab-btn" id="btn-config-api" title="Configure Cloud Backend URL (Render)">
+        <span class="tab-icon">🔗</span>
+        <span>API Server</span>
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main Container -->
+  <main class="app-main">
+    
+    <!-- ============================================================= -->
+    <!-- TAB 1: CV DETECTION LAB (Step 2, 3, 4, 5)                      -->
+    <!-- ============================================================= -->
+    <section class="tab-content active" id="tab-cv-lab">
+      <div class="cv-layout">
+        
+        <!-- Left Control Sidebar -->
+        <aside class="control-panel glass-panel">
+          <div class="panel-section">
+            <h3 class="section-title">
+              <span class="step-num">Step 3</span> Test Scenario & Input
+            </h3>
+            <div class="scenario-selector-group">
+              <label for="scenario-select" class="control-label">Select Parking Scenario:</label>
+              <select id="scenario-select" class="custom-select">
+                <option value="scenario_1_aerial">Scenario 1: Overhead Bays 1-6 (Empty & Occupied)</option>
+                <option value="scenario_2_driver">Scenario 2: Smartphone Driver View (Bicycle Blocked)</option>
+                <option value="scenario_3_rooftop">Scenario 3: Rooftop Lot (Pedestrian Obstacle)</option>
+                <option value="scenario_4_tight">Scenario 4: Narrow Slot Test (Compact vs SUV)</option>
+              </select>
+            </div>
+
+            <!-- Upload Custom Image -->
+            <div class="upload-box" id="drop-area">
+              <input type="file" id="file-input" accept="image/*" class="file-hidden">
+              <label for="file-input" class="upload-label">
+                <span class="upload-icon">📷</span>
+                <span class="upload-text">Upload Custom Parking Photo</span>
+                <span class="upload-subtext">or drag & drop here</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Vehicle Dimensions (Step 5) -->
+          <div class="panel-section">
+            <h3 class="section-title">
+              <span class="step-num">Step 5</span> Vehicle Specifications
+            </h3>
+            <div class="vehicle-options-grid">
+              <button class="veh-btn active" data-veh="suv">
+                <span class="veh-icon">🚙</span>
+                <span class="veh-type">SUV</span>
+                <span class="veh-size">4.6 × 1.9m</span>
+              </button>
+              <button class="veh-btn" data-veh="sedan">
+                <span class="veh-icon">🚗</span>
+                <span class="veh-type">Sedan</span>
+                <span class="veh-size">4.4 × 1.8m</span>
+              </button>
+              <button class="veh-btn" data-veh="compact">
+                <span class="veh-icon">🚘</span>
+                <span class="veh-type">Compact</span>
+                <span class="veh-size">3.8 × 1.7m</span>
+              </button>
+              <button class="veh-btn" data-veh="bike">
+                <span class="veh-icon">🏍️</span>
+                <span class="veh-type">Bike</span>
+                <span class="veh-size">2.0 × 0.8m</span>
+              </button>
+            </div>
+
+            <div class="custom-dims-toggle">
+              <button class="link-btn" id="toggle-custom-dims">⚙️ Custom Dimensions</button>
+              <div class="custom-dims-fields hidden" id="custom-dims-container">
+                <div class="input-row">
+                  <label>Length (m):</label>
+                  <input type="number" id="custom-length" value="4.6" step="0.1" min="1.0" max="7.0">
+                </div>
+                <div class="input-row">
+                  <label>Width (m):</label>
+                  <input type="number" id="custom-width" value="1.9" step="0.1" min="0.5" max="3.0">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CV Layer Toggles -->
+          <div class="panel-section">
+            <h3 class="section-title">
+              <span class="step-num">Step 2 & 4</span> CV Display Layers
+            </h3>
+            <div class="toggles-list">
+              <label class="toggle-item">
+                <input type="checkbox" id="toggle-yolo-boxes" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">YOLO Detection Bounding Boxes</span>
+              </label>
+              <label class="toggle-item">
+                <input type="checkbox" id="toggle-slot-polys" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Parking Bay Polygons (🟢🔴🟡)</span>
+              </label>
+              <label class="toggle-item">
+                <input type="checkbox" id="toggle-metric-labels" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Slot Dimensions (Width × Length m)</span>
+              </label>
+              <label class="toggle-item">
+                <input type="checkbox" id="toggle-bev-view" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Show Bird's-Eye View (BEV)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Run Button -->
+          <button class="action-btn glow-btn" id="run-cv-btn">
+            <span class="btn-icon">⚡</span>
+            <span>Run CV Pipeline Inference</span>
+          </button>
+        </aside>
+
+        <!-- Center Viewport & Visualizer -->
+        <div class="cv-viewport-area">
+          
+          <!-- Top HUD Status Banner -->
+          <div class="hud-banner glass-panel">
+            <div class="hud-item total">
+              <span class="hud-label">TOTAL BAYS</span>
+              <span class="hud-val" id="hud-total">6</span>
+            </div>
+            <div class="hud-divider"></div>
+            <div class="hud-item available">
+              <span class="status-dot green"></span>
+              <span class="hud-label">AVAILABLE</span>
+              <span class="hud-val" id="hud-avail">2</span>
+            </div>
+            <div class="hud-item occupied">
+              <span class="status-dot red"></span>
+              <span class="hud-label">OCCUPIED</span>
+              <span class="hud-val" id="hud-occ">4</span>
+            </div>
+            <div class="hud-item blocked">
+              <span class="status-dot yellow"></span>
+              <span class="hud-label">BLOCKED</span>
+              <span class="hud-val" id="hud-blocked">0</span>
+            </div>
+            <div class="hud-divider"></div>
+            <div class="hud-item vehicle-fit">
+              <span class="hud-label">MATCH STATUS</span>
+              <span class="hud-tag suitable" id="hud-fit-tag">2 Spaces Fit SUV</span>
+            </div>
+          </div>
+
+          <!-- Visual Display Canvas Container -->
+          <div class="visual-canvas-container glass-panel">
+            <div class="canvas-header">
+              <div class="view-title">
+                <span class="live-pulse"></span>
+                <span>Camera Stream / Detection View</span>
+              </div>
+              <div class="canvas-actions">
+                <button class="mini-btn" id="btn-reset-view">Reset View</button>
+                <button class="mini-btn" id="btn-fullscreen">⛶ Fullscreen</button>
+              </div>
+            </div>
+
+            <div class="image-wrapper" id="image-wrapper">
+              <img id="cv-main-image" src="/static/scenarios/scenario_1_aerial.jpg" alt="Parking Detection Output">
+              <div class="loading-overlay hidden" id="cv-loading">
+                <div class="spinner"></div>
+                <div class="loading-text">Running YOLOv8 & Perspective Homography...</div>
+              </div>
+            </div>
+
+            <!-- Bird's Eye View Warped Perspective Card -->
+            <div class="bev-card glass-panel" id="bev-container">
+              <div class="bev-header">
+                <span>Bird's-Eye View (BEV Projection)</span>
+                <span class="homography-badge">Homography Matrix H</span>
+              </div>
+              <div class="bev-image-wrapper">
+                <img id="cv-bev-image" src="" alt="Bird's-Eye View">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Insights & Recommendation Panel -->
+        <aside class="insights-panel glass-panel">
+          <!-- Step 8 Smart Recommendation Banner -->
+          <div class="recommendation-card" id="recommendation-card">
+            <div class="rec-badge">⭐ SMART PARKING RECOMMENDATION</div>
+            <div class="rec-slot-id" id="rec-slot-title">Bay 3</div>
+            <div class="rec-status-line">
+              <span class="rec-pill green" id="rec-status-pill">🟢 Available</span>
+              <span class="rec-pill blue" id="rec-rule-pill">Registered ✅</span>
+            </div>
+            <div class="rec-dims" id="rec-dims-text">2.7m (W) × 5.5m (L)</div>
+            <p class="rec-guidance" id="rec-guidance-text">
+              Comfortably fits your SUV with 0.82m clearance on each side. Proceed to park.
+            </p>
+            <button class="rec-action-btn" id="btn-navigate-to-bay">
+              <span>🚗 Reserve & Guide into Bay</span>
+            </button>
+          </div>
+
+          <!-- Individual Slot Inspector Cards -->
+          <div class="panel-section slots-list-section">
+            <h4 class="section-title">Parking Bay Breakdown</h4>
+            <div class="slots-list" id="slots-list-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Computer Vision Syllabus Diagnostics -->
+          <div class="panel-section">
+            <h4 class="section-title">CV Syllabus Diagnostics</h4>
+            <div class="accordion">
+              <details open>
+                <summary>Object Detections (YOLOv8)</summary>
+                <div class="diag-content" id="diag-detections-list">
+                  <!-- Detections populated here -->
+                </div>
+              </details>
+              <details>
+                <summary>Homography Matrix (3×3 H)</summary>
+                <div class="diag-content">
+                  <pre class="matrix-code" id="matrix-display">[Calculating...]</pre>
+                </div>
+              </details>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 2: GPS MAP & NEARBY LOTS (Step 6)                          -->
+    <!-- ============================================================= -->
+    <section class="tab-content" id="tab-gps-map">
+      <div class="gps-layout">
+        <!-- Sidebar with nearby parking lots -->
+        <div class="gps-sidebar glass-panel">
+          <div class="gps-header">
+            <div class="gps-loc-indicator">
+              <span class="loc-pin">📍</span>
+              <div>
+                <div class="gps-title">Current Location</div>
+                <div class="gps-coords">37.7749° N, 122.4194° W (Downtown Hub)</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="lots-list-title">Nearby Available Parking (Step 6)</div>
+          <div class="nearby-lots-list" id="nearby-lots-list">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Interactive Leaflet Map -->
+        <div class="map-container glass-panel">
+          <div id="leaflet-map"></div>
+          <div class="map-overlay-card hidden" id="map-route-card">
+            <div class="route-header">
+              <span class="route-icon">🧭</span>
+              <span class="route-title" id="route-dest-name">Metro Grand Plaza</span>
+            </div>
+            <div class="route-stats">
+              <div class="route-stat"><span class="stat-num" id="route-dist">0.4</span> km</div>
+              <div class="route-stat"><span class="stat-num" id="route-time">2</span> mins</div>
+              <div class="route-stat"><span class="stat-badge" id="route-avail">18 Spots</span></div>
+            </div>
+            <button class="route-arrive-btn glow-btn" id="btn-arrive-simulate">
+              <span>Arrived at Lot → Launch Camera Scan</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 3: FULL 8-STEP DRIVER FLOW SIMULATOR (Step 8)              -->
+    <!-- ============================================================= -->
+    <section class="tab-content" id="tab-driver-flow">
+      <div class="flow-container glass-panel">
+        <div class="flow-stepper">
+          <div class="step-card active" data-step="1">
+            <div class="step-badge">1</div>
+            <div class="step-name">Vehicle Details</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-card" data-step="2">
+            <div class="step-badge">2</div>
+            <div class="step-name">Find Nearby Lot</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-card" data-step="3">
+            <div class="step-badge">3</div>
+            <div class="step-name">Navigate & Arrive</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-card" data-step="4">
+            <div class="step-badge">4</div>
+            <div class="step-name">Phone Camera Scan</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-card" data-step="5">
+            <div class="step-badge">5</div>
+            <div class="step-name">YOLO + CV Analysis</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-card" data-step="6">
+            <div class="step-badge">6</div>
+            <div class="step-name">Vehicle Space Fit</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-card" data-step="7">
+            <div class="step-badge">7</div>
+            <div class="step-name">Rule Verification</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-card" data-step="8">
+            <div class="step-badge">8</div>
+            <div class="step-name">Recommendation</div>
+          </div>
+        </div>
+
+        <div class="flow-stage-body" id="flow-stage-body">
+          <!-- Dynamically advanced through the 8 steps -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 4: PARKING RULES & ZONES (Step 7)                          -->
+    <!-- ============================================================= -->
+    <section class="tab-content" id="tab-rules-info">
+      <div class="rules-container">
+        <div class="rules-hero">
+          <h2>Parking Regulations & Legal Verification Engine</h2>
+          <p>The system validates legal permit zones before recommending spaces to prevent citations, clamping, and tow-aways.</p>
+        </div>
+
+        <div class="rules-grid">
+          <div class="rule-card legal">
+            <div class="rule-icon">✅</div>
+            <div class="rule-title">Registered Parking Lot</div>
+            <div class="rule-zone-badge green">Permitted 24/7</div>
+            <p>Demarcated commercial or municipal parking bays. Full access granted subject to standard parking meter / garage ticketing.</p>
+            <div class="rule-specs">
+              <span>Risk: <strong>Zero</strong></span>
+              <span>Max Stay: <strong>24 Hours</strong></span>
+            </div>
+          </div>
+
+          <div class="rule-card legal">
+            <div class="rule-icon">🅿️</div>
+            <div class="rule-title">Public Permitted Curbside</div>
+            <div class="rule-zone-badge blue">Public Permitted</div>
+            <p>Municipal street parking. Legal when parked entirely within marked white lines. Adhere to time-of-day limits.</p>
+            <div class="rule-specs">
+              <span>Risk: <strong>Low</strong></span>
+              <span>Max Stay: <strong>2 Hours</strong></span>
+            </div>
+          </div>
+
+          <div class="rule-card illegal">
+            <div class="rule-icon">🚫</div>
+            <div class="rule-title">Strict No-Parking / Tow-Away</div>
+            <div class="rule-zone-badge red">Illegal ❌</div>
+            <p>Fire hydrants (5m clearance), marked diagonal hazard zones, red curbs, bus stops, and active driveways. System will <strong>never</strong> recommend these.</p>
+            <div class="rule-specs">
+              <span>Risk: <strong>Severe (Tow-away)</strong></span>
+              <span>Fine: <strong>$150 - $400</strong></span>
+            </div>
+          </div>
+
+          <div class="rule-card warning">
+            <div class="rule-icon">⚠️</div>
+            <div class="rule-title">Private / Unknown Property</div>
+            <div class="rule-zone-badge yellow">Caution 🟡</div>
+            <p>Residential reserved bays or private business customer spaces. Requires explicit resident permit or authorization tag.</p>
+            <div class="rule-specs">
+              <span>Risk: <strong>Moderate (Clamping)</strong></span>
+              <span>Permit: <strong>Required</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Application Controller JS -->
+  <script src="app.js"></script>
+</body>
+</html>

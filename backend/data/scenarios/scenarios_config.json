@@ -1,0 +1,480 @@
+{
+  "scenarios": {
+    "scenario_1_aerial": {
+      "title": "Scenario 1: Overhead Angle Parking Bay Grid (Bays 1 - 6)",
+      "description": "Standard 6-bay parking row with 4 parked vehicles and 2 vacant slots. Clear painted lines and parking zone markers.",
+      "image_path": "backend/data/scenarios/scenario_1_aerial.jpg",
+      "slots": [
+        {
+          "id": "1",
+          "label": "Bay 1",
+          "polygon": [
+            [
+              85,
+              235
+            ],
+            [
+              290,
+              235
+            ],
+            [
+              250,
+              525
+            ],
+            [
+              25,
+              525
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        },
+        {
+          "id": "2",
+          "label": "Bay 2",
+          "polygon": [
+            [
+              290,
+              235
+            ],
+            [
+              490,
+              235
+            ],
+            [
+              470,
+              525
+            ],
+            [
+              250,
+              525
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        },
+        {
+          "id": "3",
+          "label": "Bay 3",
+          "polygon": [
+            [
+              490,
+              235
+            ],
+            [
+              690,
+              235
+            ],
+            [
+              690,
+              525
+            ],
+            [
+              470,
+              525
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        },
+        {
+          "id": "4",
+          "label": "Bay 4",
+          "polygon": [
+            [
+              690,
+              235
+            ],
+            [
+              890,
+              235
+            ],
+            [
+              910,
+              525
+            ],
+            [
+              690,
+              525
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        },
+        {
+          "id": "5",
+          "label": "Bay 5",
+          "polygon": [
+            [
+              890,
+              235
+            ],
+            [
+              1090,
+              235
+            ],
+            [
+              1130,
+              525
+            ],
+            [
+              910,
+              525
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        },
+        {
+          "id": "6",
+          "label": "Bay 6",
+          "polygon": [
+            [
+              1090,
+              235
+            ],
+            [
+              1295,
+              235
+            ],
+            [
+              1355,
+              525
+            ],
+            [
+              1130,
+              525
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        }
+      ],
+      "homography": {
+        "src_points": [
+          [
+            85,
+            235
+          ],
+          [
+            1295,
+            235
+          ],
+          [
+            1355,
+            525
+          ],
+          [
+            25,
+            525
+          ]
+        ],
+        "ground_size_meters": [
+          16.5,
+          5.5
+        ],
+        "bev_resolution": [
+          660,
+          220
+        ]
+      }
+    },
+    "scenario_2_driver": {
+      "title": "Scenario 2: Smartphone Driver Perspective (Bays 114 - 116)",
+      "description": "Phone camera held at driver position. Shows Bay 114 (parked sedan), Bay 115 (vacant), and Bay 116 (blocked by bicycle and cone).",
+      "image_path": "backend/data/scenarios/scenario_2_driver.jpg",
+      "slots": [
+        {
+          "id": "114",
+          "label": "Bay 114",
+          "polygon": [
+            [
+              10,
+              370
+            ],
+            [
+              410,
+              370
+            ],
+            [
+              410,
+              530
+            ],
+            [
+              0,
+              530
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "public_permitted"
+        },
+        {
+          "id": "115",
+          "label": "Bay 115",
+          "polygon": [
+            [
+              410,
+              370
+            ],
+            [
+              920,
+              370
+            ],
+            [
+              920,
+              530
+            ],
+            [
+              410,
+              530
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "public_permitted"
+        },
+        {
+          "id": "116",
+          "label": "Bay 116",
+          "polygon": [
+            [
+              920,
+              370
+            ],
+            [
+              1360,
+              370
+            ],
+            [
+              1360,
+              530
+            ],
+            [
+              920,
+              530
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "public_permitted"
+        }
+      ],
+      "homography": {
+        "src_points": [
+          [
+            10,
+            370
+          ],
+          [
+            1360,
+            370
+          ],
+          [
+            1360,
+            530
+          ],
+          [
+            0,
+            530
+          ]
+        ],
+        "ground_size_meters": [
+          8.5,
+          5.2
+        ],
+        "bev_resolution": [
+          500,
+          300
+        ]
+      }
+    },
+    "scenario_3_rooftop": {
+      "title": "Scenario 3: Elevated Rooftop Lot (Bays 124 - 127)",
+      "description": "Angle view of rooftop parking with pedestrian crossing through Bay 126 and parked vehicles in 124 & 125.",
+      "image_path": "backend/data/scenarios/scenario_3_rooftop.jpg",
+      "slots": [
+        {
+          "id": "124",
+          "label": "Bay 124",
+          "polygon": [
+            [
+              90,
+              570
+            ],
+            [
+              280,
+              560
+            ],
+            [
+              350,
+              760
+            ],
+            [
+              150,
+              760
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        },
+        {
+          "id": "125",
+          "label": "Bay 125",
+          "polygon": [
+            [
+              280,
+              560
+            ],
+            [
+              465,
+              530
+            ],
+            [
+              560,
+              760
+            ],
+            [
+              350,
+              760
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        },
+        {
+          "id": "126",
+          "label": "Bay 126",
+          "polygon": [
+            [
+              465,
+              530
+            ],
+            [
+              670,
+              510
+            ],
+            [
+              800,
+              760
+            ],
+            [
+              560,
+              760
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        },
+        {
+          "id": "127",
+          "label": "Bay 127",
+          "polygon": [
+            [
+              670,
+              510
+            ],
+            [
+              870,
+              490
+            ],
+            [
+              1050,
+              760
+            ],
+            [
+              800,
+              760
+            ]
+          ],
+          "type": "standard",
+          "rule_zone": "registered"
+        }
+      ],
+      "homography": {
+        "src_points": [
+          [
+            90,
+            570
+          ],
+          [
+            870,
+            490
+          ],
+          [
+            1050,
+            760
+          ],
+          [
+            150,
+            760
+          ]
+        ],
+        "ground_size_meters": [
+          11.0,
+          6.0
+        ],
+        "bev_resolution": [
+          550,
+          300
+        ]
+      }
+    },
+    "scenario_4_tight": {
+      "title": "Scenario 4: Narrow Slot Dimension Test (Bay 44)",
+      "description": "Narrow slot between Suburban SUV and F-150. Tests vehicle dimension logic: SUV too tight, compact car fits.",
+      "image_path": "backend/data/scenarios/scenario_4_tight.jpg",
+      "slots": [
+        {
+          "id": "44",
+          "label": "Bay 44 (Narrow)",
+          "polygon": [
+            [
+              440,
+              390
+            ],
+            [
+              630,
+              390
+            ],
+            [
+              665,
+              680
+            ],
+            [
+              320,
+              680
+            ]
+          ],
+          "type": "compact_only",
+          "rule_zone": "registered"
+        }
+      ],
+      "homography": {
+        "src_points": [
+          [
+            440,
+            390
+          ],
+          [
+            630,
+            390
+          ],
+          [
+            665,
+            680
+          ],
+          [
+            320,
+            680
+          ]
+        ],
+        "ground_size_meters": [
+          2.2,
+          5.0
+        ],
+        "bev_resolution": [
+          300,
+          500
+        ]
+      }
+    }
+  }
+}
