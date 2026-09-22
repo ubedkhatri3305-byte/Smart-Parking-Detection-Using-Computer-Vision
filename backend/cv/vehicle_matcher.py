@@ -9,8 +9,57 @@ from typing import Dict, Any, Optional
 
 class VehicleProfiles:
     PROFILES = {
+        "bike_cruiser": {
+            "name": "Cruiser Bike (Royal Enfield / Hunter)",
+            "category": "bike",
+            "length_m": 2.15,
+            "width_m": 0.85,
+            "door_clearance_m": 0.20,
+            "icon": "🏍️"
+        },
+        "bike_scooter": {
+            "name": "Scooter / Moped (Activa / Jupiter)",
+            "category": "bike",
+            "length_m": 1.83,
+            "width_m": 0.70,
+            "door_clearance_m": 0.15,
+            "icon": "🛵"
+        },
+        "bike_commuter": {
+            "name": "Commuter Bike (Splendor / Shine)",
+            "category": "bike",
+            "length_m": 2.00,
+            "width_m": 0.72,
+            "door_clearance_m": 0.15,
+            "icon": "🏍️"
+        },
+        "bike_sports": {
+            "name": "Sports Bike (Yamaha R15 / KTM Duke)",
+            "category": "bike",
+            "length_m": 2.00,
+            "width_m": 0.80,
+            "door_clearance_m": 0.20,
+            "icon": "🏍️"
+        },
+        "bike_ev": {
+            "name": "Electric Scooter (Ather / Ola)",
+            "category": "bike",
+            "length_m": 1.83,
+            "width_m": 0.73,
+            "door_clearance_m": 0.15,
+            "icon": "⚡"
+        },
+        "bike": {
+            "name": "Motorcycle / Bike",
+            "category": "bike",
+            "length_m": 2.0,
+            "width_m": 0.8,
+            "door_clearance_m": 0.20,
+            "icon": "🏍️"
+        },
         "suv": {
             "name": "SUV / 4x4",
+            "category": "car",
             "length_m": 4.6,
             "width_m": 1.9,
             "door_clearance_m": 0.30,
@@ -18,6 +67,7 @@ class VehicleProfiles:
         },
         "sedan": {
             "name": "Sedan",
+            "category": "car",
             "length_m": 4.4,
             "width_m": 1.8,
             "door_clearance_m": 0.25,
@@ -25,20 +75,15 @@ class VehicleProfiles:
         },
         "compact": {
             "name": "Hatchback / Compact",
+            "category": "car",
             "length_m": 3.8,
             "width_m": 1.7,
             "door_clearance_m": 0.20,
             "icon": "🚘"
         },
-        "bike": {
-            "name": "Motorcycle / Bike",
-            "length_m": 2.0,
-            "width_m": 0.8,
-            "door_clearance_m": 0.20,
-            "icon": "🏍️"
-        },
         "van": {
             "name": "Van / Commercial",
+            "category": "car",
             "length_m": 5.2,
             "width_m": 2.1,
             "door_clearance_m": 0.35,
@@ -55,16 +100,19 @@ class VehicleMatcher:
         self,
         vehicle_type: str = "suv",
         custom_length: Optional[float] = None,
-        custom_width: Optional[float] = None
+        custom_width: Optional[float] = None,
+        custom_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """Retrieve vehicle dimensions and clearances."""
         v_key = vehicle_type.lower()
-        base = VehicleProfiles.PROFILES.get(v_key, VehicleProfiles.PROFILES["suv"]).copy()
+        base = VehicleProfiles.PROFILES.get(v_key, VehicleProfiles.PROFILES["bike"]).copy()
 
         if custom_length is not None and custom_length > 0:
             base["length_m"] = round(custom_length, 2)
         if custom_width is not None and custom_width > 0:
             base["width_m"] = round(custom_width, 2)
+        if custom_name and custom_name.strip():
+            base["name"] = custom_name.strip()
 
         return base
 
@@ -82,9 +130,10 @@ class VehicleMatcher:
         slot_w = slot_dimensions.get("width_m", 2.5)
         slot_l = slot_dimensions.get("length_m", 5.0)
 
-        veh_w = vehicle_specs.get("width_m", 1.9)
-        veh_l = vehicle_specs.get("length_m", 4.6)
-        clearance = vehicle_specs.get("door_clearance_m", 0.3)
+        veh_w = vehicle_specs.get("width_m", 0.8)
+        veh_l = vehicle_specs.get("length_m", 2.0)
+        clearance = vehicle_specs.get("door_clearance_m", 0.15)
+        is_bike = vehicle_specs.get("category") == "bike" or "bike" in vehicle_specs.get("name", "").lower()
 
         width_margin = round(slot_w - veh_w, 2)
         length_margin = round(slot_l - veh_l, 2)
@@ -96,7 +145,10 @@ class VehicleMatcher:
             fit_status = "OPTIMAL"
             fit_badge = "🟢 Optimal Fit"
             is_suitable = True
-            message = f"Space ({slot_w}m × {slot_l}m) comfortably fits your {vehicle_specs['name']} with {width_margin}m width clearance."
+            if is_bike:
+                message = f"Space ({slot_w}m × {slot_l}m) fits your {vehicle_specs['name']} with {width_margin}m handlebar & side-stand clearance."
+            else:
+                message = f"Space ({slot_w}m × {slot_l}m) comfortably fits your {vehicle_specs['name']} with {width_margin}m width clearance."
         elif width_margin >= 0.10 and length_margin >= 0.10:
             fit_status = "TIGHT"
             fit_badge = "🟡 Tight Fit"
