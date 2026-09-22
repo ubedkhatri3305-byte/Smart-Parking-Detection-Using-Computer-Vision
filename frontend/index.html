@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="style.css?v=2.0">
+  <link rel="stylesheet" href="style.css?v=2.1">
 </head>
 <body class="classic-theme">
 
@@ -48,12 +48,12 @@
             <input type="text" id="reg-person-name" required placeholder="Enter your full name">
           </div>
           <div class="form-group">
-            <label for="reg-person-email">Email Address <span class="required-star">*</span></label>
-            <input type="email" id="reg-person-email" required placeholder="you@example.com">
+            <label for="reg-person-email">Email Address</label>
+            <input type="email" id="reg-person-email" placeholder="you@example.com (or auto-generated)">
           </div>
           <div class="form-group">
-            <label for="reg-person-password">Password <span class="required-star">*</span></label>
-            <input type="password" id="reg-person-password" required placeholder="Create password (min 6 chars)">
+            <label for="reg-person-password">Password</label>
+            <input type="password" id="reg-person-password" placeholder="Create password (default: 123456)">
           </div>
           <div class="form-group">
             <label for="reg-person-phone">Mobile Number</label>
@@ -64,11 +64,11 @@
           <div class="form-group full-width autocomplete-container">
             <label for="reg-bike-model">
               Vehicle Make & Model Name <span class="required-star">*</span>
-              <span class="label-hint">(Type to search: Royal Enfield, Activa, Pulsar, Splendor, Duke, Ather, etc.)</span>
+              <span class="label-hint">(Type any vehicle name: Activa, Splendor, Pulsar, Classic 350, CD 110, Duke, etc.)</span>
             </label>
             <div class="input-icon-wrap">
               <span class="field-icon">🏍️</span>
-              <input type="text" id="reg-bike-model" required placeholder="e.g. Royal Enfield Classic 350, Honda Activa 6G, etc." autocomplete="off">
+              <input type="text" id="reg-bike-model" required placeholder="e.g. Honda Activa 6G, Royal Enfield, CD 110..." autocomplete="off">
             </div>
             <!-- Dynamic Autocomplete Suggestions List -->
             <div class="autocomplete-dropdown hidden" id="bike-suggestions-list"></div>
@@ -87,7 +87,7 @@
               Length (meters) <span class="auto-tag">Auto-Loaded</span>
             </label>
             <div class="input-unit-wrap">
-              <input type="number" id="reg-bike-length" step="0.01" min="0.5" max="6.0" placeholder="e.g. 2.15" required>
+              <input type="number" id="reg-bike-length" step="0.01" min="0.5" max="6.0" placeholder="Auto-fetched (e.g. 1.83)">
               <span class="unit-tag">m</span>
             </div>
           </div>
@@ -97,7 +97,7 @@
               Width (meters) <span class="auto-tag">Auto-Loaded</span>
             </label>
             <div class="input-unit-wrap">
-              <input type="number" id="reg-bike-width" step="0.01" min="0.3" max="3.0" placeholder="e.g. 0.85" required>
+              <input type="number" id="reg-bike-width" step="0.01" min="0.3" max="3.0" placeholder="Auto-fetched (e.g. 0.69)">
               <span class="unit-tag">m</span>
             </div>
           </div>
@@ -105,14 +105,14 @@
           <div class="form-group">
             <label for="reg-bike-clearance">Required Dismount Margin</label>
             <div class="input-unit-wrap">
-              <input type="number" id="reg-bike-clearance" step="0.05" min="0.10" max="0.60" value="0.20" required>
+              <input type="number" id="reg-bike-clearance" step="0.05" min="0.10" max="0.60" value="0.20">
               <span class="unit-tag">m</span>
             </div>
           </div>
 
           <div class="form-group">
-            <label for="reg-bike-plate">Registration Number / Plate <span class="required-star">*</span></label>
-            <input type="text" id="reg-bike-plate" required placeholder="e.g. MH-02-AB-1234">
+            <label for="reg-bike-plate">Registration Number / Plate</label>
+            <input type="text" id="reg-bike-plate" placeholder="e.g. MH-02-AB-1234 (or auto-assigned)">
           </div>
         </div>
 
@@ -802,6 +802,6 @@
   <!-- Leaflet Map JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <!-- Application Controller JS -->
-  <script src="app.js?v=2.0"></script>
+  <script src="app.js?v=2.1"></script>
 </body>
 </html>

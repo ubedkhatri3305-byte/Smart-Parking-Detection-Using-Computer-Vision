@@ -1,1 +1,53 @@
-{}
+{
+  "kavita@test.com": {
+    "name": "Kavita Patel",
+    "email": "kavita@test.com",
+    "password": "123456",
+    "phone": "",
+    "license_plate": "MH-01-BK-1234",
+    "bike_model": "Hero Splendor",
+    "bike_type": "bike_commuter",
+    "length_m": 2.0,
+    "width_m": 0.72,
+    "clearance_m": 0.15,
+    "registered_at": "2026-09-22"
+  },
+  "suresh.kumar@example.com": {
+    "name": "Suresh Kumar",
+    "email": "suresh.kumar@example.com",
+    "password": "123456",
+    "phone": "",
+    "license_plate": "MH-01-BK-9221",
+    "bike_model": "ActivaActiva",
+    "bike_type": "bike_cruiser",
+    "length_m": 1.83,
+    "width_m": 0.69,
+    "clearance_m": 0.15,
+    "registered_at": "2026-09-22",
+    "licensePlate": "MH-01-BK-9221",
+    "bikeModel": "ActivaActiva",
+    "bikeType": "bike_cruiser",
+    "length": 1.83,
+    "width": 0.69,
+    "clearance": 0.15
+  },
+  "rajeshsharma@parkvision.local": {
+    "name": "Rajesh Sharma",
+    "email": "rajeshsharma@parkvision.local",
+    "password": "123456",
+    "phone": "",
+    "license_plate": "MH-01-BK-2841",
+    "bike_model": "Honda CD 110",
+    "bike_type": "bike_cruiser",
+    "length_m": 2.04,
+    "width_m": 0.73,
+    "clearance_m": 0.15,
+    "registered_at": "2026-09-22",
+    "licensePlate": "MH-01-BK-2841",
+    "bikeModel": "Honda CD 110",
+    "bikeType": "bike_cruiser",
+    "length": 2.04,
+    "width": 0.73,
+    "clearance": 0.15
+  }
+}

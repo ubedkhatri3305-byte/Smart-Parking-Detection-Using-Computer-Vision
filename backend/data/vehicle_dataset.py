@@ -119,6 +119,36 @@ VEHICLE_DATASET = [
         "icon": "🏍️"
     },
     {
+        "name": "Honda CD 110 Dream",
+        "make": "Honda",
+        "category": "Commuter",
+        "length_m": 2.04,
+        "width_m": 0.73,
+        "height_m": 1.07,
+        "clearance_m": 0.15,
+        "icon": "🏍️"
+    },
+    {
+        "name": "Honda Shine 100",
+        "make": "Honda",
+        "category": "Commuter",
+        "length_m": 1.95,
+        "width_m": 0.75,
+        "height_m": 1.05,
+        "clearance_m": 0.15,
+        "icon": "🏍️"
+    },
+    {
+        "name": "Honda Livo",
+        "make": "Honda",
+        "category": "Commuter",
+        "length_m": 2.02,
+        "width_m": 0.75,
+        "height_m": 1.11,
+        "clearance_m": 0.16,
+        "icon": "🏍️"
+    },
+    {
         "name": "Honda Unicorn",
         "make": "Honda",
         "category": "Commuter",
@@ -507,32 +537,153 @@ VEHICLE_DATASET = [
 ]
 
 
-def search_vehicles(query: str, limit: int = 10):
+def search_vehicles(query: str, limit: int = 15):
     """Search vehicles in the dataset matching the query string."""
     q = query.strip().lower()
     if not q:
         return VEHICLE_DATASET[:limit]
     
     matches = []
+    seen = set()
+
+    # 1. Exact or substring match on name, make, or category
     for v in VEHICLE_DATASET:
         v_name = v["name"].lower()
         v_make = v["make"].lower()
         v_cat = v["category"].lower()
         if q in v_name or q in v_make or q in v_cat:
             matches.append(v)
+            seen.add(v["name"])
             if len(matches) >= limit:
-                break
+                return matches
+
+    # 2. Match each search token (e.g. "cd", "ho", "hon", "shine", "activa")
+    tokens = [t for t in q.replace("-", " ").split() if len(t) >= 2]
+    for token in tokens:
+        for v in VEHICLE_DATASET:
+            if v["name"] not in seen:
+                v_name = v["name"].lower()
+                v_make = v["make"].lower()
+                if token in v_name or token in v_make:
+                    matches.append(v)
+                    seen.add(v["name"])
+                    if len(matches) >= limit:
+                        return matches
+
+    # 3. Fallback: if query matches generic type (scooter, bike, car), provide suggestions
+    if not matches:
+        if any(k in q for k in ["scoot", "moped"]):
+            matches = [v for v in VEHICLE_DATASET if v["category"] == "Scooter"][:limit]
+        elif any(k in q for k in ["cruiser", "bullet", "classic"]):
+            matches = [v for v in VEHICLE_DATASET if v["category"] == "Cruiser"][:limit]
+        elif any(k in q for k in ["commuter", "splendor", "shine", "passion", "cd"]):
+            matches = [v for v in VEHICLE_DATASET if v["category"] == "Commuter"][:limit]
+        elif any(k in q for k in ["sports", "race", "r15", "duke"]):
+            matches = [v for v in VEHICLE_DATASET if v["category"] == "Sports"][:limit]
+
     return matches
 
 
 def lookup_vehicle(name: str):
-    """Get exact or best vehicle match by name."""
+    """Get exact, fuzzy, or category-inferred vehicle specifications by name."""
+    if not name:
+        return {
+            "name": "Standard Two-Wheeler",
+            "make": "Standard",
+            "category": "Commuter",
+            "length_m": 2.02,
+            "width_m": 0.74,
+            "height_m": 1.08,
+            "clearance_m": 0.16,
+            "icon": "🏍️"
+        }
     clean_name = name.strip().lower()
+
+    # 1. Exact name match
     for v in VEHICLE_DATASET:
         if v["name"].lower() == clean_name:
             return v
-    # Fallback to prefix match
+
+    # 2. Substring or prefix match
     for v in VEHICLE_DATASET:
-        if v["name"].lower().startswith(clean_name) or clean_name in v["name"].lower():
+        v_low = v["name"].lower()
+        if v_low.startswith(clean_name) or clean_name in v_low:
             return v
-    return None
+
+    # 3. Token-level match (e.g. user typed "honda cd" or "bullet" or "activa")
+    tokens = [t for t in clean_name.replace("-", " ").split() if len(t) >= 2]
+    for t in tokens:
+        for v in VEHICLE_DATASET:
+            if t in v["name"].lower():
+                return v
+
+    # 4. Smart Category Heuristics
+    # Scooters & Mopeds
+    scooter_keywords = ["scoot", "activa", "dio", "jupiter", "access", "burgman", "destini", 
+                        "pleasure", "aerox", "ray", "fascino", "ather", "ola", "chetak", "iqube", "vida", "pep"]
+    if any(k in clean_name for k in scooter_keywords):
+        return {
+            "name": name.strip().title(),
+            "make": "Scooter",
+            "category": "Scooter",
+            "length_m": 1.83,
+            "width_m": 0.69,
+            "height_m": 1.15,
+            "clearance_m": 0.15,
+            "icon": "🛵"
+        }
+
+    # Heavy Cruisers & Adventure
+    cruiser_keywords = ["bullet", "classic", "meteor", "enfield", "himalayan", "harley", 
+                        "interceptor", "super meteor", "shotgun", "avenger", "cruiser", "jawa", "yezdi"]
+    if any(k in clean_name for k in cruiser_keywords):
+        return {
+            "name": name.strip().title(),
+            "make": "Royal Enfield / Cruiser",
+            "category": "Cruiser",
+            "length_m": 2.14,
+            "width_m": 0.84,
+            "height_m": 1.12,
+            "clearance_m": 0.20,
+            "icon": "🏍️"
+        }
+
+    # Sports Bikes
+    sports_keywords = ["r15", "duke", "rc", "ninja", "rr", "apache", "pulsar", "gixxer", "sport", "ktm", "speed"]
+    if any(k in clean_name for k in sports_keywords):
+        return {
+            "name": name.strip().title(),
+            "make": "Sports Bike",
+            "category": "Sports",
+            "length_m": 2.01,
+            "width_m": 0.75,
+            "height_m": 1.07,
+            "clearance_m": 0.18,
+            "icon": "🏍️"
+        }
+
+    # Cars
+    car_keywords = ["car", "sedan", "suv", "hatchback", "swift", "creta", "baleno", "thar", "wagonr", "city", "brezza"]
+    if any(k in clean_name for k in car_keywords):
+        return {
+            "name": name.strip().title(),
+            "make": "Passenger Car",
+            "category": "Car",
+            "length_m": 4.10,
+            "width_m": 1.76,
+            "height_m": 1.55,
+            "clearance_m": 0.30,
+            "icon": "🚗"
+        }
+
+    # 5. Default Motorcycle
+    return {
+        "name": name.strip().title(),
+        "make": "Two-Wheeler",
+        "category": "Commuter",
+        "length_m": 2.02,
+        "width_m": 0.74,
+        "height_m": 1.08,
+        "clearance_m": 0.16,
+        "icon": "🏍️"
+    }
