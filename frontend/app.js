@@ -1941,7 +1941,12 @@ function wzGoToStep(stepNum) {
   const targetPanel = document.getElementById(`wz-panel-${stepNum}`);
   if (targetPanel) {
     targetPanel.classList.add('active');
-    targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const overlay = document.getElementById('wizard-overlay');
+    if (overlay) {
+      overlay.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   // Update progress stepper

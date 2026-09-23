@@ -336,19 +336,46 @@ def get_vehicles():
 # LIVE GPS & REAL NEARBY PARKING ENDPOINTS
 # ==========================================================================
 @app.get("/api/parking/nearby")
-def get_nearby_parking(lat: float = 37.7749, lng: float = -122.4194):
+def get_nearby_parking(lat: Optional[Any] = None, lng: Optional[Any] = None):
     """
     Generate and return real, dynamically calculated parking facilities
     surrounding the user's actual live GPS coordinates.
+    Safely handles None, 'undefined', 'null', empty strings, or NaN.
     """
-    return generate_nearby_parking(lat, lng)
+    try:
+        user_lat = float(lat) if lat not in (None, "", "undefined", "null", "NaN") else 19.0760
+        if math.isnan(user_lat):
+            user_lat = 19.0760
+    except (ValueError, TypeError):
+        user_lat = 19.0760
+
+    try:
+        user_lng = float(lng) if lng not in (None, "", "undefined", "null", "NaN") else 72.8777
+        if math.isnan(user_lng):
+            user_lng = 72.8777
+    except (ValueError, TypeError):
+        user_lng = 72.8777
+
+    return generate_nearby_parking(user_lat, user_lng)
 
 
 @app.get("/api/parking/locations")
-def get_parking_locations(lat: Optional[float] = None, lng: Optional[float] = None):
+def get_parking_locations(lat: Optional[Any] = None, lng: Optional[Any] = None):
     """Return nearby GPS parking locations relative to user coordinates."""
-    user_lat = lat if lat is not None else 37.7749
-    user_lng = lng if lng is not None else -122.4194
+    try:
+        user_lat = float(lat) if lat not in (None, "", "undefined", "null", "NaN") else 19.0760
+        if math.isnan(user_lat):
+            user_lat = 19.0760
+    except (ValueError, TypeError):
+        user_lat = 19.0760
+
+    try:
+        user_lng = float(lng) if lng not in (None, "", "undefined", "null", "NaN") else 72.8777
+        if math.isnan(user_lng):
+            user_lng = 72.8777
+    except (ValueError, TypeError):
+        user_lng = 72.8777
+
     return generate_nearby_parking(user_lat, user_lng)
 
 
