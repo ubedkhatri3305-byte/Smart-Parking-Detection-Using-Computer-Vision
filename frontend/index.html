@@ -60,25 +60,58 @@
             <input type="tel" id="reg-person-phone" placeholder="+91 XXXXX XXXXX">
           </div>
 
+          <!-- Vehicle Category Filter Buttons -->
+          <div class="form-group full-width">
+            <label>Vehicle Type</label>
+            <div class="modal-cat-tabs" id="modal-cat-tabs">
+              <button type="button" class="modal-cat-btn active" data-wheels="all">🌟 All</button>
+              <button type="button" class="modal-cat-btn" data-wheels="2">🏍️ 2-Wheeler</button>
+              <button type="button" class="modal-cat-btn" data-wheels="3">🛺 3-Wheeler Auto</button>
+              <button type="button" class="modal-cat-btn" data-wheels="4">🚗 4-Wheeler Car</button>
+            </div>
+          </div>
+
           <!-- Vehicle Model with Autocomplete & Auto-fetch -->
           <div class="form-group full-width autocomplete-container">
             <label for="reg-bike-model">
-              Vehicle Make & Model Name <span class="required-star">*</span>
-              <span class="label-hint">(Type any vehicle name: Activa, Splendor, Pulsar, Classic 350, CD 110, Duke, etc.)</span>
+              Vehicle Name / Model <span class="required-star">*</span>
+              <span class="label-hint">(Enter name only e.g. Swift, Activa, Auto Rickshaw, Thar, Creta...)</span>
             </label>
             <div class="input-icon-wrap">
-              <span class="field-icon">🏍️</span>
-              <input type="text" id="reg-bike-model" required placeholder="e.g. Honda Activa 6G, Royal Enfield, CD 110..." autocomplete="off">
+              <span class="field-icon" id="reg-bike-icon">🚗</span>
+              <input type="text" id="reg-bike-model" required placeholder="Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Treo..." autocomplete="off">
             </div>
             <!-- Dynamic Autocomplete Suggestions List -->
             <div class="autocomplete-dropdown hidden" id="bike-suggestions-list"></div>
+
+            <!-- Modal Quick Pick Chips -->
+            <div class="wz-quick-chips modal-chips" id="modal-quick-chips">
+              <span class="wz-quick-label">⚡ Quick Pick:</span>
+              <button type="button" class="wz-chip" data-vname="Honda Activa 6G">🛵 Activa 6G</button>
+              <button type="button" class="wz-chip" data-vname="Hero Splendor Plus">🏍️ Splendor+</button>
+              <button type="button" class="wz-chip" data-vname="Bajaj RE Auto Rickshaw">🛺 Bajaj RE Auto</button>
+              <button type="button" class="wz-chip" data-vname="Mahindra Treo">🛺 Treo E-Auto</button>
+              <button type="button" class="wz-chip" data-vname="Maruti Suzuki Swift">🚗 Swift</button>
+              <button type="button" class="wz-chip" data-vname="Hyundai Creta">🚙 Creta</button>
+              <button type="button" class="wz-chip" data-vname="Mahindra Thar">🚙 Thar</button>
+            </div>
           </div>
 
           <!-- Auto-fetched notification status banner -->
           <div class="form-group full-width autofill-indicator hidden" id="autofill-indicator">
-            <div class="autofill-banner">
-              <span class="autofill-icon">✨</span>
-              <span class="autofill-text" id="autofill-text">Dimensions automatically fetched from vehicle dataset</span>
+            <div class="wz-detected-banner" id="modal-detected-banner">
+              <div class="wz-detected-icon" id="modal-detected-icon">🚗</div>
+              <div class="wz-detected-details">
+                <div class="wz-detected-title">
+                  <span id="modal-detected-name">Maruti Suzuki Swift</span>
+                  <span class="wz-detected-tag" id="modal-detected-category">Hatchback (4-Wheeler)</span>
+                </div>
+                <div class="wz-detected-specs">
+                  <span class="wz-spec-badge">📏 Length: <strong id="modal-spec-length">3.86m</strong></span>
+                  <span class="wz-spec-badge">↔️ Width: <strong id="modal-spec-width">1.73m</strong></span>
+                  <span class="wz-spec-badge auto-ok">✨ Auto-Detected</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -207,8 +240,8 @@
         <div class="wz-panel-inner">
           <div class="wz-panel-heading">
             <div class="wz-panel-step-tag">Step 1 of 5</div>
-            <h2 class="wz-title">Register Your Rider Profile</h2>
-            <p class="wz-subtitle">Enter your name and vehicle model — length &amp; width are <strong>auto-fetched</strong> from our vehicle database. No manual measurement needed.</p>
+            <h2 class="wz-title">Register Your Vehicle Profile</h2>
+            <p class="wz-subtitle">Enter <strong>ONLY the vehicle name</strong> (Car, Auto Rickshaw, Bike, Scooter, or EV) — length &amp; width are <strong>automatically detected</strong> instantly from 200+ vehicles!</p>
           </div>
 
           <!-- Already Registered Banner -->
@@ -232,34 +265,81 @@
                 <label for="wz-phone">Mobile Number</label>
                 <input type="tel" id="wz-phone" placeholder="+91 XXXXX XXXXX" autocomplete="tel">
               </div>
+
+              <!-- Vehicle Category Filter Tabs -->
               <div class="wz-field wz-full">
-                <label for="wz-vehicle">Vehicle Make &amp; Model <span class="req">*</span></label>
+                <label>Vehicle Type Filter</label>
+                <div class="wz-cat-tabs" id="wz-cat-tabs">
+                  <button type="button" class="wz-cat-btn active" data-wheels="all">🌟 All Vehicles</button>
+                  <button type="button" class="wz-cat-btn" data-wheels="2">🏍️ 2-Wheeler (Bikes &amp; Scooters)</button>
+                  <button type="button" class="wz-cat-btn" data-wheels="3">🛺 3-Wheeler (Auto Rickshaw)</button>
+                  <button type="button" class="wz-cat-btn" data-wheels="4">🚗 4-Wheeler (Cars &amp; SUVs)</button>
+                </div>
+              </div>
+
+              <!-- Vehicle Model with Autocomplete & Auto-fetch -->
+              <div class="wz-field wz-full">
+                <div class="wz-label-row">
+                  <label for="wz-vehicle">Vehicle Name / Model <span class="req">*</span></label>
+                  <span class="wz-label-hint">Type name only — dimensions auto-detect</span>
+                </div>
                 <div class="wz-input-icon">
-                  <span class="wz-field-icon">🏍️</span>
-                  <input type="text" id="wz-vehicle" required placeholder="e.g. Honda Activa, Royal Enfield Classic 350, Pulsar 150..." autocomplete="off">
+                  <span class="wz-field-icon" id="wz-vehicle-icon">🚗</span>
+                  <input type="text" id="wz-vehicle" required placeholder="Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Creta, Treo..." autocomplete="off">
                 </div>
                 <div class="wz-autocomplete hidden" id="wz-vehicle-suggestions"></div>
+
+                <!-- Quick Pick Popular Chips -->
+                <div class="wz-quick-chips" id="wz-quick-chips">
+                  <span class="wz-quick-label">⚡ Quick Pick:</span>
+                  <button type="button" class="wz-chip" data-vname="Honda Activa 6G">🛵 Activa 6G</button>
+                  <button type="button" class="wz-chip" data-vname="Hero Splendor Plus">🏍️ Splendor+</button>
+                  <button type="button" class="wz-chip" data-vname="Royal Enfield Classic 350">🏍️ Classic 350</button>
+                  <button type="button" class="wz-chip" data-vname="Bajaj RE Auto Rickshaw">🛺 Bajaj RE Auto</button>
+                  <button type="button" class="wz-chip" data-vname="Mahindra Treo">🛺 Treo E-Auto</button>
+                  <button type="button" class="wz-chip" data-vname="Piaggio Ape City">🛺 Piaggio Ape</button>
+                  <button type="button" class="wz-chip" data-vname="Maruti Suzuki Swift">🚗 Swift</button>
+                  <button type="button" class="wz-chip" data-vname="Hyundai Creta">🚙 Creta</button>
+                  <button type="button" class="wz-chip" data-vname="Mahindra Thar">🚙 Thar</button>
+                  <button type="button" class="wz-chip" data-vname="Tata Nexon EV">⚡ Nexon EV</button>
+                </div>
               </div>
-              <div class="wz-autofill-bar hidden" id="wz-autofill-bar">
-                <span class="wz-autofill-icon">✨</span>
-                <span id="wz-autofill-text">Dimensions auto-fetched!</span>
+
+              <!-- Live Auto-Detection Pill / Banner -->
+              <div class="wz-field wz-full">
+                <div class="wz-detected-banner hidden" id="wz-detected-banner">
+                  <div class="wz-detected-icon" id="wz-detected-icon">🚗</div>
+                  <div class="wz-detected-details">
+                    <div class="wz-detected-title">
+                      <span id="wz-detected-name">Maruti Suzuki Swift</span>
+                      <span class="wz-detected-tag" id="wz-detected-category">Hatchback (4-Wheeler)</span>
+                    </div>
+                    <div class="wz-detected-specs">
+                      <span class="wz-spec-badge">📏 Length: <strong id="wz-spec-length">3.86m</strong></span>
+                      <span class="wz-spec-badge">↔️ Width: <strong id="wz-spec-width">1.73m</strong></span>
+                      <span class="wz-spec-badge">⬆️ Height: <strong id="wz-spec-height">1.53m</strong></span>
+                      <span class="wz-spec-badge auto-ok">✨ Auto-Detected</span>
+                    </div>
+                  </div>
+                </div>
               </div>
+
               <div class="wz-field">
-                <label for="wz-length">Length (m) <span class="wz-auto-tag">Auto-Loaded</span></label>
+                <label for="wz-length">Length (m) <span class="wz-auto-tag">✨ Auto-Detected</span></label>
                 <div class="wz-unit-wrap">
-                  <input type="number" id="wz-length" step="0.01" min="0.5" max="6.0" placeholder="Auto-fetched">
+                  <input type="number" id="wz-length" step="0.01" min="0.5" max="7.0" placeholder="Auto-detected">
                   <span class="wz-unit">m</span>
                 </div>
               </div>
               <div class="wz-field">
-                <label for="wz-width">Width (m) <span class="wz-auto-tag">Auto-Loaded</span></label>
+                <label for="wz-width">Width (m) <span class="wz-auto-tag">✨ Auto-Detected</span></label>
                 <div class="wz-unit-wrap">
-                  <input type="number" id="wz-width" step="0.01" min="0.3" max="3.0" placeholder="Auto-fetched">
+                  <input type="number" id="wz-width" step="0.01" min="0.3" max="3.5" placeholder="Auto-detected">
                   <span class="wz-unit">m</span>
                 </div>
               </div>
               <div class="wz-field">
-                <label for="wz-plate">Plate Number</label>
+                <label for="wz-plate">Plate / Reg Number</label>
                 <input type="text" id="wz-plate" placeholder="e.g. MH-02-AB-1234">
               </div>
             </div>
@@ -1181,7 +1261,9 @@
 
   <!-- Leaflet Map JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Vehicle Dataset & Auto-Dimension Detector (2W, 3W, 4W) -->
+  <script src="vehicles.js?v=2.2"></script>
   <!-- Application Controller JS -->
-  <script src="app.js?v=2.1"></script>
+  <script src="app.js?v=2.2"></script>
 </body>
 </html>

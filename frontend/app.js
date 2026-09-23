@@ -142,14 +142,15 @@ function initProfileUI() {
     const vehDimsEl = document.getElementById('nav-veh-dims');
     const vehPlateEl = document.getElementById('nav-veh-plate');
 
+    const vIcon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
     if (riderNameEl) riderNameEl.textContent = p.name;
-    if (vehNameEl) vehNameEl.textContent = p.bikeModel;
+    if (vehNameEl) vehNameEl.textContent = `${vIcon} ${p.bikeModel}`;
     if (vehDimsEl) vehDimsEl.textContent = `(${p.length}m × ${p.width}m)`;
     if (vehPlateEl) vehPlateEl.textContent = p.licensePlate || 'NO-PLATE';
 
     const camBikeTag = document.getElementById('cam-active-bike-tag');
     if (camBikeTag) {
-      camBikeTag.textContent = `🏍️ ${p.bikeModel} (${p.length}m × ${p.width}m)`;
+      camBikeTag.textContent = `${vIcon} ${p.bikeModel} (${p.length}m × ${p.width}m)`;
     }
 
     const recBikeLen = document.getElementById('cam-rec-bike-len');
@@ -163,7 +164,7 @@ function initProfileUI() {
 
     const camBikeTag = document.getElementById('cam-active-bike-tag');
     if (camBikeTag) {
-      camBikeTag.textContent = `🏍️ Register or Login to Auto-Match`;
+      camBikeTag.textContent = `🚗 Register Vehicle to Auto-Match`;
     }
 
     const recBikeLen = document.getElementById('cam-rec-bike-len');
@@ -265,73 +266,154 @@ function initRegistrationModal() {
     if (e.target === modal) closeModal();
   });
 
-  // --- VEHICLE AUTOCOMPLETE & AUTO-FETCH FROM REAL DATASET ---
-  // --- VEHICLE AUTOCOMPLETE & AUTO-FETCH FROM REAL DATASET ---
+  // --- VEHICLE AUTOCOMPLETE & AUTO-FETCH FROM REAL DATASET (2W, 3W, 4W) ---
+  let modalWheelsFilter = null;
+  const modalCatTabs = document.getElementById('modal-cat-tabs');
+  const modalBikeIcon = document.getElementById('reg-bike-icon');
+  const modalQuickChips = document.getElementById('modal-quick-chips');
+
+  function applyModalVehicleDetection(vehicleName, explicitVehicle = null) {
+    if (!vehicleName || !vehicleName.trim()) {
+      if (autofillIndicator) autofillIndicator.classList.add('hidden');
+      return;
+    }
+    const v = explicitVehicle || (window.lookupVehicleClient ? window.lookupVehicleClient(vehicleName) : null);
+    if (!v) return;
+
+    if (lengthInput) lengthInput.value = v.length_m;
+    if (widthInput) widthInput.value = v.width_m;
+    if (clearanceInput && v.clearance_m) clearanceInput.value = v.clearance_m;
+
+    const icon = v.icon || (v.wheels === 4 ? '🚗' : (v.wheels === 3 ? '🛺' : '🏍️'));
+    if (modalBikeIcon) modalBikeIcon.textContent = icon;
+
+    // Update banner
+    const detIcon = document.getElementById('modal-detected-icon');
+    const detName = document.getElementById('modal-detected-name');
+    const detCat = document.getElementById('modal-detected-category');
+    const detLen = document.getElementById('modal-spec-length');
+    const detWid = document.getElementById('modal-spec-width');
+
+    if (detName) detName.textContent = v.name;
+    if (detIcon) detIcon.textContent = icon;
+    if (detCat) detCat.textContent = `${v.category || 'Vehicle'} (${v.wheels || 2}-Wheeler)`;
+    if (detLen) detLen.textContent = `${v.length_m}m`;
+    if (detWid) detWid.textContent = `${v.width_m}m`;
+
+    if (autofillIndicator) autofillIndicator.classList.remove('hidden');
+  }
+
+  // Category filter tabs in Modal
+  if (modalCatTabs) {
+    modalCatTabs.querySelectorAll('.modal-cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        modalCatTabs.querySelectorAll('.modal-cat-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const w = btn.getAttribute('data-wheels');
+        modalWheelsFilter = (w === 'all') ? null : Number(w);
+
+        if (modelInput) {
+          if (modalWheelsFilter === 4) {
+            modelInput.placeholder = 'Type car name e.g. Swift, Creta, Thar, Fortuner, Nexon...';
+            if (modalBikeIcon) modalBikeIcon.textContent = '🚗';
+          } else if (modalWheelsFilter === 3) {
+            modelInput.placeholder = 'Type 3-wheeler name e.g. Bajaj RE, Piaggio Ape, Treo...';
+            if (modalBikeIcon) modalBikeIcon.textContent = '🛺';
+          } else if (modalWheelsFilter === 2) {
+            modelInput.placeholder = 'Type 2-wheeler name e.g. Activa, Splendor, Pulsar, Classic 350...';
+            if (modalBikeIcon) modalBikeIcon.textContent = '🏍️';
+          } else {
+            modelInput.placeholder = 'Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Creta...';
+            if (modalBikeIcon) modalBikeIcon.textContent = '🚗';
+          }
+        }
+
+        if (modelInput && modelInput.value.trim().length >= 1) {
+          renderModalSuggestions(modelInput.value.trim());
+        }
+      });
+    });
+  }
+
+  // Quick chips in Modal
+  if (modalQuickChips) {
+    modalQuickChips.querySelectorAll('.wz-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const vname = chip.getAttribute('data-vname');
+        if (modelInput) modelInput.value = vname;
+        applyModalVehicleDetection(vname);
+        if (suggestionsList) suggestionsList.classList.add('hidden');
+        showToast(`✨ Auto-detected: ${vname}`);
+      });
+    });
+  }
+
+  function renderModalSuggestions(q) {
+    if (!suggestionsList) return;
+    const clientList = window.searchVehiclesClient ? window.searchVehiclesClient(q, 15, modalWheelsFilter) : [];
+    if (clientList.length === 0) {
+      suggestionsList.innerHTML = '<div style="padding:0.6rem 0.85rem;font-size:0.8rem;color:var(--text-muted);">Custom vehicle detected. Dimensions auto-assigned.</div>';
+      suggestionsList.classList.remove('hidden');
+      return;
+    }
+    suggestionsList.innerHTML = '';
+    clientList.forEach(v => {
+      const item = document.createElement('div');
+      item.className = 'autocomplete-item';
+      const wTag = v.wheels === 4 ? '<span class="wz-ac-tag tag-4w">4W Car</span>' : (v.wheels === 3 ? '<span class="wz-ac-tag tag-3w">3W Auto</span>' : '<span class="wz-ac-tag tag-2w">2W Bike</span>');
+      item.innerHTML = `
+        <div class="auto-item-name">${v.icon || '🚗'} ${v.name}</div>
+        <div class="auto-item-meta">
+          ${wTag}
+          <span class="auto-item-cat">${v.category}</span>
+          <span class="auto-item-dims">${v.length_m}m × ${v.width_m}m</span>
+        </div>
+      `;
+      item.addEventListener('click', () => {
+        if (modelInput) modelInput.value = v.name;
+        applyModalVehicleDetection(v.name, v);
+        suggestionsList.classList.add('hidden');
+        showToast(`✨ Auto-fetched: ${v.name} (${v.length_m}m × ${v.width_m}m)`);
+      });
+      suggestionsList.appendChild(item);
+    });
+    suggestionsList.classList.remove('hidden');
+  }
+
   let debounceTimer = null;
   if (modelInput && suggestionsList) {
     modelInput.addEventListener('input', (e) => {
-      clearTimeout(debounceTimer);
       const q = e.target.value.trim();
-      if (!q || q.length < 2) {
+
+      // Instant 0ms auto-detection while typing!
+      if (q.length >= 2) {
+        applyModalVehicleDetection(q);
+      } else {
+        if (autofillIndicator) autofillIndicator.classList.add('hidden');
+      }
+
+      clearTimeout(debounceTimer);
+      if (!q || q.length < 1) {
         suggestionsList.innerHTML = '';
         suggestionsList.classList.add('hidden');
         return;
       }
 
+      renderModalSuggestions(q);
+
       debounceTimer = setTimeout(async () => {
         try {
-          const res = await fetch(`${API_BASE}/api/vehicles/search?q=${encodeURIComponent(q)}`);
+          const filterParam = modalWheelsFilter ? `&wheels=${modalWheelsFilter}` : '';
+          const res = await fetch(`${API_BASE}/api/vehicles/search?q=${encodeURIComponent(q)}${filterParam}`);
           const data = await res.json();
           const list = data.vehicles || [];
-
-          if (list.length === 0) {
-            suggestionsList.innerHTML = '<div style="padding:0.6rem 0.85rem;font-size:0.8rem;color:var(--text-muted);">Custom vehicle detected. Dimensions auto-assigned.</div>';
-            suggestionsList.classList.remove('hidden');
-            return;
+          if (list.length > 0 && modelInput.value.trim() === q) {
+            applyModalVehicleDetection(q, list[0]);
           }
-
-          // Auto-fill top match dimensions into inputs immediately as user types
-          const topMatch = list[0];
-          if (!lengthInput.value || lengthInput.value === '2.14' || lengthInput.value === '1.83') {
-            lengthInput.value = topMatch.length_m;
-            widthInput.value = topMatch.width_m;
-            if (clearanceInput && topMatch.clearance_m) clearanceInput.value = topMatch.clearance_m;
-            if (autofillIndicator && autofillText) {
-              autofillText.textContent = `⚡ ${topMatch.name}: Length ${topMatch.length_m}m × Width ${topMatch.width_m}m auto-detected`;
-              autofillIndicator.classList.remove('hidden');
-            }
-          }
-
-          suggestionsList.innerHTML = '';
-          list.forEach(v => {
-            const item = document.createElement('div');
-            item.className = 'autocomplete-item';
-            item.innerHTML = `
-              <div class="auto-item-name">${v.icon || '🏍️'} ${v.name}</div>
-              <div class="auto-item-meta">
-                <span class="auto-item-cat">${v.category}</span>
-                <span class="auto-item-dims">${v.length_m}m × ${v.width_m}m</span>
-              </div>
-            `;
-            item.addEventListener('click', () => {
-              modelInput.value = v.name;
-              lengthInput.value = v.length_m;
-              widthInput.value = v.width_m;
-              if (clearanceInput && v.clearance_m) clearanceInput.value = v.clearance_m;
-              suggestionsList.classList.add('hidden');
-              if (autofillIndicator && autofillText) {
-                autofillText.textContent = `⚡ ${v.name}: Length ${v.length_m}m × Width ${v.width_m}m auto-detected from vehicle dataset`;
-                autofillIndicator.classList.remove('hidden');
-              }
-              showToast(`✨ Auto-fetched: ${v.name} (${v.length_m}m × ${v.width_m}m)`);
-            });
-            suggestionsList.appendChild(item);
-          });
-          suggestionsList.classList.remove('hidden');
         } catch (err) {
           console.warn('Vehicle search failed:', err);
         }
-      }, 150);
+      }, 180);
     });
 
     document.addEventListener('click', (e) => {
@@ -340,25 +422,10 @@ function initRegistrationModal() {
       }
     });
 
-    modelInput.addEventListener('blur', async () => {
+    modelInput.addEventListener('blur', () => {
       const q = modelInput.value.trim();
       if (q) {
-        try {
-          const res = await fetch(`${API_BASE}/api/vehicles/lookup?name=${encodeURIComponent(q)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.vehicle) {
-              const v = data.vehicle;
-              lengthInput.value = v.length_m;
-              widthInput.value = v.width_m;
-              if (clearanceInput && v.clearance_m) clearanceInput.value = v.clearance_m;
-              if (autofillIndicator && autofillText) {
-                autofillText.textContent = `⚡ ${v.name}: Length ${v.length_m}m × Width ${v.width_m}m auto-detected from vehicle dataset`;
-                autofillIndicator.classList.remove('hidden');
-              }
-            }
-          }
-        } catch (e) {}
+        applyModalVehicleDetection(q);
       }
     });
   }
@@ -368,8 +435,8 @@ function initRegistrationModal() {
     formRegister.addEventListener('submit', async (e) => {
       e.preventDefault();
 
-      const nameVal = (nameInput && nameInput.value.trim()) || 'Registered Rider';
-      const modelVal = (modelInput && modelInput.value.trim()) || 'Standard Motorcycle';
+      const nameVal = (nameInput && nameInput.value.trim()) || 'Registered User';
+      const modelVal = (modelInput && modelInput.value.trim()) || 'Standard Vehicle';
       let emailVal = (emailInput && emailInput.value.trim()) || '';
       if (!emailVal) {
         const cleanName = nameVal.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -386,34 +453,42 @@ function initRegistrationModal() {
       let widVal = parseFloat(widthInput.value);
       let clearVal = parseFloat(clearanceInput.value) || 0.20;
 
-      // If dimensions are missing, fetch instantly from lookup
-      if (!lenVal || !widVal || isNaN(lenVal) || isNaN(widVal) || lenVal <= 0 || widVal <= 0) {
-        try {
-          const lRes = await fetch(`${API_BASE}/api/vehicles/lookup?name=${encodeURIComponent(modelVal)}`);
-          if (lRes.ok) {
-            const lData = await lRes.json();
-            if (lData.vehicle) {
-              lenVal = lData.vehicle.length_m;
-              widVal = lData.vehicle.width_m;
-              clearVal = lData.vehicle.clearance_m || clearVal;
-              lengthInput.value = lenVal;
-              widthInput.value = widVal;
-            }
-          }
-        } catch (e) {}
-      }
+      // Detect vehicle specifications
+      const vInfo = window.lookupVehicleClient ? window.lookupVehicleClient(modelVal) : null;
+      if ((!lenVal || isNaN(lenVal) || lenVal <= 0) && vInfo) lenVal = vInfo.length_m;
+      if ((!widVal || isNaN(widVal) || widVal <= 0) && vInfo) widVal = vInfo.width_m;
 
       if (!lenVal || isNaN(lenVal)) lenVal = 2.04;
       if (!widVal || isNaN(widVal)) widVal = 0.73;
 
-      // 1. Instantly save to state and localStorage so the rider data is NEVER lost!
+      const wheelsVal = vInfo ? (vInfo.wheels || 2) : 2;
+      const categoryVal = vInfo ? (vInfo.category || 'Vehicle') : 'Vehicle';
+      const iconVal = vInfo ? (vInfo.icon || (wheelsVal === 4 ? '🚗' : (wheelsVal === 3 ? '🛺' : '🏍️'))) : '🚗';
+
+      let bikeTypeVal = 'bike_cruiser';
+      if (wheelsVal === 4) {
+        bikeTypeVal = (categoryVal.toLowerCase().includes('suv')) ? 'suv' : ((categoryVal.toLowerCase().includes('sedan')) ? 'sedan' : 'compact');
+      } else if (wheelsVal === 3) {
+        bikeTypeVal = 'auto';
+      } else if (categoryVal.toLowerCase().includes('scooter')) {
+        bikeTypeVal = 'bike_scooter';
+      } else if (categoryVal.toLowerCase().includes('sports')) {
+        bikeTypeVal = 'bike_sports';
+      } else if (categoryVal.toLowerCase().includes('commuter')) {
+        bikeTypeVal = 'bike_commuter';
+      }
+
+      // 1. Instantly save to state and localStorage so the user data is NEVER lost!
       const profile = {
         name: nameVal,
         email: emailVal,
         phone: phoneVal,
         licensePlate: plateVal,
         bikeModel: modelVal,
-        bikeType: 'bike_cruiser',
+        bikeType: bikeTypeVal,
+        wheels: wheelsVal,
+        category: categoryVal,
+        icon: iconVal,
         length: lenVal,
         width: widVal,
         clearance: clearVal
@@ -421,7 +496,7 @@ function initRegistrationModal() {
 
       saveUserProfile(profile);
       closeModal();
-      showToast(`✅ Profile registered & saved: ${modelVal} (${lenVal}m × ${widVal}m)`);
+      showToast(`✅ Profile registered & saved: ${iconVal} ${modelVal} (${lenVal}m × ${widVal}m)`);
       refreshUserGPS();
       if (state.currentTab === 'cv-lab') runCVAnalysis();
 
@@ -431,11 +506,15 @@ function initRegistrationModal() {
         email: emailVal,
         password: passVal,
         phone: phoneVal,
+        license_plate: plateVal,
         bike_model: modelVal,
+        bike_type: bikeTypeVal,
+        wheels: wheelsVal,
+        category: categoryVal,
+        icon: iconVal,
         length_m: lenVal,
         width_m: widVal,
-        clearance_m: clearVal,
-        license_plate: plateVal
+        clearance_m: clearVal
       };
 
       try {
@@ -1892,9 +1971,93 @@ function wzInitStep1() {
   const lengthInput = document.getElementById('wz-length');
   const widthInput = document.getElementById('wz-width');
   const suggestionsList = document.getElementById('wz-vehicle-suggestions');
-  const autofillBar = document.getElementById('wz-autofill-bar');
-  const autofillText = document.getElementById('wz-autofill-text');
+  const vehicleIconEl = document.getElementById('wz-vehicle-icon');
+  const catTabs = document.getElementById('wz-cat-tabs');
+  const quickChips = document.getElementById('wz-quick-chips');
+  const detectedBanner = document.getElementById('wz-detected-banner');
   const editBtn = document.getElementById('wz-edit-profile');
+
+  let wzWheelsFilter = null; // null for all, or 2, 3, 4
+
+  // Instant dimension & vehicle detection helper
+  function wzApplyVehicleDetection(vname, explicitObj = null) {
+    if (!vname || !vname.trim()) {
+      if (detectedBanner) detectedBanner.classList.add('hidden');
+      return;
+    }
+    const v = explicitObj || (window.lookupVehicleClient ? window.lookupVehicleClient(vname) : null);
+    if (!v) return;
+
+    if (lengthInput) lengthInput.value = v.length_m;
+    if (widthInput) widthInput.value = v.width_m;
+
+    const icon = v.icon || (v.wheels === 4 ? '🚗' : (v.wheels === 3 ? '🛺' : '🏍️'));
+    if (vehicleIconEl) vehicleIconEl.textContent = icon;
+
+    // Update banner
+    const detIcon = document.getElementById('wz-detected-icon');
+    const detName = document.getElementById('wz-detected-name');
+    const detCat = document.getElementById('wz-detected-category');
+    const detLen = document.getElementById('wz-spec-length');
+    const detWid = document.getElementById('wz-spec-width');
+    const detHgt = document.getElementById('wz-spec-height');
+
+    if (detName) detName.textContent = v.name;
+    if (detIcon) detIcon.textContent = icon;
+    if (detCat) detCat.textContent = `${v.category || 'Vehicle'} (${v.wheels || 2}-Wheeler)`;
+    if (detLen) detLen.textContent = `${v.length_m}m`;
+    if (detWid) detWid.textContent = `${v.width_m}m`;
+    if (detHgt) detHgt.textContent = `${v.height_m || (v.wheels === 4 ? 1.55 : (v.wheels === 3 ? 1.70 : 1.10))}m`;
+
+    if (detectedBanner) detectedBanner.classList.remove('hidden');
+  }
+
+  // Category filter tabs (All, 2W, 3W, 4W)
+  if (catTabs) {
+    catTabs.querySelectorAll('.wz-cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        catTabs.querySelectorAll('.wz-cat-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const w = btn.getAttribute('data-wheels');
+        wzWheelsFilter = (w === 'all') ? null : Number(w);
+
+        // Update placeholder based on selected tab
+        if (vehicleInput) {
+          if (wzWheelsFilter === 4) {
+            vehicleInput.placeholder = 'Type car name e.g. Swift, Creta, Thar, Fortuner, Nexon...';
+            if (vehicleIconEl) vehicleIconEl.textContent = '🚗';
+          } else if (wzWheelsFilter === 3) {
+            vehicleInput.placeholder = 'Type 3-wheeler name e.g. Bajaj RE, Piaggio Ape, Treo...';
+            if (vehicleIconEl) vehicleIconEl.textContent = '🛺';
+          } else if (wzWheelsFilter === 2) {
+            vehicleInput.placeholder = 'Type 2-wheeler name e.g. Activa, Splendor, Pulsar, Classic 350...';
+            if (vehicleIconEl) vehicleIconEl.textContent = '🏍️';
+          } else {
+            vehicleInput.placeholder = 'Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Creta...';
+            if (vehicleIconEl) vehicleIconEl.textContent = '🚗';
+          }
+        }
+
+        // Re-trigger search or suggestions
+        if (vehicleInput && vehicleInput.value.trim().length >= 1) {
+          renderSuggestions(vehicleInput.value.trim());
+        }
+      });
+    });
+  }
+
+  // Quick Pick Chips
+  if (quickChips) {
+    quickChips.querySelectorAll('.wz-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const vname = chip.getAttribute('data-vname');
+        if (vehicleInput) vehicleInput.value = vname;
+        wzApplyVehicleDetection(vname);
+        if (suggestionsList) suggestionsList.classList.add('hidden');
+        showToast(`✨ Auto-detected: ${vname}`);
+      });
+    });
+  }
 
   // If profile exists, show already-registered banner and skip-ahead option
   if (state.userProfile && state.userProfile.name) {
@@ -1909,6 +2072,9 @@ function wzInitStep1() {
     if (vehicleInput) vehicleInput.value = state.userProfile.bikeModel || '';
     if (lengthInput) lengthInput.value = state.userProfile.length || '';
     if (widthInput) widthInput.value = state.userProfile.width || '';
+    if (state.userProfile.bikeModel) {
+      wzApplyVehicleDetection(state.userProfile.bikeModel);
+    }
   }
 
   // Edit button shows form again
@@ -1920,60 +2086,79 @@ function wzInitStep1() {
     });
   }
 
-  // Vehicle autocomplete
+  // Suggestion renderer helper
+  function renderSuggestions(q) {
+    if (!suggestionsList) return;
+    const clientList = window.searchVehiclesClient ? window.searchVehiclesClient(q, 15, wzWheelsFilter) : [];
+    if (clientList.length === 0) {
+      suggestionsList.innerHTML = '<div class="wz-ac-item wz-ac-none">Custom vehicle — dimensions auto-estimated by keywords</div>';
+      suggestionsList.classList.remove('hidden');
+      return;
+    }
+    suggestionsList.innerHTML = '';
+    clientList.forEach(v => {
+      const item = document.createElement('div');
+      item.className = 'wz-ac-item';
+      const wTag = v.wheels === 4 ? '<span class="wz-ac-tag tag-4w">4W Car</span>' : (v.wheels === 3 ? '<span class="wz-ac-tag tag-3w">3W Auto</span>' : '<span class="wz-ac-tag tag-2w">2W Bike</span>');
+      item.innerHTML = `
+        <div class="wz-ac-info">
+          <span class="wz-ac-icon">${v.icon || '🚗'}</span>
+          <span class="wz-ac-name">${v.name}</span>
+        </div>
+        <div class="wz-ac-meta">
+          ${wTag}
+          <span class="wz-ac-dims">${v.length_m}m × ${v.width_m}m</span>
+        </div>
+      `;
+      item.addEventListener('click', () => {
+        if (vehicleInput) vehicleInput.value = v.name;
+        wzApplyVehicleDetection(v.name, v);
+        suggestionsList.classList.add('hidden');
+        showToast(`✨ Auto-detected: ${v.name} (${v.length_m}m × ${v.width_m}m)`);
+      });
+      suggestionsList.appendChild(item);
+    });
+    suggestionsList.classList.remove('hidden');
+  }
+
+  // Vehicle input listeners
   let debounce = null;
   if (vehicleInput && suggestionsList) {
     vehicleInput.addEventListener('input', (e) => {
-      clearTimeout(debounce);
       const q = e.target.value.trim();
-      if (!q || q.length < 2) {
+
+      // Instant 0ms dimension detection while typing!
+      if (q.length >= 2) {
+        wzApplyVehicleDetection(q);
+      } else {
+        if (detectedBanner) detectedBanner.classList.add('hidden');
+      }
+
+      clearTimeout(debounce);
+      if (!q || q.length < 1) {
         suggestionsList.innerHTML = '';
         suggestionsList.classList.add('hidden');
         return;
       }
+
+      // Render local suggestions immediately
+      renderSuggestions(q);
+
+      // Also query backend asynchronously
       debounce = setTimeout(async () => {
         try {
-          const res = await fetch(`${API_BASE}/api/vehicles/search?q=${encodeURIComponent(q)}`);
-          const data = await res.json();
-          const list = data.vehicles || [];
-          suggestionsList.innerHTML = '';
-          if (list.length === 0) {
-            suggestionsList.innerHTML = '<div class="wz-ac-item wz-ac-none">Custom vehicle — dimensions will be estimated</div>';
-            suggestionsList.classList.remove('hidden');
-            return;
-          }
-          // Auto-fill top match
-          const top = list[0];
-          if (!lengthInput.value) {
-            lengthInput.value = top.length_m;
-            widthInput.value = top.width_m;
-            if (autofillBar && autofillText) {
-              autofillText.textContent = `⚡ ${top.name}: ${top.length_m}m × ${top.width_m}m auto-detected`;
-              autofillBar.classList.remove('hidden');
+          const filterParam = wzWheelsFilter ? `&wheels=${wzWheelsFilter}` : '';
+          const res = await fetch(`${API_BASE}/api/vehicles/search?q=${encodeURIComponent(q)}${filterParam}`);
+          if (res.ok) {
+            const data = await res.json();
+            const list = data.vehicles || [];
+            if (list.length > 0 && vehicleInput.value.trim() === q) {
+              // Ensure top match detection is applied
+              wzApplyVehicleDetection(q, list[0]);
             }
           }
-          list.forEach(v => {
-            const item = document.createElement('div');
-            item.className = 'wz-ac-item';
-            item.innerHTML = `<span class="wz-ac-name">${v.icon || '🏍️'} ${v.name}</span><span class="wz-ac-dims">${v.length_m}m × ${v.width_m}m</span>`;
-            item.addEventListener('click', () => {
-              vehicleInput.value = v.name;
-              lengthInput.value = v.length_m;
-              widthInput.value = v.width_m;
-              suggestionsList.classList.add('hidden');
-              if (autofillBar && autofillText) {
-                autofillText.textContent = `✨ ${v.name}: ${v.length_m}m × ${v.width_m}m`;
-                autofillBar.classList.remove('hidden');
-              }
-              showToast(`✨ Auto-fetched: ${v.name} (${v.length_m}m × ${v.width_m}m)`);
-            });
-            suggestionsList.appendChild(item);
-          });
-          suggestionsList.classList.remove('hidden');
-        } catch (err) {
-          console.warn('Wizard vehicle search failed:', err);
-        }
-      }, 180);
+        } catch (_) {}
+      }, 200);
     });
 
     document.addEventListener('click', (e) => {
@@ -1983,24 +2168,11 @@ function wzInitStep1() {
     });
 
     // On blur: lookup exact vehicle
-    vehicleInput.addEventListener('blur', async () => {
+    vehicleInput.addEventListener('blur', () => {
       const q = vehicleInput.value.trim();
-      if (!q) return;
-      try {
-        const res = await fetch(`${API_BASE}/api/vehicles/lookup?name=${encodeURIComponent(q)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.vehicle) {
-            const v = data.vehicle;
-            if (!lengthInput.value) lengthInput.value = v.length_m;
-            if (!widthInput.value) widthInput.value = v.width_m;
-            if (autofillBar && autofillText) {
-              autofillText.textContent = `⚡ ${v.name}: ${v.length_m}m × ${v.width_m}m auto-detected`;
-              autofillBar.classList.remove('hidden');
-            }
-          }
-        }
-      } catch (e) {}
+      if (q) {
+        wzApplyVehicleDetection(q);
+      }
     });
   }
 
@@ -2011,43 +2183,56 @@ function wzInitStep1() {
       const nameVal = (document.getElementById('wz-name')?.value.trim()) || 'Rider';
       const phoneVal = (document.getElementById('wz-phone')?.value.trim()) || '';
       const plateVal = ((document.getElementById('wz-plate')?.value.trim()) || `MH-01-BK-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase();
-      const modelVal = (vehicleInput?.value.trim()) || 'Standard Motorcycle';
+      const modelVal = (vehicleInput?.value.trim()) || 'Standard Vehicle';
+
       let lenVal = parseFloat(lengthInput?.value);
       let widVal = parseFloat(widthInput?.value);
 
-      // Fetch dimensions if missing
-      if ((!lenVal || !widVal || isNaN(lenVal) || isNaN(widVal)) && modelVal) {
-        try {
-          const res = await fetch(`${API_BASE}/api/vehicles/lookup?name=${encodeURIComponent(modelVal)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.vehicle) {
-              lenVal = data.vehicle.length_m;
-              widVal = data.vehicle.width_m;
-            }
-          }
-        } catch (_) {}
-      }
+      // Detect vehicle specifications
+      const vInfo = window.lookupVehicleClient ? window.lookupVehicleClient(modelVal) : null;
+      if ((!lenVal || isNaN(lenVal) || lenVal <= 0) && vInfo) lenVal = vInfo.length_m;
+      if ((!widVal || isNaN(widVal) || widVal <= 0) && vInfo) widVal = vInfo.width_m;
+
       if (!lenVal || isNaN(lenVal)) lenVal = 2.04;
       if (!widVal || isNaN(widVal)) widVal = 0.73;
+
+      const wheelsVal = vInfo ? (vInfo.wheels || 2) : 2;
+      const categoryVal = vInfo ? (vInfo.category || 'Vehicle') : 'Vehicle';
+      const iconVal = vInfo ? (vInfo.icon || (wheelsVal === 4 ? '🚗' : (wheelsVal === 3 ? '🛺' : '🏍️'))) : '🚗';
+
+      let bikeTypeVal = 'bike_cruiser';
+      if (wheelsVal === 4) {
+        bikeTypeVal = (categoryVal.toLowerCase().includes('suv')) ? 'suv' : ((categoryVal.toLowerCase().includes('sedan')) ? 'sedan' : 'compact');
+      } else if (wheelsVal === 3) {
+        bikeTypeVal = 'auto';
+      } else if (categoryVal.toLowerCase().includes('scooter')) {
+        bikeTypeVal = 'bike_scooter';
+      } else if (categoryVal.toLowerCase().includes('sports')) {
+        bikeTypeVal = 'bike_sports';
+      } else if (categoryVal.toLowerCase().includes('commuter')) {
+        bikeTypeVal = 'bike_commuter';
+      }
 
       const profile = {
         name: nameVal,
         phone: phoneVal,
         licensePlate: plateVal,
         bikeModel: modelVal,
-        bikeType: 'bike_cruiser',
+        bikeType: bikeTypeVal,
+        wheels: wheelsVal,
+        category: categoryVal,
+        icon: iconVal,
         length: lenVal,
         width: widVal,
-        clearance: 0.20,
+        clearance: vInfo ? (vInfo.clearance_m || 0.20) : 0.20,
         email: `${nameVal.toLowerCase().replace(/[^a-z0-9]/g, '')}@parkvision.local`
       };
 
       saveUserProfile(profile);
       wzShowRegisteredBanner(profile);
-      showToast(`✅ Profile saved: ${modelVal} (${lenVal}m × ${widVal}m)`);
+      showToast(`✅ Profile saved: ${iconVal} ${modelVal} (${lenVal}m × ${widVal}m)`);
 
-      // Try sync to backend
+      // Sync to backend
       try {
         await fetch(`${API_BASE}/api/auth/register`, {
           method: 'POST',
@@ -2055,7 +2240,8 @@ function wzInitStep1() {
           body: JSON.stringify({
             name: nameVal, email: profile.email, password: '123456',
             phone: phoneVal, bike_model: modelVal,
-            length_m: lenVal, width_m: widVal, clearance_m: 0.20, license_plate: plateVal
+            wheels: wheelsVal, category: categoryVal, icon: iconVal,
+            length_m: lenVal, width_m: widVal, clearance_m: profile.clearance, license_plate: plateVal
           })
         });
       } catch (_) {}
@@ -2075,8 +2261,9 @@ function wzShowRegisteredBanner(p) {
   const vehicleEl = document.getElementById('wz-reg-vehicle');
 
   if (banner && nameEl && vehicleEl && p) {
+    const icon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
     nameEl.textContent = `👤 ${p.name}`;
-    vehicleEl.textContent = `🏍️ ${p.bikeModel} · ${p.length}m × ${p.width}m · ${p.licensePlate || ''}`;
+    vehicleEl.textContent = `${icon} ${p.bikeModel} · ${p.length}m × ${p.width}m · ${p.licensePlate || ''}`;
     banner.classList.remove('hidden');
     if (form) form.classList.add('hidden');
 
@@ -2508,7 +2695,8 @@ async function wzStartCamera() {
     // Update vehicle tag in HUD
     const hudVehicle = document.getElementById('wz-hud-vehicle');
     if (hudVehicle && state.userProfile) {
-      hudVehicle.textContent = `🏍️ ${state.userProfile.bikeModel || 'Vehicle'} (${state.userProfile.length}m)`;
+      const vIcon = state.userProfile.icon || (state.userProfile.wheels === 4 ? '🚗' : (state.userProfile.wheels === 3 ? '🛺' : '🏍️'));
+      hudVehicle.textContent = `${vIcon} ${state.userProfile.bikeModel || 'Vehicle'} (${state.userProfile.length}m)`;
     }
   } catch (err) {
     console.error('Wizard camera error:', err);
@@ -2642,11 +2830,14 @@ function wzRenderScanResults(data) {
   const clearEl = document.getElementById('wz-rec-clearance');
   const msgEl = document.getElementById('wz-rec-msg');
 
-  if (bikeEl) bikeEl.textContent = `${p.bikeModel} (${p.length}m)`;
+  const vIcon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
+  const vehKind = p.wheels === 4 ? 'Car' : (p.wheels === 3 ? 'Auto' : 'Vehicle');
+
+  if (bikeEl) bikeEl.textContent = `${vIcon} ${p.bikeModel} (${p.length}m)`;
 
   if (rec) {
     if (titleEl) titleEl.textContent = rec.label || `Bay ${rec.id}`;
-    if (statusEl) { statusEl.textContent = '🟢 Available & Fits Your Bike'; statusEl.style.color = '#059669'; }
+    if (statusEl) { statusEl.textContent = `🟢 Available & Fits Your ${vehKind}`; statusEl.style.color = '#059669'; }
     if (dimsEl) dimsEl.textContent = `${rec.metrics.length_m}m × ${rec.metrics.width_m}m`;
     const margin = rec.vehicle_fit ? rec.vehicle_fit.width_margin_m : 0.35;
     if (clearEl) clearEl.textContent = `+${margin}m clearance`;

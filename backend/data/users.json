@@ -43,5 +43,21 @@
     "width_m": 0.73,
     "clearance_m": 0.2,
     "registered_at": "2026-09-22"
+  },
+  "alexjohnson@parkvision.local": {
+    "name": "Alex Johnson",
+    "email": "alexjohnson@parkvision.local",
+    "password": "123456",
+    "phone": "+91 98765 43210",
+    "license_plate": "DL-01-AB-1234",
+    "bike_model": "Honda Activa 6G",
+    "bike_type": "bike_cruiser",
+    "wheels": 2,
+    "category": "Scooter",
+    "icon": "🛵",
+    "length_m": 1.83,
+    "width_m": 0.69,
+    "clearance_m": 0.15,
+    "registered_at": "2026-09-22"
   }
 }

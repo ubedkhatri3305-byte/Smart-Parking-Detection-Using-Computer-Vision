@@ -88,6 +88,22 @@ class VehicleProfiles:
             "width_m": 2.1,
             "door_clearance_m": 0.35,
             "icon": "🚐"
+        },
+        "auto": {
+            "name": "Auto Rickshaw (3-Wheeler)",
+            "category": "auto",
+            "length_m": 2.65,
+            "width_m": 1.30,
+            "door_clearance_m": 0.18,
+            "icon": "🛺"
+        },
+        "erickshaw": {
+            "name": "Electric Rickshaw (3-Wheeler)",
+            "category": "auto",
+            "length_m": 2.78,
+            "width_m": 1.00,
+            "door_clearance_m": 0.15,
+            "icon": "🛺"
         }
     }
 

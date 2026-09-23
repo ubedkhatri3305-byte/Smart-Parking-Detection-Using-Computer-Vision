@@ -169,14 +169,22 @@ async def register_user(payload: Dict[str, Any]):
     except (ValueError, TypeError):
         wid_val = 0.0
 
+    match = lookup_vehicle(bike_model)
+    wheels = payload.get("wheels") or match.get("wheels", 2)
+    category = payload.get("category") or match.get("category", "Vehicle")
+    icon = payload.get("icon") or match.get("icon", "🚗" if wheels == 4 else ("🛺" if wheels == 3 else "🏍️"))
+
     # Auto-fetch dimensions from vehicle dataset if not specified or zero
     if len_val <= 0 or wid_val <= 0:
-        match = lookup_vehicle(bike_model)
         len_val = match["length_m"]
         wid_val = match["width_m"]
         clearance_m = match.get("clearance_m", 0.20)
         cat = match.get("category", "").lower()
-        if "scooter" in cat:
+        if wheels == 4:
+            bike_type = "suv" if "suv" in cat else ("sedan" if "sedan" in cat else "compact")
+        elif wheels == 3:
+            bike_type = "auto"
+        elif "scooter" in cat:
             bike_type = "bike_scooter"
         elif "sports" in cat:
             bike_type = "bike_sports"
@@ -194,6 +202,9 @@ async def register_user(payload: Dict[str, Any]):
         "license_plate": payload.get("license_plate", "").strip().upper() or "MH-01-BK-1234",
         "bike_model": bike_model,
         "bike_type": bike_type,
+        "wheels": int(wheels),
+        "category": category,
+        "icon": icon,
         "length_m": round(len_val, 2),
         "width_m": round(wid_val, 2),
         "clearance_m": float(clearance_m),
@@ -300,9 +311,9 @@ async def save_user_profile(payload: Dict[str, Any]):
 # VEHICLE DATASET & AUTO-LOOKUP ENDPOINTS
 # ==========================================================================
 @app.get("/api/vehicles/search")
-def search_vehicles_endpoint(q: str = ""):
-    """Search vehicles by keyword (make/model) returning exact specs."""
-    results = search_vehicles(q, limit=12)
+def search_vehicles_endpoint(q: str = "", wheels: Optional[int] = None, category: Optional[str] = None):
+    """Search vehicles by keyword (make/model) returning exact specs with optional wheel/category filter."""
+    results = search_vehicles(q, limit=16, wheels=wheels, category=category)
     return {"query": q, "count": len(results), "vehicles": results}
 
 
