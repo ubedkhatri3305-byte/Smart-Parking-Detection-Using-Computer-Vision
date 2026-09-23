@@ -70,15 +70,19 @@ document.addEventListener('DOMContentLoaded', () => {
   initFlowStepper();
   initGPSFeatures();
 
+  // *** WIZARD: Initialize the real-life guided flow ***
+  initWizard();
+
   // Resize handler for Leaflet Map & AR Canvas
   window.addEventListener('resize', () => {
     if (state.map) {
       setTimeout(() => state.map.invalidateSize(), 150);
     }
     resizeARCanvas();
+    wzResizeARCanvas();
   });
 
-  // Run initial diagnostic CV analysis for lab view
+  // Run initial diagnostic CV analysis for lab view (background)
   runCVAnalysis();
 });
 
@@ -1772,4 +1776,998 @@ function showToast(msg) {
     toast.style.transition = 'all 0.3s ease';
     setTimeout(() => toast.remove(), 300);
   }, 3500);
+}
+
+// ==========================================================================
+// WIZARD MODULE — Real-Life 5-Step Guided Parking Flow
+// ==========================================================================
+const wz = {
+  step: 1,
+  miniMap: null,
+  parkingMap: null,
+  navMap: null,
+  selectedLot: null,
+  lotsData: [],
+  parkingMarkers: [],
+  navRouteLine: null,
+  cam: {
+    stream: null,
+    isSimulated: false,
+    facingMode: 'environment',
+    isAutoScanning: true,
+    scanInterval: null,
+    isScanningNow: false,
+    speechEnabled: true,
+    lastSpokenSlotId: null,
+    lastSpokenTime: 0
+  }
+};
+
+function initWizard() {
+  const overlay = document.getElementById('wizard-overlay');
+  const advancedBtn = document.getElementById('btn-open-advanced');
+  const backWizardBtn = document.getElementById('btn-back-wizard');
+
+  // Show wizard by default; hide main app tabs
+  showWizardOverlay(true);
+
+  // Advanced View button — hides wizard, shows main tabbed app
+  if (advancedBtn) {
+    advancedBtn.addEventListener('click', () => {
+      showWizardOverlay(false);
+      switchTab(state.currentTab || 'camera-scan');
+    });
+  }
+
+  // Back-to-wizard button in main nav
+  if (backWizardBtn) {
+    backWizardBtn.addEventListener('click', () => {
+      showWizardOverlay(true);
+    });
+  }
+
+  // If user already has a profile, pre-fill Step 1 and show banner
+  if (state.userProfile && state.userProfile.name && state.userProfile.bikeModel) {
+    wzShowRegisteredBanner(state.userProfile);
+  }
+
+  wzInitStep1();
+  wzInitStep2();
+  wzInitStep3();
+  wzInitStep4();
+  wzInitStep5();
+}
+
+function showWizardOverlay(show) {
+  const overlay = document.getElementById('wizard-overlay');
+  const appHeader = document.querySelector('.navbar');
+  const appMain = document.querySelector('.app-main');
+
+  if (show) {
+    overlay.classList.remove('wz-hidden');
+    if (appHeader) appHeader.style.display = 'none';
+    if (appMain) appMain.style.display = 'none';
+  } else {
+    overlay.classList.add('wz-hidden');
+    if (appHeader) appHeader.style.display = '';
+    if (appMain) appMain.style.display = '';
+  }
+}
+
+function wzGoToStep(stepNum) {
+  wz.step = stepNum;
+
+  // Update panels
+  document.querySelectorAll('.wz-panel').forEach(p => p.classList.remove('active'));
+  const targetPanel = document.getElementById(`wz-panel-${stepNum}`);
+  if (targetPanel) {
+    targetPanel.classList.add('active');
+    targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Update progress stepper
+  document.querySelectorAll('.wz-step-wrap').forEach(s => {
+    const num = parseInt(s.getAttribute('data-wstep'));
+    s.classList.toggle('active', num === stepNum);
+    s.classList.toggle('completed', num < stepNum);
+  });
+  document.querySelectorAll('.wz-connector').forEach((c, i) => {
+    c.classList.toggle('completed', i < stepNum - 1);
+  });
+
+  // On step 3 entering, load parking lots
+  if (stepNum === 3) {
+    setTimeout(() => wzLoadParkingLots(), 300);
+  }
+  // On step 4 entering, refresh nav map
+  if (stepNum === 4 && wz.selectedLot) {
+    setTimeout(() => wzInitNavMap(), 400);
+  }
+}
+
+// ---- STEP 1: REGISTRATION ----
+function wzInitStep1() {
+  const form = document.getElementById('wz-inline-reg-form');
+  const vehicleInput = document.getElementById('wz-vehicle');
+  const lengthInput = document.getElementById('wz-length');
+  const widthInput = document.getElementById('wz-width');
+  const suggestionsList = document.getElementById('wz-vehicle-suggestions');
+  const autofillBar = document.getElementById('wz-autofill-bar');
+  const autofillText = document.getElementById('wz-autofill-text');
+  const editBtn = document.getElementById('wz-edit-profile');
+
+  // If profile exists, show already-registered banner and skip-ahead option
+  if (state.userProfile && state.userProfile.name) {
+    wzShowRegisteredBanner(state.userProfile);
+    // Pre-fill form with existing data
+    const nameEl = document.getElementById('wz-name');
+    const phoneEl = document.getElementById('wz-phone');
+    const plateEl = document.getElementById('wz-plate');
+    if (nameEl) nameEl.value = state.userProfile.name || '';
+    if (phoneEl) phoneEl.value = state.userProfile.phone || '';
+    if (plateEl) plateEl.value = state.userProfile.licensePlate || '';
+    if (vehicleInput) vehicleInput.value = state.userProfile.bikeModel || '';
+    if (lengthInput) lengthInput.value = state.userProfile.length || '';
+    if (widthInput) widthInput.value = state.userProfile.width || '';
+  }
+
+  // Edit button shows form again
+  if (editBtn) {
+    editBtn.addEventListener('click', () => {
+      const banner = document.getElementById('wz-registered-banner');
+      if (banner) banner.classList.add('hidden');
+      if (form) form.classList.remove('hidden');
+    });
+  }
+
+  // Vehicle autocomplete
+  let debounce = null;
+  if (vehicleInput && suggestionsList) {
+    vehicleInput.addEventListener('input', (e) => {
+      clearTimeout(debounce);
+      const q = e.target.value.trim();
+      if (!q || q.length < 2) {
+        suggestionsList.innerHTML = '';
+        suggestionsList.classList.add('hidden');
+        return;
+      }
+      debounce = setTimeout(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/vehicles/search?q=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          const list = data.vehicles || [];
+          suggestionsList.innerHTML = '';
+          if (list.length === 0) {
+            suggestionsList.innerHTML = '<div class="wz-ac-item wz-ac-none">Custom vehicle — dimensions will be estimated</div>';
+            suggestionsList.classList.remove('hidden');
+            return;
+          }
+          // Auto-fill top match
+          const top = list[0];
+          if (!lengthInput.value) {
+            lengthInput.value = top.length_m;
+            widthInput.value = top.width_m;
+            if (autofillBar && autofillText) {
+              autofillText.textContent = `⚡ ${top.name}: ${top.length_m}m × ${top.width_m}m auto-detected`;
+              autofillBar.classList.remove('hidden');
+            }
+          }
+          list.forEach(v => {
+            const item = document.createElement('div');
+            item.className = 'wz-ac-item';
+            item.innerHTML = `<span class="wz-ac-name">${v.icon || '🏍️'} ${v.name}</span><span class="wz-ac-dims">${v.length_m}m × ${v.width_m}m</span>`;
+            item.addEventListener('click', () => {
+              vehicleInput.value = v.name;
+              lengthInput.value = v.length_m;
+              widthInput.value = v.width_m;
+              suggestionsList.classList.add('hidden');
+              if (autofillBar && autofillText) {
+                autofillText.textContent = `✨ ${v.name}: ${v.length_m}m × ${v.width_m}m`;
+                autofillBar.classList.remove('hidden');
+              }
+              showToast(`✨ Auto-fetched: ${v.name} (${v.length_m}m × ${v.width_m}m)`);
+            });
+            suggestionsList.appendChild(item);
+          });
+          suggestionsList.classList.remove('hidden');
+        } catch (err) {
+          console.warn('Wizard vehicle search failed:', err);
+        }
+      }, 180);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!vehicleInput.contains(e.target) && !suggestionsList.contains(e.target)) {
+        suggestionsList.classList.add('hidden');
+      }
+    });
+
+    // On blur: lookup exact vehicle
+    vehicleInput.addEventListener('blur', async () => {
+      const q = vehicleInput.value.trim();
+      if (!q) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/vehicles/lookup?name=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.vehicle) {
+            const v = data.vehicle;
+            if (!lengthInput.value) lengthInput.value = v.length_m;
+            if (!widthInput.value) widthInput.value = v.width_m;
+            if (autofillBar && autofillText) {
+              autofillText.textContent = `⚡ ${v.name}: ${v.length_m}m × ${v.width_m}m auto-detected`;
+              autofillBar.classList.remove('hidden');
+            }
+          }
+        }
+      } catch (e) {}
+    });
+  }
+
+  // Form submit
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nameVal = (document.getElementById('wz-name')?.value.trim()) || 'Rider';
+      const phoneVal = (document.getElementById('wz-phone')?.value.trim()) || '';
+      const plateVal = ((document.getElementById('wz-plate')?.value.trim()) || `MH-01-BK-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase();
+      const modelVal = (vehicleInput?.value.trim()) || 'Standard Motorcycle';
+      let lenVal = parseFloat(lengthInput?.value);
+      let widVal = parseFloat(widthInput?.value);
+
+      // Fetch dimensions if missing
+      if ((!lenVal || !widVal || isNaN(lenVal) || isNaN(widVal)) && modelVal) {
+        try {
+          const res = await fetch(`${API_BASE}/api/vehicles/lookup?name=${encodeURIComponent(modelVal)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.vehicle) {
+              lenVal = data.vehicle.length_m;
+              widVal = data.vehicle.width_m;
+            }
+          }
+        } catch (_) {}
+      }
+      if (!lenVal || isNaN(lenVal)) lenVal = 2.04;
+      if (!widVal || isNaN(widVal)) widVal = 0.73;
+
+      const profile = {
+        name: nameVal,
+        phone: phoneVal,
+        licensePlate: plateVal,
+        bikeModel: modelVal,
+        bikeType: 'bike_cruiser',
+        length: lenVal,
+        width: widVal,
+        clearance: 0.20,
+        email: `${nameVal.toLowerCase().replace(/[^a-z0-9]/g, '')}@parkvision.local`
+      };
+
+      saveUserProfile(profile);
+      wzShowRegisteredBanner(profile);
+      showToast(`✅ Profile saved: ${modelVal} (${lenVal}m × ${widVal}m)`);
+
+      // Try sync to backend
+      try {
+        await fetch(`${API_BASE}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: nameVal, email: profile.email, password: '123456',
+            phone: phoneVal, bike_model: modelVal,
+            length_m: lenVal, width_m: widVal, clearance_m: 0.20, license_plate: plateVal
+          })
+        });
+      } catch (_) {}
+
+      // Advance to Step 2
+      wzGoToStep(2);
+      // Auto-try GPS on step 2
+      setTimeout(() => wzDetectGPS(), 400);
+    });
+  }
+}
+
+function wzShowRegisteredBanner(p) {
+  const banner = document.getElementById('wz-registered-banner');
+  const form = document.getElementById('wz-inline-reg-form');
+  const nameEl = document.getElementById('wz-reg-name');
+  const vehicleEl = document.getElementById('wz-reg-vehicle');
+
+  if (banner && nameEl && vehicleEl && p) {
+    nameEl.textContent = `👤 ${p.name}`;
+    vehicleEl.textContent = `🏍️ ${p.bikeModel} · ${p.length}m × ${p.width}m · ${p.licensePlate || ''}`;
+    banner.classList.remove('hidden');
+    if (form) form.classList.add('hidden');
+
+    // Add "continue" button to banner if not already there
+    if (!document.getElementById('wz-banner-continue')) {
+      const continueBtn = document.createElement('button');
+      continueBtn.id = 'wz-banner-continue';
+      continueBtn.className = 'wz-btn-primary';
+      continueBtn.style.marginTop = '1rem';
+      continueBtn.innerHTML = '<span>✅ Continue to GPS →</span>';
+      continueBtn.addEventListener('click', () => {
+        wzGoToStep(2);
+        setTimeout(() => wzDetectGPS(), 400);
+      });
+      banner.parentNode.appendChild(continueBtn);
+    }
+  }
+}
+
+// ---- STEP 2: GPS ----
+function wzInitStep2() {
+  const detectBtn = document.getElementById('wz-detect-gps');
+  const backBtn = document.getElementById('wz-back-1');
+
+  if (detectBtn) detectBtn.addEventListener('click', () => wzDetectGPS());
+  if (backBtn) backBtn.addEventListener('click', () => wzGoToStep(1));
+
+  // City chips
+  document.querySelectorAll('.wz-city-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const lat = parseFloat(chip.getAttribute('data-lat'));
+      const lng = parseFloat(chip.getAttribute('data-lng'));
+      const city = chip.getAttribute('data-city');
+      wzSetLocation(lat, lng, city, false);
+    });
+  });
+}
+
+function wzDetectGPS() {
+  const statusEl = document.getElementById('wz-gps-status');
+  const coordsEl = document.getElementById('wz-gps-coords');
+  const iconEl = document.getElementById('wz-gps-icon');
+  const detectBtn = document.getElementById('wz-detect-gps');
+
+  if (statusEl) statusEl.textContent = 'Acquiring GPS satellite fix...';
+  if (iconEl) iconEl.textContent = '📡';
+  if (detectBtn) detectBtn.disabled = true;
+
+  if (!navigator.geolocation) {
+    if (statusEl) statusEl.textContent = '⚠️ GPS not supported. Please select a city.';
+    if (detectBtn) detectBtn.disabled = false;
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      wzSetLocation(pos.coords.latitude, pos.coords.longitude, 'Live GPS', true);
+      if (detectBtn) detectBtn.disabled = false;
+    },
+    (err) => {
+      console.warn('GPS error:', err);
+      if (statusEl) statusEl.textContent = '⚠️ GPS unavailable — select a city below';
+      if (coordsEl) coordsEl.textContent = 'Or tap a city chip to set location manually';
+      if (iconEl) iconEl.textContent = '⚠️';
+      if (detectBtn) detectBtn.disabled = false;
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+function wzSetLocation(lat, lng, cityName, isLive) {
+  state.userLocation = [lat, lng];
+  state.userLocationLive = isLive;
+
+  const statusEl = document.getElementById('wz-gps-status');
+  const coordsEl = document.getElementById('wz-gps-coords');
+  const iconEl = document.getElementById('wz-gps-icon');
+
+  if (statusEl) statusEl.textContent = isLive ? '🟢 Live GPS Acquired!' : `📍 Location Set: ${cityName}`;
+  if (coordsEl) coordsEl.textContent = `${lat.toFixed(5)}° N, ${lng.toFixed(5)}° E`;
+  if (iconEl) iconEl.textContent = isLive ? '✅' : '📍';
+
+  // Show mini map
+  wzInitMiniMap(lat, lng);
+  showToast(`📍 Location set — finding free parking near ${cityName}`);
+
+  // Auto-advance after a moment
+  setTimeout(() => wzGoToStep(3), 1200);
+}
+
+function wzInitMiniMap(lat, lng) {
+  const mapEl = document.getElementById('wz-mini-map');
+  if (!mapEl) return;
+
+  const mapWrap = document.getElementById('wz-mini-map-wrap');
+  if (mapWrap) mapWrap.style.display = 'block';
+
+  if (wz.miniMap) {
+    wz.miniMap.setView([lat, lng], 14);
+    return;
+  }
+
+  wz.miniMap = L.map('wz-mini-map', { zoomControl: false, dragging: false, scrollWheelZoom: false }).setView([lat, lng], 14);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(wz.miniMap);
+
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="background:#2563eb;width:20px;height:20px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;">📍</div>`,
+    iconSize: [20, 20], iconAnchor: [10, 10]
+  });
+  L.marker([lat, lng], { icon }).addTo(wz.miniMap);
+}
+
+// ---- STEP 3: FIND PARKING ----
+function wzInitStep3() {
+  const navigateBtn = document.getElementById('wz-goto-navigate');
+  const backBtn = document.getElementById('wz-back-2');
+
+  if (navigateBtn) {
+    navigateBtn.addEventListener('click', () => {
+      if (wz.selectedLot) wzGoToStep(4);
+    });
+  }
+  if (backBtn) backBtn.addEventListener('click', () => wzGoToStep(2));
+}
+
+async function wzLoadParkingLots() {
+  const lotsList = document.getElementById('wz-lots-list');
+  const loadingEl = document.getElementById('wz-lots-loading');
+  const freeCountEl = document.getElementById('wz-free-count');
+  const navigateBtn = document.getElementById('wz-goto-navigate');
+
+  if (loadingEl) loadingEl.style.display = 'flex';
+
+  // Initialize or refresh parking map
+  if (!wz.parkingMap) {
+    const mapEl = document.getElementById('wz-parking-map');
+    if (mapEl) {
+      wz.parkingMap = L.map('wz-parking-map', { zoomControl: true }).setView(state.userLocation, 15);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(wz.parkingMap);
+
+      // User marker
+      const userIcon = L.divIcon({
+        className: '',
+        html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);font-size:11px;display:flex;align-items:center;justify-content:center;">📍</div>`,
+        iconSize: [22, 22], iconAnchor: [11, 11]
+      });
+      L.marker(state.userLocation, { icon: userIcon }).addTo(wz.parkingMap).bindPopup('📍 You are here');
+    }
+  } else {
+    wz.parkingMap.setView(state.userLocation, 15);
+    wz.parkingMap.invalidateSize();
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/parking/nearby?lat=${state.userLocation[0]}&lng=${state.userLocation[1]}`);
+    const lots = await res.json();
+    wz.lotsData = lots;
+
+    // Clear old markers
+    wz.parkingMarkers.forEach(m => wz.parkingMap && wz.parkingMap.removeLayer(m));
+    wz.parkingMarkers = [];
+
+    if (lotsList) {
+      lotsList.innerHTML = '';
+    }
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    let totalFree = 0;
+    lots.forEach(lot => {
+      const dist = haversineDistance(state.userLocation[0], state.userLocation[1], lot.latitude, lot.longitude);
+      lot.wz_dist = dist > 0 ? dist : lot.distance_km;
+      totalFree += lot.live_available;
+    });
+    lots.sort((a, b) => a.wz_dist - b.wz_dist);
+
+    if (freeCountEl) freeCountEl.textContent = `${totalFree} free bays found`;
+
+    lots.forEach((lot, idx) => {
+      // Map pin
+      if (wz.parkingMap) {
+        const pinIcon = L.divIcon({
+          className: '',
+          html: `<div style="background:${lot.live_available > 0 ? '#059669' : '#dc2626'};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${lot.live_available} 🏍️</div>`,
+          iconSize: [50, 26], iconAnchor: [25, 13]
+        });
+        const marker = L.marker([lot.latitude, lot.longitude], { icon: pinIcon }).addTo(wz.parkingMap);
+        marker.bindPopup(`<strong>${lot.name}</strong><br><span style="color:#10b981;font-weight:bold;">${lot.live_available} Free Bays (Zero Fee)</span>`);
+        marker.on('click', () => wzSelectLot(lot));
+        wz.parkingMarkers.push(marker);
+      }
+
+      // Sidebar card
+      if (lotsList) {
+        const card = document.createElement('div');
+        card.className = `wz-lot-card${idx === 0 ? ' selected' : ''}`;
+        card.id = `wz-lot-${lot.id}`;
+        card.innerHTML = `
+          <div class="wz-lot-top">
+            <div>
+              <div class="wz-lot-name">${lot.name}</div>
+              <div class="wz-lot-type">${lot.type || 'Bike Parking'}</div>
+            </div>
+            <div class="wz-lot-right">
+              <div class="wz-lot-dist">${lot.wz_dist} km</div>
+              <div class="wz-lot-avail ${lot.live_available > 0 ? 'avail' : 'full'}">${lot.live_available} free</div>
+            </div>
+          </div>
+          <div class="wz-lot-tags">
+            <span class="wz-lot-tag free">🟢 Zero Fee</span>
+            <span class="wz-lot-tag bike">🏍️ Two-Wheeler</span>
+          </div>
+        `;
+        card.addEventListener('click', () => wzSelectLot(lot));
+        lotsList.appendChild(card);
+        if (idx === 0) wzSelectLot(lot);
+      }
+    });
+  } catch (err) {
+    console.error('Failed to load wizard parking lots:', err);
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (lotsList) {
+      lotsList.innerHTML = `<div class="wz-lots-error">⚠️ Could not load parking data. Please check backend connection.<br><small>Make sure the Python backend is running.</small></div>`;
+    }
+  }
+}
+
+function wzSelectLot(lot) {
+  wz.selectedLot = lot;
+
+  // Highlight selected card
+  document.querySelectorAll('.wz-lot-card').forEach(c => c.classList.remove('selected'));
+  const card = document.getElementById(`wz-lot-${lot.id}`);
+  if (card) card.classList.add('selected');
+
+  // Enable navigate button
+  const navigateBtn = document.getElementById('wz-goto-navigate');
+  if (navigateBtn) navigateBtn.disabled = false;
+
+  // Center map
+  if (wz.parkingMap) wz.parkingMap.panTo([lot.latitude, lot.longitude]);
+}
+
+// ---- STEP 4: NAVIGATION ----
+function wzInitStep4() {
+  const arrivedBtn = document.getElementById('wz-arrived-btn');
+  const gmapsBtn = document.getElementById('wz-open-gmaps');
+  const backBtn = document.getElementById('wz-back-3');
+
+  if (arrivedBtn) {
+    arrivedBtn.addEventListener('click', () => {
+      wzGoToStep(5);
+      // Auto-request camera on arriving
+      setTimeout(() => {
+        const permOverlay = document.getElementById('wz-cam-perm-overlay');
+        if (permOverlay) permOverlay.classList.remove('hidden');
+      }, 300);
+    });
+  }
+
+  if (gmapsBtn) {
+    gmapsBtn.addEventListener('click', () => {
+      if (wz.selectedLot) {
+        const url = `https://www.google.com/maps/dir/?api=1&destination=${wz.selectedLot.latitude},${wz.selectedLot.longitude}&travelmode=driving`;
+        window.open(url, '_blank');
+      }
+    });
+  }
+
+  if (backBtn) backBtn.addEventListener('click', () => wzGoToStep(3));
+}
+
+function wzInitNavMap() {
+  if (!wz.selectedLot) return;
+
+  // Fill in lot details
+  const lot = wz.selectedLot;
+  const lotNameEl = document.getElementById('wz-nav-lot-name');
+  const lotMetaEl = document.getElementById('wz-nav-lot-meta');
+  const distEl = document.getElementById('wz-nav-dist');
+  const timeEl = document.getElementById('wz-nav-time');
+  const baysEl = document.getElementById('wz-nav-bays');
+
+  if (lotNameEl) lotNameEl.textContent = lot.name;
+  if (lotMetaEl) lotMetaEl.textContent = `${lot.type || 'Bike Parking'} · ${lot.address || 'Public Lot'}`;
+  if (distEl) distEl.textContent = lot.wz_dist || lot.distance_km;
+  if (timeEl) timeEl.textContent = Math.max(1, Math.round((lot.wz_dist || lot.distance_km) * 3));
+  if (baysEl) baysEl.textContent = lot.live_available;
+
+  // Init nav map
+  if (!wz.navMap) {
+    const mapEl = document.getElementById('wz-nav-map');
+    if (!mapEl) return;
+    const midLat = (state.userLocation[0] + lot.latitude) / 2;
+    const midLng = (state.userLocation[1] + lot.longitude) / 2;
+    wz.navMap = L.map('wz-nav-map', { zoomControl: true }).setView([midLat, midLng], 14);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(wz.navMap);
+  } else {
+    wz.navMap.invalidateSize();
+  }
+
+  // Draw route line
+  if (wz.navRouteLine) wz.navMap.removeLayer(wz.navRouteLine);
+  wz.navRouteLine = L.polyline([state.userLocation, [lot.latitude, lot.longitude]], {
+    color: '#2563eb', weight: 4, dashArray: '8, 8', opacity: 0.9
+  }).addTo(wz.navMap);
+  wz.navMap.fitBounds(wz.navRouteLine.getBounds(), { padding: [30, 30] });
+
+  // You marker
+  const userIcon = L.divIcon({
+    className: '',
+    html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:11px;display:flex;align-items:center;justify-content:center;">📍</div>`,
+    iconSize: [22, 22], iconAnchor: [11, 11]
+  });
+  L.marker(state.userLocation, { icon: userIcon }).addTo(wz.navMap).bindPopup('📍 You');
+
+  // Lot marker
+  const lotIcon = L.divIcon({
+    className: '',
+    html: `<div style="background:#059669;color:white;font-weight:700;font-size:11px;padding:4px 9px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${lot.live_available} 🏍️ FREE</div>`,
+    iconSize: [80, 28], iconAnchor: [40, 14]
+  });
+  L.marker([lot.latitude, lot.longitude], { icon: lotIcon }).addTo(wz.navMap).bindPopup(`<strong>${lot.name}</strong><br>Zero Fee Bike Parking`);
+}
+
+// ---- STEP 5: CAMERA CV SCAN ----
+function wzInitStep5() {
+  const reqCamBtn = document.getElementById('wz-req-cam');
+  const simCamBtn = document.getElementById('wz-sim-cam');
+  const toggleCamBtn = document.getElementById('wz-toggle-cam');
+  const flipCamBtn = document.getElementById('wz-flip-cam');
+  const scanNowBtn = document.getElementById('wz-scan-now');
+  const autoScanBtn = document.getElementById('wz-autoscan');
+  const speakBtn = document.getElementById('wz-speak');
+  const confirmBtn = document.getElementById('wz-confirm-parked');
+  const backBtn = document.getElementById('wz-back-4');
+
+  if (reqCamBtn) reqCamBtn.addEventListener('click', () => wzStartCamera());
+  if (simCamBtn) simCamBtn.addEventListener('click', () => wzStartSimCamera());
+
+  if (toggleCamBtn) {
+    toggleCamBtn.addEventListener('click', () => {
+      if (wz.cam.stream || wz.cam.isSimulated) {
+        wzStopCamera();
+      } else {
+        wzStartCamera();
+      }
+    });
+  }
+
+  if (flipCamBtn) {
+    flipCamBtn.addEventListener('click', () => {
+      wz.cam.facingMode = wz.cam.facingMode === 'environment' ? 'user' : 'environment';
+      if (wz.cam.stream) { wzStopCamera(); wzStartCamera(); }
+    });
+  }
+
+  if (scanNowBtn) scanNowBtn.addEventListener('click', () => wzCaptureAndScan());
+
+  if (autoScanBtn) {
+    autoScanBtn.addEventListener('click', () => {
+      wz.cam.isAutoScanning = !wz.cam.isAutoScanning;
+      autoScanBtn.classList.toggle('active', wz.cam.isAutoScanning);
+      autoScanBtn.querySelector('span:last-child').textContent = wz.cam.isAutoScanning ? 'Auto: ON' : 'Auto: OFF';
+      if (wz.cam.isAutoScanning) wzStartAutoScan(); else wzStopAutoScan();
+    });
+  }
+
+  if (speakBtn) {
+    speakBtn.addEventListener('click', () => {
+      const msg = document.getElementById('wz-rec-msg')?.textContent;
+      if (msg) speakGuidance(msg, true);
+    });
+  }
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => {
+      showToast('🎉 Parking Confirmed! Have a safe trip!');
+      speakGuidance('Your bike is safely parked. Have a great day!');
+      wzStopCamera();
+    });
+  }
+
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      wzStopCamera();
+      wzGoToStep(4);
+    });
+  }
+
+  // Update bike name in permission overlay
+  const bikeNameEl = document.getElementById('wz-perm-bike-name');
+  if (bikeNameEl && state.userProfile) {
+    bikeNameEl.textContent = state.userProfile.bikeModel || 'bike';
+  }
+}
+
+async function wzStartCamera() {
+  const permOverlay = document.getElementById('wz-cam-perm-overlay');
+  const statusEl = document.getElementById('wz-cam-status');
+  const video = document.getElementById('wz-cam-video');
+
+  if (statusEl) statusEl.textContent = 'Requesting Camera Permission...';
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Camera not supported on this browser. Please use a modern mobile browser like Chrome or Safari.');
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: wz.cam.facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    wz.cam.stream = stream;
+    wz.cam.isSimulated = false;
+
+    video.srcObject = stream;
+    await video.play();
+
+    if (permOverlay) permOverlay.classList.add('hidden');
+    if (statusEl) statusEl.textContent = `🟢 Live ${wz.cam.facingMode === 'environment' ? 'Rear' : 'Front'} Camera Active`;
+
+    video.onloadedmetadata = () => {
+      wzResizeARCanvas();
+      if (wz.cam.isAutoScanning) wzStartAutoScan();
+    };
+
+    // Update vehicle tag in HUD
+    const hudVehicle = document.getElementById('wz-hud-vehicle');
+    if (hudVehicle && state.userProfile) {
+      hudVehicle.textContent = `🏍️ ${state.userProfile.bikeModel || 'Vehicle'} (${state.userProfile.length}m)`;
+    }
+  } catch (err) {
+    console.error('Wizard camera error:', err);
+    if (statusEl) statusEl.textContent = '⚠️ Camera Access Denied';
+    alert(`Camera Permission Needed\n\n${err.message}\n\nTip: Use HTTPS or allow camera in browser settings. You can also try "Simulated Feed".`);
+  }
+}
+
+function wzStartSimCamera() {
+  const permOverlay = document.getElementById('wz-cam-perm-overlay');
+  const statusEl = document.getElementById('wz-cam-status');
+  const video = document.getElementById('wz-cam-video');
+
+  wzStopCamera();
+  wz.cam.isSimulated = true;
+
+  video.srcObject = null;
+  video.poster = `${API_BASE}/static/scenarios/scenario_2_driver.jpg`;
+
+  if (permOverlay) permOverlay.classList.add('hidden');
+  if (statusEl) statusEl.textContent = '🎬 Simulated Camera Feed (Driver View)';
+
+  wzResizeARCanvas();
+  setTimeout(() => {
+    wzCaptureAndScan();
+    if (wz.cam.isAutoScanning) wzStartAutoScan();
+  }, 400);
+}
+
+function wzStopCamera() {
+  if (wz.cam.stream) {
+    wz.cam.stream.getTracks().forEach(t => t.stop());
+    wz.cam.stream = null;
+  }
+  const video = document.getElementById('wz-cam-video');
+  if (video) { video.srcObject = null; video.poster = ''; }
+  wz.cam.isSimulated = false;
+  wzStopAutoScan();
+  wzClearARCanvas();
+
+  const permOverlay = document.getElementById('wz-cam-perm-overlay');
+  if (permOverlay) permOverlay.classList.remove('hidden');
+  const statusEl = document.getElementById('wz-cam-status');
+  if (statusEl) statusEl.textContent = 'Camera Stopped';
+}
+
+function wzStartAutoScan() {
+  wzStopAutoScan();
+  wz.cam.scanInterval = setInterval(() => {
+    if (wz.step === 5) wzCaptureAndScan();
+  }, 1800);
+}
+
+function wzStopAutoScan() {
+  if (wz.cam.scanInterval) {
+    clearInterval(wz.cam.scanInterval);
+    wz.cam.scanInterval = null;
+  }
+}
+
+function wzResizeARCanvas() {
+  const video = document.getElementById('wz-cam-video');
+  const canvas = document.getElementById('wz-ar-canvas');
+  if (!video || !canvas) return;
+  const rect = video.getBoundingClientRect();
+  canvas.width = rect.width || video.videoWidth || 640;
+  canvas.height = rect.height || video.videoHeight || 360;
+}
+
+function wzClearARCanvas() {
+  const canvas = document.getElementById('wz-ar-canvas');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  const pointer = document.getElementById('wz-ar-pointer');
+  if (pointer) pointer.classList.add('hidden');
+}
+
+async function wzCaptureAndScan() {
+  if (wz.cam.isScanningNow) return;
+  wz.cam.isScanningNow = true;
+
+  const spinner = document.getElementById('wz-scan-spinner');
+  if (spinner) spinner.classList.remove('hidden');
+
+  try {
+    const video = document.getElementById('wz-cam-video');
+    const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
+    const formData = new FormData();
+    formData.append('vehicle_type', p.bikeType || 'bike_cruiser');
+    formData.append('custom_length', p.length || 2.14);
+    formData.append('custom_width', p.width || 0.84);
+    formData.append('bike_model', p.bikeModel || 'Vehicle');
+
+    if (wz.cam.isSimulated || !wz.cam.stream) {
+      const lot = wz.selectedLot;
+      const scenarioKey = (lot && lot.scenario_key) ? lot.scenario_key : 'scenario_2_driver';
+      formData.append('scenario_key', scenarioKey);
+    } else {
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = video.videoWidth || 1280;
+      tmpCanvas.height = video.videoHeight || 720;
+      tmpCanvas.getContext('2d').drawImage(video, 0, 0, tmpCanvas.width, tmpCanvas.height);
+      formData.append('image_base64', tmpCanvas.toDataURL('image/jpeg', 0.8));
+    }
+
+    const res = await fetch(`${API_BASE}/api/cv/analyze-live-frame`, { method: 'POST', body: formData });
+    if (!res.ok) throw new Error(`CV API error: ${res.statusText}`);
+    const data = await res.json();
+    wzRenderScanResults(data);
+  } catch (err) {
+    console.error('Wizard scan error:', err);
+  } finally {
+    wz.cam.isScanningNow = false;
+    const spinner = document.getElementById('wz-scan-spinner');
+    if (spinner) spinner.classList.add('hidden');
+  }
+}
+
+function wzRenderScanResults(data) {
+  if (!data || !data.success) return;
+
+  const rec = data.recommended_slot;
+  const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84 };
+
+  const titleEl = document.getElementById('wz-rec-title');
+  const statusEl = document.getElementById('wz-rec-status');
+  const dimsEl = document.getElementById('wz-rec-dims');
+  const bikeEl = document.getElementById('wz-rec-bike');
+  const clearEl = document.getElementById('wz-rec-clearance');
+  const msgEl = document.getElementById('wz-rec-msg');
+
+  if (bikeEl) bikeEl.textContent = `${p.bikeModel} (${p.length}m)`;
+
+  if (rec) {
+    if (titleEl) titleEl.textContent = rec.label || `Bay ${rec.id}`;
+    if (statusEl) { statusEl.textContent = '🟢 Available & Fits Your Bike'; statusEl.style.color = '#059669'; }
+    if (dimsEl) dimsEl.textContent = `${rec.metrics.length_m}m × ${rec.metrics.width_m}m`;
+    const margin = rec.vehicle_fit ? rec.vehicle_fit.width_margin_m : 0.35;
+    if (clearEl) clearEl.textContent = `+${margin}m clearance`;
+    if (msgEl) msgEl.textContent = `${rec.vehicle_fit?.message || ''} Free public bay — pull straight in.`;
+
+    // Voice
+    const now = Date.now();
+    if (wz.cam.speechEnabled && (wz.cam.lastSpokenSlotId !== rec.id || now - wz.cam.lastSpokenTime > 12000)) {
+      wz.cam.lastSpokenSlotId = rec.id;
+      wz.cam.lastSpokenTime = now;
+      speakGuidance(data.speech_text || `Free space found! Park your bike in ${rec.label}.`);
+    }
+  } else {
+    if (titleEl) titleEl.textContent = 'Scanning...';
+    if (statusEl) { statusEl.textContent = '🟡 No fitting spot detected'; statusEl.style.color = '#d97706'; }
+    if (dimsEl) dimsEl.textContent = '—';
+    if (clearEl) clearEl.textContent = '—';
+    if (msgEl) msgEl.textContent = `All visible spaces are occupied or too small. Move your camera angle forward.`;
+  }
+
+  // Draw AR overlay
+  wzDrawAROverlay(data.ar_slots, rec);
+
+  // Populate bays list
+  const baysList = document.getElementById('wz-bays-list');
+  if (baysList && data.ar_slots) {
+    baysList.innerHTML = '';
+    data.ar_slots.forEach(s => {
+      const isRec = rec && s.id === rec.id;
+      const item = document.createElement('div');
+      item.className = `wz-bay-item${isRec ? ' suggested' : ''}`;
+      item.innerHTML = `
+        <div>
+          <strong>${s.label}</strong> <span style="font-size:0.78rem;color:var(--text-muted);">(${s.length_m}m × ${s.width_m}m)</span>
+          <div style="font-size:0.75rem;font-weight:600;color:${s.status === 'AVAILABLE' ? '#059669' : '#dc2626'};">
+            ${s.status === 'AVAILABLE' ? '🟢 Available' : '🔴 Occupied'}${isRec ? ' · ⭐ Best Fit' : ''}
+          </div>
+        </div>
+        <span style="color:#059669;font-weight:700;font-size:0.82rem;">FREE</span>
+      `;
+      baysList.appendChild(item);
+    });
+  }
+}
+
+function wzDrawAROverlay(arSlots, recommendedSlot) {
+  const canvas = document.getElementById('wz-ar-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const pointer = document.getElementById('wz-ar-pointer');
+  const arTag = document.getElementById('wz-ar-tag');
+  let pointerShown = false;
+
+  if (!arSlots || arSlots.length === 0) {
+    if (pointer) pointer.classList.add('hidden');
+    return;
+  }
+
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  arSlots.forEach(s => {
+    const isRec = recommendedSlot && s.id === recommendedSlot.id;
+    const poly = s.normalized_polygon;
+    if (!poly || poly.length < 3) return;
+
+    ctx.beginPath();
+    ctx.moveTo(poly[0][0] * cw, poly[0][1] * ch);
+    for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0] * cw, poly[i][1] * ch);
+    ctx.closePath();
+
+    if (isRec) {
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 4;
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.22)';
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      const cx = s.center[0] * cw;
+      const cy = s.center[1] * ch;
+
+      // Green badge circle
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🅿️', cx, cy);
+
+      // Label text
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('PARK HERE', cx, cy - 30);
+
+      if (pointer) {
+        pointer.style.left = `${cx}px`;
+        pointer.style.top = `${Math.max(10, cy - 60)}px`;
+        if (arTag) arTag.textContent = `★ PARK: ${s.label.toUpperCase()} ★`;
+        pointer.classList.remove('hidden');
+        pointerShown = true;
+      }
+    } else if (s.status === 'AVAILABLE') {
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+      ctx.fill(); ctx.stroke();
+    } else {
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';
+      ctx.fill(); ctx.stroke();
+    }
+  });
+
+  if (!pointerShown && pointer) pointer.classList.add('hidden');
 }

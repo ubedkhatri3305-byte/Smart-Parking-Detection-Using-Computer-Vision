@@ -35,19 +35,13 @@
     "name": "Rajesh Sharma",
     "email": "rajeshsharma@parkvision.local",
     "password": "123456",
-    "phone": "",
+    "phone": "9898270987",
     "license_plate": "MH-01-BK-2841",
     "bike_model": "Honda CD 110",
     "bike_type": "bike_cruiser",
     "length_m": 2.04,
     "width_m": 0.73,
-    "clearance_m": 0.15,
-    "registered_at": "2026-09-22",
-    "licensePlate": "MH-01-BK-2841",
-    "bikeModel": "Honda CD 110",
-    "bikeType": "bike_cruiser",
-    "length": 2.04,
-    "width": 0.73,
-    "clearance": 0.15
+    "clearance_m": 0.2,
+    "registered_at": "2026-09-22"
   }
 }

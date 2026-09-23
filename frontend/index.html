@@ -152,6 +152,382 @@
     </div>
   </div>
 
+  <!-- ============================================================= -->
+  <!-- REAL-LIFE WIZARD OVERLAY (Primary guided experience)         -->
+  <!-- ============================================================= -->
+  <div class="wizard-overlay" id="wizard-overlay">
+    
+    <!-- Wizard Header -->
+    <div class="wizard-header">
+      <div class="wizard-brand">
+        <span class="wizard-brand-icon">🏍️</span>
+        <div>
+          <div class="wizard-brand-title">PARKVISION <span>BIKE CV</span></div>
+          <div class="wizard-brand-sub">Smart Parking Detection · Zero Fees · Free Public Bays</div>
+        </div>
+      </div>
+      <button class="wizard-advanced-btn" id="btn-open-advanced" title="Open advanced multi-tab view">
+        <span>⚙️ Advanced View</span>
+      </button>
+    </div>
+
+    <!-- Progress Stepper -->
+    <div class="wizard-progress" id="wizard-progress">
+      <div class="wz-step-wrap active" data-wstep="1">
+        <div class="wz-step-bubble">1</div>
+        <div class="wz-step-label">Register</div>
+      </div>
+      <div class="wz-connector"></div>
+      <div class="wz-step-wrap" data-wstep="2">
+        <div class="wz-step-bubble">2</div>
+        <div class="wz-step-label">GPS</div>
+      </div>
+      <div class="wz-connector"></div>
+      <div class="wz-step-wrap" data-wstep="3">
+        <div class="wz-step-bubble">3</div>
+        <div class="wz-step-label">Find Parking</div>
+      </div>
+      <div class="wz-connector"></div>
+      <div class="wz-step-wrap" data-wstep="4">
+        <div class="wz-step-bubble">4</div>
+        <div class="wz-step-label">Navigate</div>
+      </div>
+      <div class="wz-connector"></div>
+      <div class="wz-step-wrap" data-wstep="5">
+        <div class="wz-step-bubble">5</div>
+        <div class="wz-step-label">CV Scan</div>
+      </div>
+    </div>
+
+    <!-- Wizard Steps Container -->
+    <div class="wizard-body">
+
+      <!-- ===== STEP 1: REGISTRATION ===== -->
+      <div class="wz-panel active" id="wz-panel-1">
+        <div class="wz-panel-inner">
+          <div class="wz-panel-heading">
+            <div class="wz-panel-step-tag">Step 1 of 5</div>
+            <h2 class="wz-title">Register Your Rider Profile</h2>
+            <p class="wz-subtitle">Enter your name and vehicle model — length &amp; width are <strong>auto-fetched</strong> from our vehicle database. No manual measurement needed.</p>
+          </div>
+
+          <!-- Already Registered Banner -->
+          <div class="wz-registered-banner hidden" id="wz-registered-banner">
+            <div class="wz-reg-icon">✅</div>
+            <div class="wz-reg-info">
+              <div class="wz-reg-name" id="wz-reg-name">—</div>
+              <div class="wz-reg-vehicle" id="wz-reg-vehicle">—</div>
+            </div>
+            <button class="wz-edit-btn" id="wz-edit-profile">✏️ Edit</button>
+          </div>
+
+          <!-- Registration Form (inline in wizard) -->
+          <form class="wz-reg-form" id="wz-inline-reg-form">
+            <div class="wz-form-grid">
+              <div class="wz-field">
+                <label for="wz-name">Full Name <span class="req">*</span></label>
+                <input type="text" id="wz-name" required placeholder="e.g. Rahul Sharma" autocomplete="name">
+              </div>
+              <div class="wz-field">
+                <label for="wz-phone">Mobile Number</label>
+                <input type="tel" id="wz-phone" placeholder="+91 XXXXX XXXXX" autocomplete="tel">
+              </div>
+              <div class="wz-field wz-full">
+                <label for="wz-vehicle">Vehicle Make &amp; Model <span class="req">*</span></label>
+                <div class="wz-input-icon">
+                  <span class="wz-field-icon">🏍️</span>
+                  <input type="text" id="wz-vehicle" required placeholder="e.g. Honda Activa, Royal Enfield Classic 350, Pulsar 150..." autocomplete="off">
+                </div>
+                <div class="wz-autocomplete hidden" id="wz-vehicle-suggestions"></div>
+              </div>
+              <div class="wz-autofill-bar hidden" id="wz-autofill-bar">
+                <span class="wz-autofill-icon">✨</span>
+                <span id="wz-autofill-text">Dimensions auto-fetched!</span>
+              </div>
+              <div class="wz-field">
+                <label for="wz-length">Length (m) <span class="wz-auto-tag">Auto-Loaded</span></label>
+                <div class="wz-unit-wrap">
+                  <input type="number" id="wz-length" step="0.01" min="0.5" max="6.0" placeholder="Auto-fetched">
+                  <span class="wz-unit">m</span>
+                </div>
+              </div>
+              <div class="wz-field">
+                <label for="wz-width">Width (m) <span class="wz-auto-tag">Auto-Loaded</span></label>
+                <div class="wz-unit-wrap">
+                  <input type="number" id="wz-width" step="0.01" min="0.3" max="3.0" placeholder="Auto-fetched">
+                  <span class="wz-unit">m</span>
+                </div>
+              </div>
+              <div class="wz-field">
+                <label for="wz-plate">Plate Number</label>
+                <input type="text" id="wz-plate" placeholder="e.g. MH-02-AB-1234">
+              </div>
+            </div>
+            <div class="wz-actions">
+              <button type="submit" class="wz-btn-primary" id="wz-reg-submit">
+                <span>🚀 Save &amp; Detect My Location</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- ===== STEP 2: GPS LOCATION ===== -->
+      <div class="wz-panel" id="wz-panel-2">
+        <div class="wz-panel-inner">
+          <div class="wz-panel-heading">
+            <div class="wz-panel-step-tag">Step 2 of 5</div>
+            <h2 class="wz-title">Detect Your Live Location</h2>
+            <p class="wz-subtitle">We need your GPS location to find the nearest free bike parking bays. Your location stays private and is never stored.</p>
+          </div>
+
+          <!-- GPS Status Card -->
+          <div class="wz-gps-card" id="wz-gps-card">
+            <div class="wz-gps-icon" id="wz-gps-icon">📡</div>
+            <div class="wz-gps-text">
+              <div class="wz-gps-status" id="wz-gps-status">Waiting to acquire GPS fix...</div>
+              <div class="wz-gps-coords" id="wz-gps-coords">Click the button below to start</div>
+            </div>
+          </div>
+
+          <!-- Mini Map -->
+          <div class="wz-mini-map-wrap" id="wz-mini-map-wrap">
+            <div id="wz-mini-map" class="wz-mini-map"></div>
+          </div>
+
+          <!-- City Quick Picks -->
+          <div class="wz-city-row">
+            <span class="wz-city-label">Or set location:</span>
+            <button type="button" class="wz-city-chip" data-lat="19.0760" data-lng="72.8777" data-city="Mumbai">🏙️ Mumbai</button>
+            <button type="button" class="wz-city-chip" data-lat="28.6139" data-lng="77.2090" data-city="Delhi">🏙️ Delhi</button>
+            <button type="button" class="wz-city-chip" data-lat="12.9716" data-lng="77.5946" data-city="Bengaluru">🏙️ Bengaluru</button>
+            <button type="button" class="wz-city-chip" data-lat="18.5204" data-lng="73.8567" data-city="Pune">🏙️ Pune</button>
+          </div>
+
+          <div class="wz-actions">
+            <button type="button" class="wz-btn-primary" id="wz-detect-gps">
+              <span>📍 Detect My GPS Location</span>
+            </button>
+            <button type="button" class="wz-btn-back" id="wz-back-1">
+              ← Back
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== STEP 3: FIND NEARBY PARKING ===== -->
+      <div class="wz-panel" id="wz-panel-3">
+        <div class="wz-panel-inner">
+          <div class="wz-panel-heading">
+            <div class="wz-panel-step-tag">Step 3 of 5</div>
+            <h2 class="wz-title">Free Bike Parking Near You</h2>
+            <p class="wz-subtitle">Showing 100% free public bike parking lots nearby. Zero fees, no booking required. Tap a lot to select it.</p>
+          </div>
+
+          <div class="wz-parking-layout">
+            <!-- Map -->
+            <div class="wz-map-wrap">
+              <div id="wz-parking-map" class="wz-parking-map"></div>
+            </div>
+            <!-- Lots List -->
+            <div class="wz-lots-list" id="wz-lots-list">
+              <div class="wz-lots-loading" id="wz-lots-loading">
+                <div class="wz-spinner"></div>
+                <span>Finding free parking near you...</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="wz-free-badge-row">
+            <span class="wz-free-badge">🟢 100% Free Public Parking</span>
+            <span class="wz-free-count" id="wz-free-count">0 free bays found</span>
+          </div>
+
+          <div class="wz-actions">
+            <button type="button" class="wz-btn-primary" id="wz-goto-navigate" disabled>
+              <span>🧭 Navigate to Selected Lot →</span>
+            </button>
+            <button type="button" class="wz-btn-back" id="wz-back-2">← Back</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== STEP 4: NAVIGATE ===== -->
+      <div class="wz-panel" id="wz-panel-4">
+        <div class="wz-panel-inner">
+          <div class="wz-panel-heading">
+            <div class="wz-panel-step-tag">Step 4 of 5</div>
+            <h2 class="wz-title">Navigate to Parking Lot</h2>
+            <p class="wz-subtitle">Ride to the selected free parking facility. When you arrive, tap the button below to launch the camera scanner.</p>
+          </div>
+
+          <!-- Selected Lot Info -->
+          <div class="wz-nav-card" id="wz-nav-card">
+            <div class="wz-nav-icon">🅿️</div>
+            <div class="wz-nav-info">
+              <div class="wz-nav-lot-name" id="wz-nav-lot-name">—</div>
+              <div class="wz-nav-lot-meta" id="wz-nav-lot-meta">—</div>
+            </div>
+            <div class="wz-nav-badge">Zero Fee</div>
+          </div>
+
+          <!-- Route Info Bar -->
+          <div class="wz-route-bar" id="wz-route-bar">
+            <div class="wz-route-stat">
+              <span class="wz-route-num" id="wz-nav-dist">—</span>
+              <span class="wz-route-lbl">km away</span>
+            </div>
+            <div class="wz-route-divider"></div>
+            <div class="wz-route-stat">
+              <span class="wz-route-num" id="wz-nav-time">—</span>
+              <span class="wz-route-lbl">mins</span>
+            </div>
+            <div class="wz-route-divider"></div>
+            <div class="wz-route-stat">
+              <span class="wz-route-num free-text" id="wz-nav-bays">—</span>
+              <span class="wz-route-lbl">free bays</span>
+            </div>
+          </div>
+
+          <!-- Navigation Map -->
+          <div class="wz-nav-map-wrap">
+            <div id="wz-nav-map" class="wz-nav-map"></div>
+          </div>
+
+          <!-- Direction Card -->
+          <div class="wz-direction-tip">
+            <span class="wz-dir-icon">💡</span>
+            <span>Open <strong>Google Maps</strong> for turn-by-turn directions, or just follow the map above. Tap <em>"I've Arrived"</em> when you reach the entrance.</span>
+          </div>
+
+          <div class="wz-actions">
+            <button type="button" class="wz-btn-primary" id="wz-arrived-btn">
+              <span>📍 I've Arrived — Launch Camera Scanner →</span>
+            </button>
+            <button type="button" class="wz-btn-secondary" id="wz-open-gmaps">
+              <span>🗺️ Open in Google Maps</span>
+            </button>
+            <button type="button" class="wz-btn-back" id="wz-back-3">← Back</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== STEP 5: CAMERA CV SCAN ===== -->
+      <div class="wz-panel" id="wz-panel-5">
+        <div class="wz-panel-inner wz-camera-panel">
+          <div class="wz-panel-heading">
+            <div class="wz-panel-step-tag">Step 5 of 5</div>
+            <h2 class="wz-title">Point Camera at Parking Row</h2>
+            <p class="wz-subtitle">AI detects empty spaces and suggests the best spot for your bike. 100% free — zero fees, no booking.</p>
+          </div>
+
+          <!-- Camera Viewport -->
+          <div class="wz-camera-viewport" id="wz-camera-viewport">
+            <video id="wz-cam-video" autoplay playsinline muted></video>
+            <canvas id="wz-ar-canvas"></canvas>
+
+            <!-- AR Floating Pointer -->
+            <div class="wz-ar-pointer hidden" id="wz-ar-pointer">
+              <div class="wz-ar-arrow">⬇️</div>
+              <div class="wz-ar-tag" id="wz-ar-tag">PARK HERE</div>
+            </div>
+
+            <!-- Permission Overlay -->
+            <div class="wz-cam-perm-overlay" id="wz-cam-perm-overlay">
+              <div class="wz-perm-icon">📱📷</div>
+              <h3>Camera Permission Required</h3>
+              <p>Allow your phone's rear camera to scan the parking row. The AI will highlight the best available spot that fits your <strong id="wz-perm-bike-name">bike</strong>.</p>
+              <div class="wz-perm-security">🔒 Frames are processed locally for parking detection only. Nothing is stored.</div>
+              <div class="wz-perm-actions">
+                <button class="wz-btn-primary" id="wz-req-cam">
+                  <span>📷 Allow &amp; Open Camera</span>
+                </button>
+                <button class="wz-btn-secondary" id="wz-sim-cam">
+                  <span>🎬 Use Simulated Feed</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Scan Spinner -->
+            <div class="wz-scan-spinner hidden" id="wz-scan-spinner">
+              <div class="wz-radar"></div>
+              <span>YOLOv8 Scanning...</span>
+            </div>
+
+            <!-- Camera HUD Top -->
+            <div class="wz-cam-hud" id="wz-cam-hud">
+              <div class="wz-hud-live">
+                <span class="wz-live-dot"></span>
+                <span id="wz-cam-status">Camera Ready</span>
+              </div>
+              <div class="wz-hud-vehicle" id="wz-hud-vehicle">🏍️ —</div>
+              <div class="wz-hud-free">🟢 FREE Parking</div>
+            </div>
+          </div>
+
+          <!-- Camera Controls -->
+          <div class="wz-cam-controls">
+            <button class="wz-cam-btn" id="wz-toggle-cam">
+              <span>⏹️</span><span>Stop</span>
+            </button>
+            <button class="wz-cam-btn" id="wz-flip-cam">
+              <span>🔄</span><span>Flip</span>
+            </button>
+            <button class="wz-cam-btn" id="wz-scan-now">
+              <span>📸</span><span>Scan Now</span>
+            </button>
+            <button class="wz-cam-btn active" id="wz-autoscan">
+              <span>⚡</span><span>Auto: ON</span>
+            </button>
+            <button class="wz-cam-btn" id="wz-speak">
+              <span>🔊</span><span>Speak</span>
+            </button>
+          </div>
+
+          <!-- Recommendation Card -->
+          <div class="wz-rec-card" id="wz-rec-card">
+            <div class="wz-rec-badge">⭐ SUGGESTED SPOT FOR YOUR BIKE</div>
+            <div class="wz-rec-title" id="wz-rec-title">Scanning...</div>
+            <div class="wz-rec-status" id="wz-rec-status">Point camera at parking row</div>
+            <div class="wz-rec-specs">
+              <div class="wz-spec">
+                <span class="wz-spec-label">Bay Size:</span>
+                <span class="wz-spec-val" id="wz-rec-dims">—</span>
+              </div>
+              <div class="wz-spec">
+                <span class="wz-spec-label">Your Bike:</span>
+                <span class="wz-spec-val" id="wz-rec-bike">—</span>
+              </div>
+              <div class="wz-spec">
+                <span class="wz-spec-label">Clearance:</span>
+                <span class="wz-spec-val highlight" id="wz-rec-clearance">—</span>
+              </div>
+              <div class="wz-spec">
+                <span class="wz-spec-label">Parking Fee:</span>
+                <span class="wz-spec-val free-text">FREE (Zero Fee)</span>
+              </div>
+            </div>
+            <p class="wz-rec-msg" id="wz-rec-msg">Aim your camera at the parking row to detect available spaces.</p>
+            <button class="wz-btn-primary" id="wz-confirm-parked">
+              <span>✅ Bike Parked — Done!</span>
+            </button>
+          </div>
+
+          <!-- Detected Bays List -->
+          <div class="wz-bays-section">
+            <h4 class="wz-bays-title">Detected Bays in View</h4>
+            <div class="wz-bays-list" id="wz-bays-list"></div>
+          </div>
+
+          <div class="wz-actions" style="margin-top:1rem;">
+            <button type="button" class="wz-btn-back" id="wz-back-4">← Back to Map</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end wizard-body -->
+  </div><!-- end wizard-overlay -->
+
   <!-- Top Navigation Bar -->
   <header class="navbar">
     <div class="nav-brand">
@@ -188,6 +564,10 @@
       <!-- Logout Button (Shown when logged in) -->
       <button class="mini-btn hidden" id="btn-nav-logout" title="Sign Out">
         <span>🚪 Sign Out</span>
+      </button>
+      <!-- Back to Wizard button in Advanced view -->
+      <button class="mini-btn" id="btn-back-wizard" title="Back to guided wizard flow">
+        <span>🧙 Wizard View</span>
       </button>
     </div>
 
