@@ -3348,6 +3348,30 @@ select.custom-select:focus {
   border: 1px solid var(--primary-border);
 }
 
+.wz-lot-tag.live {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.live-pulse-dot {
+  width: 6px;
+  height: 6px;
+  background-color: #10b981;
+  border-radius: 50%;
+  animation: livePulse 1.8s infinite;
+  display: inline-block;
+}
+
+@keyframes livePulse {
+  0% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
 .wz-free-badge-row {
   display: flex;
   align-items: center;
