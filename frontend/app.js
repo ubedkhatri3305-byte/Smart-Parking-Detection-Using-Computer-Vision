@@ -929,6 +929,8 @@ function switchTab(tabId) {
     }
   } else if (tabId === 'driver-flow') {
     renderFlowStage(state.flowStep);
+  } else if (tabId === 'architecture-dataset') {
+    initArchitectureLab();
   }
 }
 
@@ -2170,6 +2172,15 @@ function initWizard() {
     });
   }
 
+  // Architecture & Research Lab button in wizard header
+  const archBtn = document.getElementById('btn-open-architecture');
+  if (archBtn) {
+    archBtn.addEventListener('click', () => {
+      showWizardOverlay(false);
+      switchTab('architecture-dataset');
+    });
+  }
+
   // Back-to-wizard button in main nav
   if (backWizardBtn) {
     backWizardBtn.addEventListener('click', () => {
@@ -3266,4 +3277,353 @@ function wzDrawAROverlay(arSlots, recommendedSlot) {
   });
 
   if (!pointerShown && pointer) pointer.classList.add('hidden');
+}
+
+// ==========================================================================
+// 6. SYSTEM ARCHITECTURE, DATASET SPECIFICATION & RESEARCH LAB CONTROLLER
+// ==========================================================================
+
+const PIPELINE_STAGES = [
+  {
+    step: 1,
+    title: "1. Vehicle Details",
+    icon: "🚗",
+    tag: "Stage 1 of 13",
+    desc: "Retrieves exact physical dimensions (length, width, door opening swing) automatically from the 200+ vehicle dataset to ensure zero guesswork.",
+    formula: "Dataset Query: lookup_vehicle(name) → {length_m, width_m, door_clearance: ±0.30m}",
+    input: "Rider vehicle model name (e.g. Swift, Activa, Treo, Thar)",
+    output: "Dimensional constraint vector: [L, W, C_door]"
+  },
+  {
+    step: 2,
+    title: "2. GPS Location",
+    icon: "📍",
+    tag: "Stage 2 of 13",
+    desc: "Acquires current latitude and longitude via HTML5 Geolocation API with IP-based reverse geocoding fallback for dynamic city resolution.",
+    formula: "GeoIP / WGS84: {lat, lng} → Nominatim Reverse Geocode: (City, State, Country)",
+    input: "Browser GPS coordinates or Network IP address",
+    output: "Resolved municipal center [22.2904° N, 70.7915° E, 'Rajkot']"
+  },
+  {
+    step: 3,
+    title: "3. Nearby Parking Identification",
+    icon: "🗺️",
+    tag: "Stage 3 of 13",
+    desc: "Executes a Haversine radius query to find free public and municipal bike/vehicle parking lots within 2–5 km radius.",
+    formula: "d = 2R · arcsin(√(sin²(Δφ/2) + cos(φ₁)cos(φ₂)sin²(Δλ/2))) ≤ 5.0 km",
+    input: "User location [lat, lng] and target radius R_max",
+    output: "Ranked candidate parking hubs sorted by distance [d_km, name, capacity]"
+  },
+  {
+    step: 4,
+    title: "4. Reach Candidate Area",
+    icon: "📱",
+    tag: "Stage 4 of 13",
+    desc: "Guides the user to the physical parking entrance using OpenStreetMap Leaflet waypoints or external Google Maps turn-by-turn routing.",
+    formula: "Routing: polyline([[lat_user, lng_user], ..., [lat_lot, lng_lot]])",
+    input: "Selected parking lot coordinates [lot_lat, lot_lng]",
+    output: "Turn-by-turn navigation link and arrival radius trigger"
+  },
+  {
+    step: 5,
+    title: "5. Smartphone Camera",
+    icon: "📷",
+    tag: "Stage 5 of 13",
+    desc: "Ingests live smartphone camera feed (or dashcam / simulated stream) via HTML5 WebRTC getUserMedia API at 1080p / 720p.",
+    formula: "WebRTC Video Stream: navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}})",
+    input: "Rear camera optical lens sensor stream",
+    output: "Uncompressed BGR video frames @ 30 FPS [H × W × 3]"
+  },
+  {
+    step: 6,
+    title: "6. Image Preprocessing",
+    icon: "🔄",
+    tag: "Stage 6 of 13",
+    desc: "Applies bilinear resizing to 640×640, CLAHE contrast histogram equalization to counter glare/shadows, and normalization.",
+    formula: "CLAHE: g(x, y) = clip_limit(equalize(hist(I(x, y)))); Tensor: (I / 255.0 - μ) / σ",
+    input: "Raw BGR frame array [1376 × 768 × 3]",
+    output: "Normalized model tensor [1 × 3 × 640 × 640]"
+  },
+  {
+    step: 7,
+    title: "7. Perspective Transformation",
+    icon: "📐",
+    tag: "Stage 7 of 13",
+    desc: "Calculates the 3×3 projective homography matrix H to rectify camera pitch and perspective foreshortening into an orthographic Bird's-Eye View (BEV).",
+    formula: "x' = H · x = [[h11, h12, h13], [h21, h22, h23], [h31, h32, 1.0]] · [u, v, 1]ᵀ",
+    input: "4 ground calibration coordinates (src_points, dst_points)",
+    output: "3×3 Homography Matrix H & Bird's-Eye View (BEV) orthographic image"
+  },
+  {
+    step: 8,
+    title: "8. Parking Region Segmentation",
+    icon: "🅿️",
+    tag: "Stage 8 of 13",
+    desc: "Delineates 4-corner metric ground polygons for each designated bay, calibrated in pixel and metric space.",
+    formula: "Slot_i = Polygon([[x1, y1], [x2, y2], [x3, y3], [x4, y4]]), Area = 0.5·|Σ(x_i·y_{i+1} - x_{i+1}·y_i)|",
+    input: "Lot boundary layout / painted road marker coordinates",
+    output: "Collection of calibrated ground slot polygons [Slot₁, Slot₂, ..., Slot_N]"
+  },
+  {
+    step: 9,
+    title: "9. YOLO Object Detection",
+    icon: "🤖",
+    tag: "Stage 9 of 13",
+    desc: "Runs YOLOv8 forward inference (3.16M params) across 80 COCO classes, detecting bounding boxes, category IDs, and confidence scores.",
+    formula: "Forward Pass: BBoxes = NMS(AnchorFreeHead(YOLOv8(Tensor)), IoU_thresh=0.45)",
+    input: "Normalized image tensor [1 × 3 × 640 × 640]",
+    output: "List of detected object bounding boxes [x₁, y₁, x₂, y₂, conf, class_id]"
+  },
+  {
+    step: 10,
+    title: "10. Cars / Bikes / People / Obstacles",
+    icon: "🎯",
+    tag: "Stage 10 of 13",
+    desc: "Filters and partitions detections into 🚗 Cars/SUVs, 🏍️ Two-Wheelers, 🚌 Heavy Vehicles, 🧍 Pedestrians, and 🚧 Obstacles.",
+    formula: "Partition: Category(c) ∈ {Vehicle, Obstacle, Pedestrian, Hazard}",
+    input: "Raw YOLO detection classes",
+    output: "Categorized entities with contact points (bottom_center)"
+  },
+  {
+    step: 11,
+    title: "11. Parking Space Analysis",
+    icon: "🔍",
+    tag: "Stage 11 of 13",
+    desc: "Performs Shapely polygon intersection (IoU) between slot boundaries and detected objects: 🟢 Available, 🔴 Occupied, or 🟡 Blocked.",
+    formula: "IoU = Area(Slot ∩ BBox) / Area(Slot ∪ BBox); If IoU_veh ≥ 0.20 → 🔴 Occupied; If IoU_obs ≥ 0.05 → 🟡 Blocked; Else → 🟢 Available",
+    input: "Slot polygons & object contact bounding polygons",
+    output: "Classified slot state array [🟢 Suitable, 🔴 Occupied, 🟡 Blocked]"
+  },
+  {
+    step: 12,
+    title: "12. Vehicle-Space Matching",
+    icon: "📏",
+    tag: "Stage 12 of 13",
+    desc: "Compares real slot dimensions against registered vehicle profile to ensure driver door swing clearance [ΔW = W_slot - W_veh ≥ 0.60m].",
+    formula: "Margin_W = W_slot - W_vehicle; If Margin_W ≥ 0.60m → Optimal Fit; If 0.30m ≤ Margin_W < 0.60m → Tight Fit; Else → Incompatible",
+    input: "Slot metric width & length [W_slot, L_slot] vs Vehicle [W_veh, L_veh]",
+    output: "Fit score, door clearance margin (+0.82m), and suitability flag"
+  },
+  {
+    step: 13,
+    title: "13. Best Parking Recommendation",
+    icon: "⭐",
+    tag: "Stage 13 of 13",
+    desc: "Synthesizes availability, spatial clearance, and municipal rules (EV, handicap, permits) to highlight the best bay on AR HUD with voice guidance.",
+    formula: "BestSlot = argmax_{s ∈ Available}(Clearance(s, v)) such that Legal(s) = True",
+    input: "Evaluated suitable slots + municipal rule clearance",
+    output: "Recommended Bay ID, AR HUD canvas overlay coordinates, and audio guidance cue"
+  }
+];
+
+const SCENARIO_GALLERY = {
+  scenario_1_aerial: {
+    title: "Scenario 1: Overhead Angle Parking Bay Grid",
+    desc: "Standard 6-bay parking row with 4 parked vehicles and 2 vacant slots. Perspective homography calculates 2.72m × 5.48m real-world bay dimensions.",
+    input_url: "/static/scenarios/scenario_1_aerial.jpg",
+    annotated_url: "/static/outputs/output_annotated.jpg",
+    bev_url: "/static/outputs/output_bev.jpg",
+    badge: "🟢 2 AVAILABLE • 🔴 4 OCCUPIED",
+    recommendation: "⭐ Bay 3 Recommended — Space (2.72m × 5.48m) comfortably fits your vehicle with +0.82m door swing clearance.",
+    slots: [
+      { id: "Bay 1", status: "🔴 OCCUPIED", dims: "2.8m × 5.5m", fit: "Occupied by Truck (36% conf)" },
+      { id: "Bay 2", status: "🔴 OCCUPIED", dims: "2.7m × 5.5m", fit: "Occupied by Car (74% conf)" },
+      { id: "Bay 3", status: "🟢 AVAILABLE", dims: "2.7m × 5.5m", fit: "🟢 Optimal Fit (+0.82m clearance)" },
+      { id: "Bay 4", status: "🔴 OCCUPIED", dims: "2.7m × 5.5m", fit: "Occupied by Car (67% conf)" },
+      { id: "Bay 5", status: "🟢 AVAILABLE", dims: "2.7m × 5.5m", fit: "🟢 Optimal Fit (+0.82m clearance)" },
+      { id: "Bay 6", status: "🔴 OCCUPIED", dims: "2.8m × 5.5m", fit: "Occupied by Car (86% conf)" }
+    ]
+  },
+  scenario_2_driver: {
+    title: "Scenario 2: Driver Dashcam Perspective",
+    desc: "Vehicle approaching street parking with parked car and bicycle hazard. Tests obstacle avoidance: Bay 116 rejected due to bicycle obstruction.",
+    input_url: "/static/scenarios/scenario_2_driver.jpg",
+    annotated_url: "/static/outputs/output_scenario2.jpg",
+    bev_url: "/static/outputs/output_bev.jpg",
+    badge: "🟢 1 AVAILABLE • 🔴 1 OCCUPIED • 🟡 1 BLOCKED",
+    recommendation: "⭐ Bay 115 Recommended — Bay 116 rejected due to bicycle obstruction (96% conf). +1.29m clearance in Bay 115.",
+    slots: [
+      { id: "Bay 114", status: "🔴 OCCUPIED", dims: "3.2m × 5.2m", fit: "Occupied by Car (68% conf)" },
+      { id: "Bay 115", status: "🟢 AVAILABLE", dims: "3.2m × 5.2m", fit: "🟢 Optimal Fit (+1.29m clearance)" },
+      { id: "Bay 116", status: "🟡 BLOCKED", dims: "3.1m × 5.2m", fit: "Blocked by Bicycle (96% conf)" }
+    ]
+  },
+  scenario_3_rooftop: {
+    title: "Scenario 3: Elevated Rooftop Lot",
+    desc: "High-density multi-storey parking deck with 24 vehicles and a pedestrian crossing across Bay 127. Tests pedestrian safety classification.",
+    input_url: "/static/scenarios/scenario_3_rooftop.jpg",
+    annotated_url: "/static/outputs/output_rooftop.jpg",
+    bev_url: "/static/outputs/output_bev.jpg",
+    badge: "🔴 3 OCCUPIED • 🟡 1 BLOCKED • 🟢 0 FREE",
+    recommendation: "⚠️ No Suitable Parking Available — All designated bays are occupied or blocked by crossing pedestrians.",
+    slots: [
+      { id: "Bay 124", status: "🔴 OCCUPIED", dims: "3.3m × 5.8m", fit: "Occupied by Car (85% conf)" },
+      { id: "Bay 125", status: "🔴 OCCUPIED", dims: "2.8m × 5.9m", fit: "Occupied by Car (85% conf)" },
+      { id: "Bay 126", status: "🔴 OCCUPIED", dims: "2.6m × 6.0m", fit: "Occupied by Car (92% conf)" },
+      { id: "Bay 127", status: "🟡 BLOCKED", dims: "2.2m × 6.0m", fit: "Blocked by Pedestrian (81% conf)" }
+    ]
+  },
+  scenario_4_tight: {
+    title: "Scenario 4: Narrow Slot SUV Fit Test",
+    desc: "Narrow 2.2m bay between large vehicles. Tests dimensional tolerance logic: SUV is rejected due to door clearance violation, but compact car fits.",
+    input_url: "/static/scenarios/scenario_4_tight.jpg",
+    annotated_url: "/static/outputs/output_tight_suv.jpg",
+    bev_url: "/static/outputs/output_bev.jpg",
+    badge: "⚠️ NARROW BAY (2.2m) • SUV TOO TIGHT",
+    recommendation: "⚠️ Rejected for SUV / 4x4 (Door clearance < 0.30m) — Recommended for Compact Cars & Two-Wheelers only.",
+    slots: [
+      { id: "Bay 44", status: "🔴 NARROW / FIT FAIL", dims: "2.2m × 5.0m", fit: "SUV width 1.9m requires ≥ 2.5m for door swing" }
+    ]
+  }
+};
+
+let activeScenarioKey = 'scenario_1_aerial';
+let activeViewMode = 'annotated';
+let activeStageNum = 1;
+let pipelineAnimationTimer = null;
+
+function initArchitectureLab() {
+  bindFlowchartInteractions();
+  bindScenarioGallery();
+  renderActiveScenario();
+}
+
+function bindFlowchartInteractions() {
+  const nodes = document.querySelectorAll('.flow-node');
+  nodes.forEach(node => {
+    node.addEventListener('click', () => {
+      const stageNum = parseInt(node.getAttribute('data-stage'), 10);
+      selectStage(stageNum);
+    });
+  });
+
+  const animateBtn = document.getElementById('btn-animate-pipeline');
+  if (animateBtn) {
+    animateBtn.addEventListener('click', () => {
+      runPipelineAnimation();
+    });
+  }
+
+  // Pre-select stage 1
+  selectStage(1);
+}
+
+function selectStage(stageNum) {
+  activeStageNum = stageNum;
+  const stageData = PIPELINE_STAGES.find(s => s.step === stageNum) || PIPELINE_STAGES[0];
+
+  document.querySelectorAll('.flow-node').forEach(n => {
+    const s = parseInt(n.getAttribute('data-stage'), 10);
+    n.classList.toggle('active', s === stageNum);
+  });
+
+  const inspIcon = document.getElementById('insp-icon');
+  const inspTitle = document.getElementById('insp-title');
+  const inspTag = document.getElementById('insp-tag');
+  const inspDesc = document.getElementById('insp-desc');
+  const inspFormula = document.getElementById('insp-formula');
+  const inspInput = document.getElementById('insp-input');
+  const inspOutput = document.getElementById('insp-output');
+
+  if (inspIcon) inspIcon.textContent = stageData.icon;
+  if (inspTitle) inspTitle.textContent = stageData.title;
+  if (inspTag) inspTag.textContent = stageData.tag;
+  if (inspDesc) inspDesc.textContent = stageData.desc;
+  if (inspFormula) inspFormula.textContent = stageData.formula;
+  if (inspInput) inspInput.textContent = stageData.input;
+  if (inspOutput) inspOutput.textContent = stageData.output;
+}
+
+function runPipelineAnimation() {
+  if (pipelineAnimationTimer) {
+    clearInterval(pipelineAnimationTimer);
+    pipelineAnimationTimer = null;
+  }
+
+  let step = 1;
+  selectStage(step);
+
+  pipelineAnimationTimer = setInterval(() => {
+    step++;
+    if (step > 13) {
+      clearInterval(pipelineAnimationTimer);
+      pipelineAnimationTimer = null;
+      return;
+    }
+    selectStage(step);
+    // Smooth scroll the node into view if needed
+    const nodeEl = document.getElementById(`fnode-${step}`);
+    if (nodeEl) {
+      nodeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, 650);
+}
+
+function bindScenarioGallery() {
+  // Scenario Selection Tabs
+  const scenBtns = document.querySelectorAll('.arch-scen-btn');
+  scenBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      scenBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeScenarioKey = btn.getAttribute('data-scen');
+      renderActiveScenario();
+    });
+  });
+
+  // View Mode Chips
+  const viewChips = document.querySelectorAll('.view-chip');
+  viewChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      viewChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeViewMode = chip.getAttribute('data-vmode');
+      updateScenarioImage();
+    });
+  });
+}
+
+function renderActiveScenario() {
+  const scen = SCENARIO_GALLERY[activeScenarioKey] || SCENARIO_GALLERY.scenario_1_aerial;
+
+  const titleEl = document.getElementById('arch-scen-title');
+  const descEl = document.getElementById('arch-scen-desc');
+  const badgeEl = document.getElementById('arch-scen-overlay-badge');
+  const recEl = document.getElementById('arch-scen-rec-text');
+  const tableBody = document.getElementById('arch-slots-table-body');
+
+  if (titleEl) titleEl.textContent = scen.title;
+  if (descEl) descEl.textContent = scen.desc;
+  if (badgeEl) badgeEl.textContent = scen.badge;
+  if (recEl) recEl.textContent = scen.recommendation;
+
+  updateScenarioImage();
+
+  // Populate table
+  if (tableBody) {
+    tableBody.innerHTML = scen.slots.map(s => `
+      <tr>
+        <td><strong>${s.id}</strong></td>
+        <td><span style="font-weight:700;">${s.status}</span></td>
+        <td>${s.dims}</td>
+        <td>${s.fit}</td>
+      </tr>
+    `).join('');
+  }
+}
+
+function updateScenarioImage() {
+  const scen = SCENARIO_GALLERY[activeScenarioKey] || SCENARIO_GALLERY.scenario_1_aerial;
+  const imgEl = document.getElementById('arch-scen-img');
+  if (!imgEl) return;
+
+  const base = API_BASE ? API_BASE : '';
+
+  if (activeViewMode === 'annotated') {
+    imgEl.src = `${base}${scen.annotated_url}`;
+  } else if (activeViewMode === 'input') {
+    imgEl.src = `${base}${scen.input_url}`;
+  } else if (activeViewMode === 'bev') {
+    imgEl.src = `${base}${scen.bev_url}`;
+  }
 }
