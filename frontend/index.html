@@ -27,19 +27,19 @@
       <!-- Modal Navigation (Register / Login Tabs) -->
       <div class="modal-auth-tabs">
         <button type="button" class="auth-tab-btn active" id="tab-btn-register" data-auth-mode="register">
-          <span>📝 Register Rider & Vehicle</span>
+          <span>≡ƒô¥ Register Rider & Vehicle</span>
         </button>
         <button type="button" class="auth-tab-btn" id="tab-btn-login" data-auth-mode="login">
-          <span>🔑 Existing User Login</span>
+          <span>≡ƒöæ Existing User Login</span>
         </button>
-        <button class="modal-close-btn" id="btn-close-reg-modal" aria-label="Close">✕</button>
+        <button class="modal-close-btn" id="btn-close-reg-modal" aria-label="Close">Γ£ò</button>
       </div>
 
       <!-- 1. REGISTRATION FORM (Auto-fetches Length & Width from Vehicle Name) -->
       <form id="form-registration" class="reg-form">
         <div class="auth-intro">
           <h3>Create Your Rider Account</h3>
-          <p>Enter your vehicle name — length and width are <strong>automatically fetched</strong> from our real vehicle dataset.</p>
+          <p>Enter your vehicle name ΓÇö length and width are <strong>automatically fetched</strong> from our real vehicle dataset.</p>
         </div>
 
         <div class="form-grid">
@@ -64,10 +64,10 @@
           <div class="form-group full-width">
             <label>Vehicle Type</label>
             <div class="modal-cat-tabs" id="modal-cat-tabs">
-              <button type="button" class="modal-cat-btn active" data-wheels="all">🌟 All</button>
-              <button type="button" class="modal-cat-btn" data-wheels="2">🏍️ 2-Wheeler</button>
-              <button type="button" class="modal-cat-btn" data-wheels="3">🛺 3-Wheeler Auto</button>
-              <button type="button" class="modal-cat-btn" data-wheels="4">🚗 4-Wheeler Car</button>
+              <button type="button" class="modal-cat-btn active" data-wheels="all">≡ƒîƒ All</button>
+              <button type="button" class="modal-cat-btn" data-wheels="2">≡ƒÅì∩╕Å 2-Wheeler</button>
+              <button type="button" class="modal-cat-btn" data-wheels="3">≡ƒ¢║ 3-Wheeler Auto</button>
+              <button type="button" class="modal-cat-btn" data-wheels="4">≡ƒÜù 4-Wheeler Car</button>
             </div>
           </div>
 
@@ -78,7 +78,7 @@
               <span class="label-hint">(Enter name only e.g. Swift, Activa, Auto Rickshaw, Thar, Creta...)</span>
             </label>
             <div class="input-icon-wrap">
-              <span class="field-icon" id="reg-bike-icon">🚗</span>
+              <span class="field-icon" id="reg-bike-icon">≡ƒÜù</span>
               <input type="text" id="reg-bike-model" required placeholder="Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Treo..." autocomplete="off">
             </div>
             <!-- Dynamic Autocomplete Suggestions List -->
@@ -86,30 +86,30 @@
 
             <!-- Modal Quick Pick Chips -->
             <div class="wz-quick-chips modal-chips" id="modal-quick-chips">
-              <span class="wz-quick-label">⚡ Quick Pick:</span>
-              <button type="button" class="wz-chip" data-vname="Honda Activa 6G">🛵 Activa 6G</button>
-              <button type="button" class="wz-chip" data-vname="Hero Splendor Plus">🏍️ Splendor+</button>
-              <button type="button" class="wz-chip" data-vname="Bajaj RE Auto Rickshaw">🛺 Bajaj RE Auto</button>
-              <button type="button" class="wz-chip" data-vname="Mahindra Treo">🛺 Treo E-Auto</button>
-              <button type="button" class="wz-chip" data-vname="Maruti Suzuki Swift">🚗 Swift</button>
-              <button type="button" class="wz-chip" data-vname="Hyundai Creta">🚙 Creta</button>
-              <button type="button" class="wz-chip" data-vname="Mahindra Thar">🚙 Thar</button>
+              <span class="wz-quick-label">ΓÜí Quick Pick:</span>
+              <button type="button" class="wz-chip" data-vname="Honda Activa 6G">≡ƒ¢╡ Activa 6G</button>
+              <button type="button" class="wz-chip" data-vname="Hero Splendor Plus">≡ƒÅì∩╕Å Splendor+</button>
+              <button type="button" class="wz-chip" data-vname="Bajaj RE Auto Rickshaw">≡ƒ¢║ Bajaj RE Auto</button>
+              <button type="button" class="wz-chip" data-vname="Mahindra Treo">≡ƒ¢║ Treo E-Auto</button>
+              <button type="button" class="wz-chip" data-vname="Maruti Suzuki Swift">≡ƒÜù Swift</button>
+              <button type="button" class="wz-chip" data-vname="Hyundai Creta">≡ƒÜÖ Creta</button>
+              <button type="button" class="wz-chip" data-vname="Mahindra Thar">≡ƒÜÖ Thar</button>
             </div>
           </div>
 
           <!-- Auto-fetched notification status banner -->
           <div class="form-group full-width autofill-indicator hidden" id="autofill-indicator">
             <div class="wz-detected-banner" id="modal-detected-banner">
-              <div class="wz-detected-icon" id="modal-detected-icon">🚗</div>
+              <div class="wz-detected-icon" id="modal-detected-icon">≡ƒÜù</div>
               <div class="wz-detected-details">
                 <div class="wz-detected-title">
                   <span id="modal-detected-name">Maruti Suzuki Swift</span>
                   <span class="wz-detected-tag" id="modal-detected-category">Hatchback (4-Wheeler)</span>
                 </div>
                 <div class="wz-detected-specs">
-                  <span class="wz-spec-badge">📏 Length: <strong id="modal-spec-length">3.86m</strong></span>
-                  <span class="wz-spec-badge">↔️ Width: <strong id="modal-spec-width">1.73m</strong></span>
-                  <span class="wz-spec-badge auto-ok">✨ Auto-Detected</span>
+                  <span class="wz-spec-badge">≡ƒôÅ Length: <strong id="modal-spec-length">3.86m</strong></span>
+                  <span class="wz-spec-badge">Γåö∩╕Å Width: <strong id="modal-spec-width">1.73m</strong></span>
+                  <span class="wz-spec-badge auto-ok">Γ£¿ Auto-Detected</span>
                 </div>
               </div>
             </div>
@@ -152,7 +152,7 @@
         <div class="modal-actions">
           <button type="button" class="btn-secondary" id="btn-cancel-reg">Close</button>
           <button type="submit" class="action-btn glow-btn" id="btn-save-reg">
-            <span>🚀 Complete Registration & Find Free Bays</span>
+            <span>≡ƒÜÇ Complete Registration & Find Free Bays</span>
           </button>
         </div>
       </form>
@@ -178,7 +178,7 @@
         <div class="modal-actions">
           <button type="button" class="btn-secondary" id="btn-cancel-login">Close</button>
           <button type="submit" class="action-btn glow-btn" id="btn-submit-login">
-            <span>🔑 Sign In</span>
+            <span>≡ƒöæ Sign In</span>
           </button>
         </div>
       </form>
@@ -193,18 +193,18 @@
     <!-- Wizard Header -->
     <div class="wizard-header">
       <div class="wizard-brand">
-        <span class="wizard-brand-icon">🏍️</span>
+        <span class="wizard-brand-icon">≡ƒÅì∩╕Å</span>
         <div>
-          <div class="wizard-brand-title">PARKVISION <span>BIKE CV</span></div>
-          <div class="wizard-brand-sub">Smart Parking Detection · Zero Fees · Free Public Bays</div>
+          <div class="wizard-brand-title">PARKVISION <span>AI</span></div>
+          <div class="wizard-brand-sub">Smart Parking Detection ┬╖ Zero Fees ┬╖ Free Public Bays</div>
         </div>
       </div>
       <div class="wizard-header-actions">
         <button class="wizard-advanced-btn wz-arch-btn" id="btn-open-architecture" title="View System Architecture & Dataset Lab">
-          <span>⭐ Architecture &amp; Dataset</span>
+          <span>Γ¡É Architecture &amp; Dataset</span>
         </button>
         <button class="wizard-advanced-btn" id="btn-open-advanced" title="Open advanced multi-tab view">
-          <span>⚙️ Advanced View</span>
+          <span>ΓÜÖ∩╕Å Advanced View</span>
         </button>
       </div>
     </div>
@@ -213,12 +213,12 @@
     <div class="wizard-progress" id="wizard-progress">
       <div class="wz-step-wrap active" data-wstep="1">
         <div class="wz-step-bubble">1</div>
-        <div class="wz-step-label">Register</div>
+        <div class="wz-step-label">Vehicle</div>
       </div>
       <div class="wz-connector"></div>
       <div class="wz-step-wrap" data-wstep="2">
         <div class="wz-step-bubble">2</div>
-        <div class="wz-step-label">GPS</div>
+        <div class="wz-step-label">Location</div>
       </div>
       <div class="wz-connector"></div>
       <div class="wz-step-wrap" data-wstep="3">
@@ -233,7 +233,7 @@
       <div class="wz-connector"></div>
       <div class="wz-step-wrap" data-wstep="5">
         <div class="wz-step-bubble">5</div>
-        <div class="wz-step-label">CV Scan</div>
+        <div class="wz-step-label">AR Scan</div>
       </div>
     </div>
 
@@ -245,18 +245,18 @@
         <div class="wz-panel-inner">
           <div class="wz-panel-heading">
             <div class="wz-panel-step-tag">Step 1 of 5</div>
-            <h2 class="wz-title">Register Your Vehicle Profile</h2>
-            <p class="wz-subtitle">Enter <strong>ONLY the vehicle name</strong> (Car, Auto Rickshaw, Bike, Scooter, or EV) — length &amp; width are <strong>automatically detected</strong> instantly from 200+ vehicles!</p>
+            <h2 class="wz-title">Select Your Vehicle Profile</h2>
+            <p class="wz-subtitle">Enter <strong>ONLY the vehicle name</strong> (Car, Auto Rickshaw, Bike, Scooter, or EV) ΓÇö length &amp; width are <strong>automatically detected</strong> instantly from 200+ vehicles!</p>
           </div>
 
           <!-- Already Registered Banner -->
           <div class="wz-registered-banner hidden" id="wz-registered-banner">
-            <div class="wz-reg-icon">✅</div>
+            <div class="wz-reg-icon">Γ£à</div>
             <div class="wz-reg-info">
-              <div class="wz-reg-name" id="wz-reg-name">—</div>
-              <div class="wz-reg-vehicle" id="wz-reg-vehicle">—</div>
+              <div class="wz-reg-name" id="wz-reg-name">ΓÇö</div>
+              <div class="wz-reg-vehicle" id="wz-reg-vehicle">ΓÇö</div>
             </div>
-            <button class="wz-edit-btn" id="wz-edit-profile">✏️ Edit</button>
+            <button class="wz-edit-btn" id="wz-edit-profile">Γ£Å∩╕Å Edit</button>
           </div>
 
           <!-- Registration Form (inline in wizard) -->
@@ -275,10 +275,10 @@
               <div class="wz-field wz-full">
                 <label>Vehicle Type Filter</label>
                 <div class="wz-cat-tabs" id="wz-cat-tabs">
-                  <button type="button" class="wz-cat-btn active" data-wheels="all">🌟 All Vehicles</button>
-                  <button type="button" class="wz-cat-btn" data-wheels="2">🏍️ 2-Wheeler (Bikes &amp; Scooters)</button>
-                  <button type="button" class="wz-cat-btn" data-wheels="3">🛺 3-Wheeler (Auto Rickshaw)</button>
-                  <button type="button" class="wz-cat-btn" data-wheels="4">🚗 4-Wheeler (Cars &amp; SUVs)</button>
+                  <button type="button" class="wz-cat-btn active" data-wheels="all">≡ƒîƒ All Vehicles</button>
+                  <button type="button" class="wz-cat-btn" data-wheels="2">≡ƒÅì∩╕Å 2-Wheeler (Bikes &amp; Scooters)</button>
+                  <button type="button" class="wz-cat-btn" data-wheels="3">≡ƒ¢║ 3-Wheeler (Auto Rickshaw)</button>
+                  <button type="button" class="wz-cat-btn" data-wheels="4">≡ƒÜù 4-Wheeler (Cars &amp; SUVs)</button>
                 </div>
               </div>
 
@@ -286,58 +286,58 @@
               <div class="wz-field wz-full">
                 <div class="wz-label-row">
                   <label for="wz-vehicle">Vehicle Name / Model <span class="req">*</span></label>
-                  <span class="wz-label-hint">Type name only — dimensions auto-detect</span>
+                  <span class="wz-label-hint">Type name only ΓÇö dimensions auto-detect</span>
                 </div>
                 <div class="wz-input-icon">
-                  <span class="wz-field-icon" id="wz-vehicle-icon">🚗</span>
+                  <span class="wz-field-icon" id="wz-vehicle-icon">≡ƒÜù</span>
                   <input type="text" id="wz-vehicle" required placeholder="Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Creta, Treo..." autocomplete="off">
                 </div>
                 <div class="wz-autocomplete hidden" id="wz-vehicle-suggestions"></div>
 
                 <!-- Quick Pick Popular Chips -->
                 <div class="wz-quick-chips" id="wz-quick-chips">
-                  <span class="wz-quick-label">⚡ Quick Pick:</span>
-                  <button type="button" class="wz-chip" data-vname="Honda Activa 6G">🛵 Activa 6G</button>
-                  <button type="button" class="wz-chip" data-vname="Hero Splendor Plus">🏍️ Splendor+</button>
-                  <button type="button" class="wz-chip" data-vname="Royal Enfield Classic 350">🏍️ Classic 350</button>
-                  <button type="button" class="wz-chip" data-vname="Bajaj RE Auto Rickshaw">🛺 Bajaj RE Auto</button>
-                  <button type="button" class="wz-chip" data-vname="Mahindra Treo">🛺 Treo E-Auto</button>
-                  <button type="button" class="wz-chip" data-vname="Piaggio Ape City">🛺 Piaggio Ape</button>
-                  <button type="button" class="wz-chip" data-vname="Maruti Suzuki Swift">🚗 Swift</button>
-                  <button type="button" class="wz-chip" data-vname="Hyundai Creta">🚙 Creta</button>
-                  <button type="button" class="wz-chip" data-vname="Mahindra Thar">🚙 Thar</button>
-                  <button type="button" class="wz-chip" data-vname="Tata Nexon EV">⚡ Nexon EV</button>
+                  <span class="wz-quick-label">ΓÜí Quick Pick:</span>
+                  <button type="button" class="wz-chip" data-vname="Honda Activa 6G">≡ƒ¢╡ Activa 6G</button>
+                  <button type="button" class="wz-chip" data-vname="Hero Splendor Plus">≡ƒÅì∩╕Å Splendor+</button>
+                  <button type="button" class="wz-chip" data-vname="Royal Enfield Classic 350">≡ƒÅì∩╕Å Classic 350</button>
+                  <button type="button" class="wz-chip" data-vname="Bajaj RE Auto Rickshaw">≡ƒ¢║ Bajaj RE Auto</button>
+                  <button type="button" class="wz-chip" data-vname="Mahindra Treo">≡ƒ¢║ Treo E-Auto</button>
+                  <button type="button" class="wz-chip" data-vname="Piaggio Ape City">≡ƒ¢║ Piaggio Ape</button>
+                  <button type="button" class="wz-chip" data-vname="Maruti Suzuki Swift">≡ƒÜù Swift</button>
+                  <button type="button" class="wz-chip" data-vname="Hyundai Creta">≡ƒÜÖ Creta</button>
+                  <button type="button" class="wz-chip" data-vname="Mahindra Thar">≡ƒÜÖ Thar</button>
+                  <button type="button" class="wz-chip" data-vname="Tata Nexon EV">ΓÜí Nexon EV</button>
                 </div>
               </div>
 
               <!-- Live Auto-Detection Pill / Banner -->
               <div class="wz-field wz-full">
                 <div class="wz-detected-banner hidden" id="wz-detected-banner">
-                  <div class="wz-detected-icon" id="wz-detected-icon">🚗</div>
+                  <div class="wz-detected-icon" id="wz-detected-icon">≡ƒÜù</div>
                   <div class="wz-detected-details">
                     <div class="wz-detected-title">
                       <span id="wz-detected-name">Maruti Suzuki Swift</span>
                       <span class="wz-detected-tag" id="wz-detected-category">Hatchback (4-Wheeler)</span>
                     </div>
                     <div class="wz-detected-specs">
-                      <span class="wz-spec-badge">📏 Length: <strong id="wz-spec-length">3.86m</strong></span>
-                      <span class="wz-spec-badge">↔️ Width: <strong id="wz-spec-width">1.73m</strong></span>
-                      <span class="wz-spec-badge">⬆️ Height: <strong id="wz-spec-height">1.53m</strong></span>
-                      <span class="wz-spec-badge auto-ok">✨ Auto-Detected</span>
+                      <span class="wz-spec-badge">≡ƒôÅ Length: <strong id="wz-spec-length">3.86m</strong></span>
+                      <span class="wz-spec-badge">Γåö∩╕Å Width: <strong id="wz-spec-width">1.73m</strong></span>
+                      <span class="wz-spec-badge">Γ¼å∩╕Å Height: <strong id="wz-spec-height">1.53m</strong></span>
+                      <span class="wz-spec-badge auto-ok">Γ£¿ Auto-Detected</span>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div class="wz-field">
-                <label for="wz-length">Length (m) <span class="wz-auto-tag">✨ Auto-Detected</span></label>
+                <label for="wz-length">Length (m) <span class="wz-auto-tag">Γ£¿ Auto-Detected</span></label>
                 <div class="wz-unit-wrap">
                   <input type="number" id="wz-length" step="0.01" min="0.5" max="7.0" placeholder="Auto-detected">
                   <span class="wz-unit">m</span>
                 </div>
               </div>
               <div class="wz-field">
-                <label for="wz-width">Width (m) <span class="wz-auto-tag">✨ Auto-Detected</span></label>
+                <label for="wz-width">Width (m) <span class="wz-auto-tag">Γ£¿ Auto-Detected</span></label>
                 <div class="wz-unit-wrap">
                   <input type="number" id="wz-width" step="0.01" min="0.3" max="3.5" placeholder="Auto-detected">
                   <span class="wz-unit">m</span>
@@ -350,7 +350,7 @@
             </div>
             <div class="wz-actions">
               <button type="submit" class="wz-btn-primary" id="wz-reg-submit">
-                <span>🚀 Save &amp; Detect My Location</span>
+                <span>≡ƒÜÇ Save &amp; Detect My Location</span>
               </button>
             </div>
           </form>
@@ -368,7 +368,7 @@
 
           <!-- GPS Status Card -->
           <div class="wz-gps-card" id="wz-gps-card">
-            <div class="wz-gps-icon" id="wz-gps-icon">📡</div>
+            <div class="wz-gps-icon" id="wz-gps-icon">≡ƒôí</div>
             <div class="wz-gps-text">
               <div class="wz-gps-status" id="wz-gps-status">Waiting to acquire GPS fix...</div>
               <div class="wz-gps-coords" id="wz-gps-coords">Click the button below to start</div>
@@ -382,20 +382,20 @@
 
           <div class="wz-city-row">
             <span class="wz-city-label">Or set location:</span>
-            <button type="button" class="wz-city-chip" data-lat="22.2904" data-lng="70.7915" data-city="Rajkot">🏙️ Rajkot</button>
-            <button type="button" class="wz-city-chip" data-lat="19.0760" data-lng="72.8777" data-city="Mumbai">🏙️ Mumbai</button>
-            <button type="button" class="wz-city-chip" data-lat="28.6139" data-lng="77.2090" data-city="Delhi">🏙️ Delhi</button>
-            <button type="button" class="wz-city-chip" data-lat="12.9716" data-lng="77.5946" data-city="Bengaluru">🏙️ Bengaluru</button>
-            <button type="button" class="wz-city-chip" data-lat="23.0225" data-lng="72.5714" data-city="Ahmedabad">🏙️ Ahmedabad</button>
-            <button type="button" class="wz-city-chip" data-lat="18.5204" data-lng="73.8567" data-city="Pune">🏙️ Pune</button>
+            <button type="button" class="wz-city-chip" data-lat="22.2904" data-lng="70.7915" data-city="Rajkot">≡ƒÅÖ∩╕Å Rajkot</button>
+            <button type="button" class="wz-city-chip" data-lat="19.0760" data-lng="72.8777" data-city="Mumbai">≡ƒÅÖ∩╕Å Mumbai</button>
+            <button type="button" class="wz-city-chip" data-lat="28.6139" data-lng="77.2090" data-city="Delhi">≡ƒÅÖ∩╕Å Delhi</button>
+            <button type="button" class="wz-city-chip" data-lat="12.9716" data-lng="77.5946" data-city="Bengaluru">≡ƒÅÖ∩╕Å Bengaluru</button>
+            <button type="button" class="wz-city-chip" data-lat="23.0225" data-lng="72.5714" data-city="Ahmedabad">≡ƒÅÖ∩╕Å Ahmedabad</button>
+            <button type="button" class="wz-city-chip" data-lat="18.5204" data-lng="73.8567" data-city="Pune">≡ƒÅÖ∩╕Å Pune</button>
           </div>
 
           <div class="wz-actions">
             <button type="button" class="wz-btn-primary" id="wz-detect-gps">
-              <span>📍 Detect My GPS Location</span>
+              <span>≡ƒôì Detect My GPS Location</span>
             </button>
             <button type="button" class="wz-btn-back" id="wz-back-1">
-              ← Back
+              ΓåÉ Back
             </button>
           </div>
         </div>
@@ -425,15 +425,15 @@
           </div>
 
           <div class="wz-free-badge-row">
-            <span class="wz-free-badge">🟢 100% Free Public Parking</span>
+            <span class="wz-free-badge">≡ƒƒó 100% Free Public Parking</span>
             <span class="wz-free-count" id="wz-free-count">0 free bays found</span>
           </div>
 
           <div class="wz-actions">
             <button type="button" class="wz-btn-primary" id="wz-goto-navigate" disabled>
-              <span>🧭 Navigate to Selected Lot →</span>
+              <span>≡ƒº¡ Navigate to Selected Lot ΓåÆ</span>
             </button>
-            <button type="button" class="wz-btn-back" id="wz-back-2">← Back</button>
+            <button type="button" class="wz-btn-back" id="wz-back-2">ΓåÉ Back</button>
           </div>
         </div>
       </div>
@@ -444,15 +444,15 @@
           <div class="wz-panel-heading">
             <div class="wz-panel-step-tag">Step 4 of 5</div>
             <h2 class="wz-title">Navigate to Parking Lot</h2>
-            <p class="wz-subtitle">Ride to the selected free parking facility. When you arrive, tap the button below to launch the camera scanner.</p>
+            <p class="wz-subtitle">Drive to the selected parking facility. When you arrive, tap the button below to launch the camera scanner.</p>
           </div>
 
           <!-- Selected Lot Info -->
           <div class="wz-nav-card" id="wz-nav-card">
-            <div class="wz-nav-icon">🅿️</div>
+            <div class="wz-nav-icon">≡ƒà┐∩╕Å</div>
             <div class="wz-nav-info">
-              <div class="wz-nav-lot-name" id="wz-nav-lot-name">—</div>
-              <div class="wz-nav-lot-meta" id="wz-nav-lot-meta">—</div>
+              <div class="wz-nav-lot-name" id="wz-nav-lot-name">ΓÇö</div>
+              <div class="wz-nav-lot-meta" id="wz-nav-lot-meta">ΓÇö</div>
             </div>
             <div class="wz-nav-badge">Zero Fee</div>
           </div>
@@ -460,17 +460,17 @@
           <!-- Route Info Bar -->
           <div class="wz-route-bar" id="wz-route-bar">
             <div class="wz-route-stat">
-              <span class="wz-route-num" id="wz-nav-dist">—</span>
+              <span class="wz-route-num" id="wz-nav-dist">ΓÇö</span>
               <span class="wz-route-lbl">km away</span>
             </div>
             <div class="wz-route-divider"></div>
             <div class="wz-route-stat">
-              <span class="wz-route-num" id="wz-nav-time">—</span>
+              <span class="wz-route-num" id="wz-nav-time">ΓÇö</span>
               <span class="wz-route-lbl">mins</span>
             </div>
             <div class="wz-route-divider"></div>
             <div class="wz-route-stat">
-              <span class="wz-route-num free-text" id="wz-nav-bays">—</span>
+              <span class="wz-route-num free-text" id="wz-nav-bays">ΓÇö</span>
               <span class="wz-route-lbl">free bays</span>
             </div>
           </div>
@@ -482,18 +482,18 @@
 
           <!-- Direction Card -->
           <div class="wz-direction-tip">
-            <span class="wz-dir-icon">💡</span>
+            <span class="wz-dir-icon">≡ƒÆí</span>
             <span>Open <strong>Google Maps</strong> for turn-by-turn directions, or just follow the map above. Tap <em>"I've Arrived"</em> when you reach the entrance.</span>
           </div>
 
           <div class="wz-actions">
             <button type="button" class="wz-btn-primary" id="wz-arrived-btn">
-              <span>📍 I've Arrived — Launch Camera Scanner →</span>
+              <span>≡ƒôì I've Arrived ΓÇö Launch Camera Scanner ΓåÆ</span>
             </button>
             <button type="button" class="wz-btn-secondary" id="wz-open-gmaps">
-              <span>🗺️ Open in Google Maps</span>
+              <span>≡ƒù║∩╕Å Open in Google Maps</span>
             </button>
-            <button type="button" class="wz-btn-back" id="wz-back-3">← Back</button>
+            <button type="button" class="wz-btn-back" id="wz-back-3">ΓåÉ Back</button>
           </div>
         </div>
       </div>
@@ -504,7 +504,7 @@
           <div class="wz-panel-heading">
             <div class="wz-panel-step-tag">Step 5 of 5</div>
             <h2 class="wz-title">Point Camera at Parking Row</h2>
-            <p class="wz-subtitle">AI detects empty spaces and suggests the best spot for your bike. 100% free — zero fees, no booking.</p>
+            <p class="wz-subtitle">AI detects empty spaces and suggests the best spot for your bike. 100% free ΓÇö zero fees, no booking.</p>
           </div>
 
           <!-- Camera Viewport -->
@@ -514,22 +514,22 @@
 
             <!-- AR Floating Pointer -->
             <div class="wz-ar-pointer hidden" id="wz-ar-pointer">
-              <div class="wz-ar-arrow">⬇️</div>
+              <div class="wz-ar-arrow">Γ¼ç∩╕Å</div>
               <div class="wz-ar-tag" id="wz-ar-tag">PARK HERE</div>
             </div>
 
             <!-- Permission Overlay -->
             <div class="wz-cam-perm-overlay" id="wz-cam-perm-overlay">
-              <div class="wz-perm-icon">📱📷</div>
+              <div class="wz-perm-icon">≡ƒô▒≡ƒô╖</div>
               <h3>Camera Permission Required</h3>
-              <p>Allow your phone's rear camera to scan the parking row. The AI will highlight the best available spot that fits your <strong id="wz-perm-bike-name">bike</strong>.</p>
-              <div class="wz-perm-security">🔒 Frames are processed locally for parking detection only. Nothing is stored.</div>
+              <p>Allow your phone's rear camera to scan the parking row. The AI will highlight the best available spot that fits your <strong id="wz-perm-bike-name">vehicle</strong>.</p>
+              <div class="wz-perm-security">≡ƒöÆ Frames are processed locally for parking detection only. Nothing is stored.</div>
               <div class="wz-perm-actions">
                 <button class="wz-btn-primary" id="wz-req-cam">
-                  <span>📷 Allow &amp; Open Camera</span>
+                  <span>≡ƒô╖ Allow &amp; Open Camera</span>
                 </button>
                 <button class="wz-btn-secondary" id="wz-sim-cam">
-                  <span>🎬 Use Simulated Feed</span>
+                  <span>≡ƒÄ¼ Use Simulated Feed</span>
                 </button>
               </div>
             </div>
@@ -546,47 +546,47 @@
                 <span class="wz-live-dot"></span>
                 <span id="wz-cam-status">Camera Ready</span>
               </div>
-              <div class="wz-hud-vehicle" id="wz-hud-vehicle">🏍️ —</div>
-              <div class="wz-hud-free">🟢 FREE Parking</div>
+              <div class="wz-hud-vehicle" id="wz-hud-vehicle">≡ƒÅì∩╕Å ΓÇö</div>
+              <div class="wz-hud-free">≡ƒƒó FREE Parking</div>
             </div>
           </div>
 
           <!-- Camera Controls -->
           <div class="wz-cam-controls">
             <button class="wz-cam-btn" id="wz-toggle-cam">
-              <span>⏹️</span><span>Stop</span>
+              <span>ΓÅ╣∩╕Å</span><span>Stop</span>
             </button>
             <button class="wz-cam-btn" id="wz-flip-cam">
-              <span>🔄</span><span>Flip</span>
+              <span>≡ƒöä</span><span>Flip</span>
             </button>
             <button class="wz-cam-btn" id="wz-scan-now">
-              <span>📸</span><span>Scan Now</span>
+              <span>≡ƒô╕</span><span>Scan Now</span>
             </button>
             <button class="wz-cam-btn active" id="wz-autoscan">
-              <span>⚡</span><span>Auto: ON</span>
+              <span>ΓÜí</span><span>Auto: ON</span>
             </button>
             <button class="wz-cam-btn" id="wz-speak">
-              <span>🔊</span><span>Speak</span>
+              <span>≡ƒöè</span><span>Speak</span>
             </button>
           </div>
 
           <!-- Recommendation Card -->
           <div class="wz-rec-card" id="wz-rec-card">
-            <div class="wz-rec-badge">⭐ SUGGESTED SPOT FOR YOUR BIKE</div>
+            <div class="wz-rec-badge">Γ¡É SUGGESTED SPOT FOR YOUR BIKE</div>
             <div class="wz-rec-title" id="wz-rec-title">Scanning...</div>
             <div class="wz-rec-status" id="wz-rec-status">Point camera at parking row</div>
             <div class="wz-rec-specs">
               <div class="wz-spec">
                 <span class="wz-spec-label">Bay Size:</span>
-                <span class="wz-spec-val" id="wz-rec-dims">—</span>
+                <span class="wz-spec-val" id="wz-rec-dims">ΓÇö</span>
               </div>
               <div class="wz-spec">
                 <span class="wz-spec-label">Your Bike:</span>
-                <span class="wz-spec-val" id="wz-rec-bike">—</span>
+                <span class="wz-spec-val" id="wz-rec-bike">ΓÇö</span>
               </div>
               <div class="wz-spec">
                 <span class="wz-spec-label">Clearance:</span>
-                <span class="wz-spec-val highlight" id="wz-rec-clearance">—</span>
+                <span class="wz-spec-val highlight" id="wz-rec-clearance">ΓÇö</span>
               </div>
               <div class="wz-spec">
                 <span class="wz-spec-label">Parking Fee:</span>
@@ -595,7 +595,7 @@
             </div>
             <p class="wz-rec-msg" id="wz-rec-msg">Aim your camera at the parking row to detect available spaces.</p>
             <button class="wz-btn-primary" id="wz-confirm-parked">
-              <span>✅ Bike Parked — Done!</span>
+              <span>Γ£à Bike Parked ΓÇö Done!</span>
             </button>
           </div>
 
@@ -606,7 +606,7 @@
           </div>
 
           <div class="wz-actions" style="margin-top:1rem;">
-            <button type="button" class="wz-btn-back" id="wz-back-4">← Back to Map</button>
+            <button type="button" class="wz-btn-back" id="wz-back-4">ΓåÉ Back to Map</button>
           </div>
         </div>
       </div>
@@ -618,7 +618,7 @@
   <header class="navbar">
     <div class="nav-brand">
       <div class="brand-logo">
-        <span class="logo-icon">🏍️</span>
+        <span class="logo-icon">≡ƒÅì∩╕Å</span>
       </div>
       <div class="brand-text">
         <div class="brand-title">PARKVISION <span class="brand-accent">BIKE CV</span></div>
@@ -630,67 +630,67 @@
     <div class="nav-vehicle-selector">
       <!-- Logged-in State: Vehicle Pill -->
       <div class="vehicle-pill clickable hidden" id="nav-profile-pill" title="Click to view or edit profile">
-        <span class="vehicle-icon" id="nav-veh-icon">🏍️</span>
+        <span class="vehicle-icon" id="nav-veh-icon">≡ƒÅì∩╕Å</span>
         <div class="nav-pill-info">
-          <div class="nav-rider-name" id="nav-rider-name">—</div>
+          <div class="nav-rider-name" id="nav-rider-name">ΓÇö</div>
           <div class="nav-veh-details">
-            <strong id="nav-veh-name">—</strong> 
-            <span id="nav-veh-dims">—</span> • 
-            <span class="plate-badge" id="nav-veh-plate">—</span>
+            <strong id="nav-veh-name">ΓÇö</strong> 
+            <span id="nav-veh-dims">ΓÇö</span> ΓÇó 
+            <span class="plate-badge" id="nav-veh-plate">ΓÇö</span>
           </div>
         </div>
-        <span class="edit-pill-icon">✏️ Edit</span>
+        <span class="edit-pill-icon">Γ£Å∩╕Å Edit</span>
       </div>
 
       <!-- Unauthenticated State: Sign In / Register Button -->
       <button class="action-btn glow-btn mini-auth-btn" id="btn-nav-auth-open">
-        <span>🔐 Register / Login</span>
+        <span>≡ƒöÉ Register / Login</span>
       </button>
 
       <!-- Logout Button (Shown when logged in) -->
       <button class="mini-btn hidden" id="btn-nav-logout" title="Sign Out">
-        <span>🚪 Sign Out</span>
+        <span>≡ƒÜ¬ Sign Out</span>
       </button>
       <!-- Back to Wizard button in Advanced view -->
       <button class="mini-btn" id="btn-back-wizard" title="Back to guided wizard flow">
-        <span>🧙 Wizard View</span>
+        <span>≡ƒºÖ Wizard View</span>
       </button>
     </div>
 
     <!-- Navigation Tabs -->
     <nav class="nav-tabs">
       <button class="tab-btn" data-tab="architecture-dataset" id="tab-btn-architecture">
-        <span class="tab-icon">⭐</span>
+        <span class="tab-icon">Γ¡É</span>
         <span class="tab-text-full">Architecture &amp; Dataset</span>
         <span class="tab-text-short">Architecture</span>
       </button>
       <button class="tab-btn active" data-tab="camera-scan" id="tab-btn-camera">
-        <span class="tab-icon">📷</span>
+        <span class="tab-icon">≡ƒô╖</span>
         <span class="tab-text-full">Mobile Camera Scanner</span>
         <span class="tab-text-short">Scanner</span>
       </button>
       <button class="tab-btn" data-tab="gps-map" id="tab-btn-map">
-        <span class="tab-icon">📍</span>
+        <span class="tab-icon">≡ƒôì</span>
         <span class="tab-text-full">Live GPS & Free Bays</span>
         <span class="tab-text-short">Live Map</span>
       </button>
       <button class="tab-btn" data-tab="cv-lab" id="tab-btn-cv">
-        <span class="tab-icon">🔬</span>
+        <span class="tab-icon">≡ƒö¼</span>
         <span class="tab-text-full">CV Diagnostics Lab</span>
         <span class="tab-text-short">CV Lab</span>
       </button>
       <button class="tab-btn" data-tab="driver-flow" id="tab-btn-flow">
-        <span class="tab-icon">🚀</span>
+        <span class="tab-icon">≡ƒÜÇ</span>
         <span class="tab-text-full">Real-Life 8-Step Flow</span>
         <span class="tab-text-short">Driver Flow</span>
       </button>
       <button class="tab-btn" data-tab="rules-info" id="tab-btn-rules">
-        <span class="tab-icon">⚖️</span>
+        <span class="tab-icon">ΓÜû∩╕Å</span>
         <span class="tab-text-full">Parking Rules</span>
         <span class="tab-text-short">Rules</span>
       </button>
       <button class="tab-btn" id="btn-config-api" title="Configure Cloud Backend URL (Render)">
-        <span class="tab-icon">🔗</span>
+        <span class="tab-icon">≡ƒöù</span>
         <span class="tab-text-full">API Server</span>
         <span class="tab-text-short">API</span>
       </button>
@@ -713,13 +713,13 @@
           <div class="camera-hud-top">
             <div class="hud-stream-status">
               <span class="live-dot pulse"></span>
-              <span id="cam-status-label">Camera Ready • Point at Parking Row</span>
+              <span id="cam-status-label">Camera Ready ΓÇó Point at Parking Row</span>
             </div>
             <div class="hud-bike-tag" id="cam-active-bike-tag">
-              🏍️ Select or Register Vehicle
+              ≡ƒÅì∩╕Å Select or Register Vehicle
             </div>
             <div class="hud-free-badge">
-              🟢 100% Free Public Parking
+              ≡ƒƒó 100% Free Public Parking
             </div>
           </div>
 
@@ -730,29 +730,29 @@
             
             <!-- In-viewport AR Suggestion Floating Arrow & Tag -->
             <div class="ar-floating-pointer hidden" id="ar-floating-pointer">
-              <div class="ar-pointer-arrow">⬇️</div>
+              <div class="ar-pointer-arrow">Γ¼ç∩╕Å</div>
               <div class="ar-pointer-tag" id="ar-pointer-text">PARK BIKE HERE</div>
             </div>
 
             <!-- Permission & Fallback Overlay (Shown when camera not yet open) -->
             <div class="camera-permission-overlay" id="cam-permission-card">
-              <div class="perm-icon">📱📷</div>
+              <div class="perm-icon">≡ƒô▒≡ƒô╖</div>
               <h3>Mobile Camera Permission</h3>
               <p>Allow camera access to scan parking spaces through your phone's rear camera. Our Computer Vision analyzes vacant bays and suggests the spot that fits your bike.</p>
               
               <div class="perm-actions">
                 <button class="action-btn glow-btn" id="btn-request-cam">
-                  <span class="btn-icon">📷</span>
+                  <span class="btn-icon">≡ƒô╖</span>
                   <span>Allow & Open Mobile Camera</span>
                 </button>
                 <button class="action-btn btn-secondary" id="btn-use-sample-cam">
-                  <span class="btn-icon">🎬</span>
+                  <span class="btn-icon">≡ƒÄ¼</span>
                   <span>Use Simulated Camera Feed</span>
                 </button>
               </div>
 
               <div class="perm-note">
-                🔒 Runs securely in your browser. Video frames are processed for parking detection only.
+                ≡ƒöÆ Runs securely in your browser. Video frames are processed for parking detection only.
               </div>
             </div>
 
@@ -766,23 +766,23 @@
           <!-- Floating Camera Control Toolbar -->
           <div class="camera-controls-toolbar">
             <button class="cam-tool-btn" id="btn-toggle-camera" title="Start or Stop Camera">
-              <span class="tool-icon" id="icon-cam-toggle">⏹️</span>
+              <span class="tool-icon" id="icon-cam-toggle">ΓÅ╣∩╕Å</span>
               <span id="lbl-cam-toggle">Stop Feed</span>
             </button>
             <button class="cam-tool-btn" id="btn-flip-camera" title="Switch between Rear and Front cameras">
-              <span class="tool-icon">🔄</span>
+              <span class="tool-icon">≡ƒöä</span>
               <span>Flip Camera</span>
             </button>
             <button class="cam-tool-btn" id="btn-scan-frame-now" title="Analyze Current Frame Immediately">
-              <span class="tool-icon">📸</span>
+              <span class="tool-icon">≡ƒô╕</span>
               <span>Scan Frame</span>
             </button>
             <button class="cam-tool-btn active" id="btn-toggle-autoscan" title="Continuous Real-time AI Scanning">
-              <span class="tool-icon">⚡</span>
+              <span class="tool-icon">ΓÜí</span>
               <span id="lbl-autoscan">Auto-Scan: ON</span>
             </button>
             <button class="cam-tool-btn" id="btn-speak-guidance" title="Voice Announcement">
-              <span class="tool-icon">🔊</span>
+              <span class="tool-icon">≡ƒöè</span>
               <span>Speak Spot</span>
             </button>
           </div>
@@ -795,7 +795,7 @@
           <!-- Smart Bike Recommendation Card -->
           <div class="cam-recommendation-card" id="cam-rec-card">
             <div class="rec-badge-live">
-              <span class="sparkle">⭐</span>
+              <span class="sparkle">Γ¡É</span>
               <span>SUGGESTED PLACE FOR YOUR BIKE</span>
             </div>
             
@@ -807,15 +807,15 @@
             <div class="rec-spec-grid">
               <div class="spec-cell">
                 <span class="spec-label">Bay Dimensions:</span>
-                <span class="spec-val" id="cam-rec-dims">—</span>
+                <span class="spec-val" id="cam-rec-dims">ΓÇö</span>
               </div>
               <div class="spec-cell">
                 <span class="spec-label">Your Bike Length:</span>
-                <span class="spec-val" id="cam-rec-bike-len">—</span>
+                <span class="spec-val" id="cam-rec-bike-len">ΓÇö</span>
               </div>
               <div class="spec-cell">
                 <span class="spec-label">Clearance Margin:</span>
-                <span class="spec-val highlight" id="cam-rec-clearance">—</span>
+                <span class="spec-val highlight" id="cam-rec-clearance">ΓÇö</span>
               </div>
               <div class="spec-cell">
                 <span class="spec-label">Parking Fee:</span>
@@ -830,7 +830,7 @@
             </div>
 
             <button class="action-btn glow-btn btn-full" id="btn-confirm-parked">
-              <span>✅ Confirmed: Bike Parked Here</span>
+              <span>Γ£à Confirmed: Bike Parked Here</span>
             </button>
           </div>
 
@@ -846,10 +846,10 @@
           <div class="panel-section">
             <div class="quick-links-group">
               <button class="link-action-btn" id="btn-jump-gps">
-                <span>📍 View Nearby Free Lots on GPS Map</span> →
+                <span>≡ƒôì View Nearby Free Lots on GPS Map</span> ΓåÆ
               </button>
               <button class="link-action-btn" id="btn-jump-reg">
-                <span>👤 Update Registered Bike Info</span> →
+                <span>≡ƒæñ Update Registered Bike Info</span> ΓåÆ
               </button>
             </div>
           </div>
@@ -870,7 +870,7 @@
           
           <div class="gps-header">
             <div class="gps-loc-indicator">
-              <span class="loc-pin">📍</span>
+              <span class="loc-pin">≡ƒôì</span>
               <div class="gps-text-wrap">
                 <div class="gps-title">Your Live Location</div>
                 <div class="gps-coords" id="gps-live-coords">Waiting for GPS location...</div>
@@ -879,7 +879,7 @@
             
             <div class="gps-actions-row">
               <button class="mini-btn glow-btn" id="btn-refresh-gps" title="Request browser GPS location">
-                <span>📡 Detect Live GPS</span>
+                <span>≡ƒôí Detect Live GPS</span>
               </button>
             </div>
 
@@ -890,7 +890,7 @@
                 <button type="button" class="mini-btn" id="btn-city-search">Search</button>
               </div>
               <div class="city-chips">
-                <button type="button" class="chip-btn" data-city="current">📍 My GPS</button>
+                <button type="button" class="chip-btn" data-city="current">≡ƒôì My GPS</button>
                 <button type="button" class="chip-btn" data-city="rajkot" data-lat="22.2904" data-lng="70.7915">Rajkot</button>
                 <button type="button" class="chip-btn" data-city="mumbai" data-lat="19.0760" data-lng="72.8777">Mumbai</button>
                 <button type="button" class="chip-btn" data-city="delhi" data-lat="28.6139" data-lng="77.2090">Delhi</button>
@@ -919,7 +919,7 @@
           
           <div class="map-overlay-card hidden" id="map-route-card">
             <div class="route-header">
-              <span class="route-icon">🧭</span>
+              <span class="route-icon">≡ƒº¡</span>
               <span class="route-title" id="route-dest-name">Central Two-Wheeler & Bike Hub</span>
               <span class="fee-free-badge">Zero Fee</span>
             </div>
@@ -929,7 +929,7 @@
               <div class="route-stat"><span class="stat-badge free" id="route-avail">14 Free Bays</span></div>
             </div>
             <button class="route-arrive-btn glow-btn" id="btn-arrive-simulate">
-              <span>Arrived at Lot → Launch Mobile Camera Scan</span>
+              <span>Arrived at Lot ΓåÆ Launch Mobile Camera Scan</span>
             </button>
           </div>
         </div>
@@ -962,7 +962,7 @@
             <div class="upload-box" id="drop-area">
               <input type="file" id="file-input" accept="image/*" class="file-hidden">
               <label for="file-input" class="upload-label">
-                <span class="upload-icon">📷</span>
+                <span class="upload-icon">≡ƒô╖</span>
                 <span class="upload-text">Upload Custom Parking Photo</span>
                 <span class="upload-subtext">or drag & drop here</span>
               </label>
@@ -976,29 +976,29 @@
             </h3>
             <div class="vehicle-options-grid">
               <button class="veh-btn active" data-veh="bike_cruiser">
-                <span class="veh-icon">🏍️</span>
+                <span class="veh-icon">≡ƒÅì∩╕Å</span>
                 <span class="veh-type">Cruiser</span>
-                <span class="veh-size">2.15 × 0.85m</span>
+                <span class="veh-size">2.15 ├ù 0.85m</span>
               </button>
               <button class="veh-btn" data-veh="bike_scooter">
-                <span class="veh-icon">🛵</span>
+                <span class="veh-icon">≡ƒ¢╡</span>
                 <span class="veh-type">Scooter</span>
-                <span class="veh-size">1.83 × 0.70m</span>
+                <span class="veh-size">1.83 ├ù 0.70m</span>
               </button>
               <button class="veh-btn" data-veh="bike_commuter">
-                <span class="veh-icon">🏍️</span>
+                <span class="veh-icon">≡ƒÅì∩╕Å</span>
                 <span class="veh-type">Commuter</span>
-                <span class="veh-size">2.00 × 0.72m</span>
+                <span class="veh-size">2.00 ├ù 0.72m</span>
               </button>
               <button class="veh-btn" data-veh="bike_sports">
-                <span class="veh-icon">🏍️</span>
+                <span class="veh-icon">≡ƒÅì∩╕Å</span>
                 <span class="veh-type">Sports</span>
-                <span class="veh-size">2.00 × 0.80m</span>
+                <span class="veh-size">2.00 ├ù 0.80m</span>
               </button>
             </div>
 
             <div class="custom-dims-toggle">
-              <button class="link-btn" id="toggle-custom-dims">⚙️ Custom Dimensions</button>
+              <button class="link-btn" id="toggle-custom-dims">ΓÜÖ∩╕Å Custom Dimensions</button>
               <div class="custom-dims-fields hidden" id="custom-dims-container">
                 <div class="input-row">
                   <label>Length (m):</label>
@@ -1026,12 +1026,12 @@
               <label class="toggle-item">
                 <input type="checkbox" id="toggle-slot-polys" checked>
                 <span class="toggle-slider"></span>
-                <span class="toggle-text">Parking Bay Polygons (🟢🔴🟡)</span>
+                <span class="toggle-text">Parking Bay Polygons (≡ƒƒó≡ƒö┤≡ƒƒí)</span>
               </label>
               <label class="toggle-item">
                 <input type="checkbox" id="toggle-metric-labels" checked>
                 <span class="toggle-slider"></span>
-                <span class="toggle-text">Slot Dimensions (Width × Length m)</span>
+                <span class="toggle-text">Slot Dimensions (Width ├ù Length m)</span>
               </label>
               <label class="toggle-item">
                 <input type="checkbox" id="toggle-bev-view" checked>
@@ -1043,7 +1043,7 @@
 
           <!-- Run Button -->
           <button class="action-btn glow-btn" id="run-cv-btn">
-            <span class="btn-icon">⚡</span>
+            <span class="btn-icon">ΓÜí</span>
             <span>Run CV Pipeline Inference</span>
           </button>
         </aside>
@@ -1089,7 +1089,7 @@
               </div>
               <div class="canvas-actions">
                 <button class="mini-btn" id="btn-reset-view">Reset View</button>
-                <button class="mini-btn" id="btn-fullscreen">⛶ Fullscreen</button>
+                <button class="mini-btn" id="btn-fullscreen">Γ¢╢ Fullscreen</button>
               </div>
             </div>
 
@@ -1118,19 +1118,19 @@
         <aside class="insights-panel glass-panel">
           <!-- Step 8 Smart Recommendation Banner -->
           <div class="recommendation-card" id="recommendation-card">
-            <div class="rec-badge">⭐ SMART PARKING RECOMMENDATION</div>
+            <div class="rec-badge">Γ¡É SMART PARKING RECOMMENDATION</div>
             <div class="rec-slot-id" id="rec-slot-title">Bay 3</div>
             <div class="rec-status-line">
-              <span class="rec-pill green" id="rec-status-pill">🟢 Available</span>
-              <span class="rec-pill blue" id="rec-rule-pill">Registered ✅</span>
+              <span class="rec-pill green" id="rec-status-pill">≡ƒƒó Available</span>
+              <span class="rec-pill blue" id="rec-rule-pill">Registered Γ£à</span>
               <span class="rec-pill green">Free (No Fee)</span>
             </div>
-            <div class="rec-dims" id="rec-dims-text">2.7m (W) × 5.5m (L)</div>
+            <div class="rec-dims" id="rec-dims-text">2.7m (W) ├ù 5.5m (L)</div>
             <p class="rec-guidance" id="rec-guidance-text">
               Comfortably fits your motorcycle with ample clearance. Proceed to park.
             </p>
             <button class="rec-action-btn" id="btn-navigate-to-bay">
-              <span>🏍️ Reserve & Guide into Bay</span>
+              <span>≡ƒÅì∩╕Å Reserve & Guide into Bay</span>
             </button>
           </div>
 
@@ -1153,7 +1153,7 @@
                 </div>
               </details>
               <details>
-                <summary>Homography Matrix (3×3 H)</summary>
+                <summary>Homography Matrix (3├ù3 H)</summary>
                 <div class="diag-content">
                   <pre class="matrix-code" id="matrix-display">[Calculating...]</pre>
                 </div>
@@ -1230,9 +1230,9 @@
 
         <div class="rules-grid">
           <div class="rule-card legal">
-            <div class="rule-icon">✅</div>
+            <div class="rule-icon">Γ£à</div>
             <div class="rule-title">Registered Two-Wheeler Lot</div>
-            <div class="rule-zone-badge green">Permitted 24/7 • Free</div>
+            <div class="rule-zone-badge green">Permitted 24/7 ΓÇó Free</div>
             <p>Designated municipal or community motorcycle & scooter bays. 100% free parking with paved bike stands.</p>
             <div class="rule-specs">
               <span>Risk: <strong>Zero</strong></span>
@@ -1241,9 +1241,9 @@
           </div>
 
           <div class="rule-card legal">
-            <div class="rule-icon">🅿️</div>
+            <div class="rule-icon">≡ƒà┐∩╕Å</div>
             <div class="rule-title">Public Permitted Curbside Bay</div>
-            <div class="rule-zone-badge blue">Public Permitted • Free</div>
+            <div class="rule-zone-badge blue">Public Permitted ΓÇó Free</div>
             <p>Municipal street parking. Legal when parked entirely within marked white lines. Free two-wheeler parking.</p>
             <div class="rule-specs">
               <span>Risk: <strong>Low</strong></span>
@@ -1252,9 +1252,9 @@
           </div>
 
           <div class="rule-card illegal">
-            <div class="rule-icon">🚫</div>
+            <div class="rule-icon">≡ƒÜ½</div>
             <div class="rule-title">Strict No-Parking / Tow-Away</div>
-            <div class="rule-zone-badge red">Illegal ❌</div>
+            <div class="rule-zone-badge red">Illegal Γ¥î</div>
             <p>Fire hydrants (5m clearance), marked diagonal hazard zones, red curbs, bus stops, and active driveways. System will <strong>never</strong> recommend these.</p>
             <div class="rule-specs">
               <span>Risk: <strong>Severe (Tow-away)</strong></span>
@@ -1263,9 +1263,9 @@
           </div>
 
           <div class="rule-card warning">
-            <div class="rule-icon">⚠️</div>
+            <div class="rule-icon">ΓÜá∩╕Å</div>
             <div class="rule-title">Private / Unknown Property</div>
-            <div class="rule-zone-badge yellow">Caution 🟡</div>
+            <div class="rule-zone-badge yellow">Caution ≡ƒƒí</div>
             <p>Residential reserved bays or private business spaces. Requires explicit resident permit or authorization tag.</p>
             <div class="rule-specs">
               <span>Risk: <strong>Moderate (Clamping)</strong></span>
@@ -1284,20 +1284,20 @@
         
         <!-- Hero Header -->
         <div class="arch-lab-hero glass-panel">
-          <div class="arch-hero-badge">⭐ SYSTEM ARCHITECTURE &amp; RESEARCH SPECIFICATION</div>
+          <div class="arch-hero-badge">Γ¡É SYSTEM ARCHITECTURE &amp; RESEARCH SPECIFICATION</div>
           <h1 class="arch-hero-title">Smart Parking Detection Using Computer Vision</h1>
           <p class="arch-hero-subtitle">
-            Autonomous Urban Parking Intelligence: Deep Learning (YOLOv8) • Projective Homography (BEV) • Vehicle Dimension Matching • Municipal Rules
+            Autonomous Urban Parking Intelligence: Deep Learning (YOLOv8) ΓÇó Projective Homography (BEV) ΓÇó Vehicle Dimension Matching ΓÇó Municipal Rules
           </p>
           
           <!-- Navigation Quick Pills -->
           <div class="arch-quick-nav">
-            <a href="#arch-objective" class="arch-nav-pill">🎯 Objective</a>
-            <a href="#arch-methodology" class="arch-nav-pill">⭐ 13-Stage Flowchart</a>
-            <a href="#arch-dataset-specs" class="arch-nav-pill">📦 Dataset &amp; 6 Classes</a>
-            <a href="#arch-visual-results" class="arch-nav-pill">🖼️ Visual Results (4 Scenarios)</a>
-            <a href="#arch-metrics-section" class="arch-nav-pill">📊 Empirical Metrics</a>
-            <a href="#arch-conclusion-section" class="arch-nav-pill">🏁 Conclusion &amp; Scope</a>
+            <a href="#arch-objective" class="arch-nav-pill">≡ƒÄ» Objective</a>
+            <a href="#arch-methodology" class="arch-nav-pill">Γ¡É 13-Stage Flowchart</a>
+            <a href="#arch-dataset-specs" class="arch-nav-pill">≡ƒôª Dataset &amp; 6 Classes</a>
+            <a href="#arch-visual-results" class="arch-nav-pill">≡ƒû╝∩╕Å Visual Results (4 Scenarios)</a>
+            <a href="#arch-metrics-section" class="arch-nav-pill">≡ƒôè Empirical Metrics</a>
+            <a href="#arch-conclusion-section" class="arch-nav-pill">≡ƒÅü Conclusion &amp; Scope</a>
           </div>
         </div>
 
@@ -1312,7 +1312,7 @@
           </div>
 
           <div class="arch-objective-box">
-            <div class="arch-obj-icon">🎯</div>
+            <div class="arch-obj-icon">≡ƒÄ»</div>
             <div class="arch-obj-content">
               <h3>Primary System Objective</h3>
               <p class="arch-obj-text">
@@ -1324,45 +1324,45 @@
           <!-- 4 Core Pillars -->
           <div class="arch-pillars-grid">
             <div class="arch-pillar-card">
-              <div class="pillar-icon">🛰️</div>
+              <div class="pillar-icon">≡ƒ¢░∩╕Å</div>
               <h4>Macro Telemetry &amp; GPS</h4>
               <p>Dynamic forward/reverse geocoding and OpenStreetMap radius search across municipal zero-fee public lots.</p>
               <div class="pillar-tag">GIS &amp; Nominatim</div>
             </div>
             <div class="arch-pillar-card">
-              <div class="pillar-icon">📷</div>
+              <div class="pillar-icon">≡ƒô╖</div>
               <h4>On-Device Vision (YOLOv8)</h4>
               <p>Detects vehicles, motorcycles, pedestrians, and obstacles in real-time at 26+ FPS directly on consumer mobile hardware.</p>
-              <div class="pillar-tag">3.16M Params • Ultralytics</div>
+              <div class="pillar-tag">3.16M Params ΓÇó Ultralytics</div>
             </div>
             <div class="arch-pillar-card">
-              <div class="pillar-icon">📐</div>
+              <div class="pillar-icon">≡ƒôÉ</div>
               <h4>Projective Homography (BEV)</h4>
-              <p>Computes 3×3 perspective transformation matrix H to rectify angled camera foreshortening into orthographic metric units.</p>
+              <p>Computes 3├ù3 perspective transformation matrix H to rectify angled camera foreshortening into orthographic metric units.</p>
               <div class="pillar-tag">Bird's-Eye View (BEV)</div>
             </div>
             <div class="arch-pillar-card">
-              <div class="pillar-icon">⚖️</div>
+              <div class="pillar-icon">ΓÜû∩╕Å</div>
               <h4>Dimensional Fit &amp; Rules</h4>
-              <p>Validates driver's vehicle width + door swing margin [ΔW ≥ 0.60m] against municipal bylaws (EV, handicap, tow zones).</p>
+              <p>Validates driver's vehicle width + door swing margin [╬öW ΓëÑ 0.60m] against municipal bylaws (EV, handicap, tow zones).</p>
               <div class="pillar-tag">Shapely IoU &amp; Rules</div>
             </div>
           </div>
         </div>
 
-        <!-- 2. METHODOLOGY & ARCHITECTURE FLOWCHART ⭐ -->
+        <!-- 2. METHODOLOGY & ARCHITECTURE FLOWCHART Γ¡É -->
         <div class="arch-card glass-panel" id="arch-methodology">
           <div class="arch-card-header">
             <span class="arch-section-num">4</span>
             <div style="flex:1;">
               <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;">
                 <div>
-                  <h2 class="arch-card-title">Methodology &amp; System Architecture ⭐</h2>
+                  <h2 class="arch-card-title">Methodology &amp; System Architecture Γ¡É</h2>
                   <span class="arch-card-sub">13-Stage End-to-End Pipeline from Vehicle Ingestion to Optimal Bay Recommendation</span>
                 </div>
                 <div class="arch-flow-actions">
                   <button type="button" class="action-btn glow-btn mini-btn" id="btn-animate-pipeline">
-                    <span>▶️ Animate Pipeline Progression</span>
+                    <span>Γû╢∩╕Å Animate Pipeline Progression</span>
                   </button>
                 </div>
               </div>
@@ -1374,139 +1374,139 @@
             <div class="arch-flowchart" id="arch-flowchart-container">
               <!-- Stage 1 -->
               <div class="flow-node" data-stage="1" id="fnode-1">
-                <div class="node-icon">🚗</div>
+                <div class="node-icon">≡ƒÜù</div>
                 <div class="node-text">
                   <span class="node-title">1. Vehicle Details</span>
                   <span class="node-sub">Length, Width &amp; Door Clearance</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 2 -->
               <div class="flow-node" data-stage="2" id="fnode-2">
-                <div class="node-icon">📍</div>
+                <div class="node-icon">≡ƒôì</div>
                 <div class="node-text">
                   <span class="node-title">2. GPS Location</span>
                   <span class="node-sub">Dynamic City &amp; Coordinates</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 3 -->
               <div class="flow-node" data-stage="3" id="fnode-3">
-                <div class="node-icon">🗺️</div>
+                <div class="node-icon">≡ƒù║∩╕Å</div>
                 <div class="node-text">
                   <span class="node-title">3. Nearby Parking Identification</span>
                   <span class="node-sub">Free Municipal GIS Lot Search</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 4 -->
               <div class="flow-node" data-stage="4" id="fnode-4">
-                <div class="node-icon">📱</div>
+                <div class="node-icon">≡ƒô▒</div>
                 <div class="node-text">
                   <span class="node-title">4. Reach Candidate Area</span>
                   <span class="node-sub">Turn-by-Turn Route Guidance</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 5 -->
               <div class="flow-node" data-stage="5" id="fnode-5">
-                <div class="node-icon">📷</div>
+                <div class="node-icon">≡ƒô╖</div>
                 <div class="node-text">
                   <span class="node-title">5. Smartphone Camera</span>
                   <span class="node-sub">Live Video / Dashcam Stream</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 6 -->
               <div class="flow-node" data-stage="6" id="fnode-6">
-                <div class="node-icon">🔄</div>
+                <div class="node-icon">≡ƒöä</div>
                 <div class="node-text">
                   <span class="node-title">6. Image Preprocessing</span>
                   <span class="node-sub">CLAHE Equalization &amp; Scaling</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 7 -->
               <div class="flow-node" data-stage="7" id="fnode-7">
-                <div class="node-icon">📐</div>
+                <div class="node-icon">≡ƒôÉ</div>
                 <div class="node-text">
                   <span class="node-title">7. Perspective Transformation</span>
-                  <span class="node-sub">3×3 Homography Matrix H → BEV</span>
+                  <span class="node-sub">3├ù3 Homography Matrix H ΓåÆ BEV</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 8 -->
               <div class="flow-node" data-stage="8" id="fnode-8">
-                <div class="node-icon">🅿️</div>
+                <div class="node-icon">≡ƒà┐∩╕Å</div>
                 <div class="node-text">
                   <span class="node-title">8. Parking Region Segmentation</span>
                   <span class="node-sub">Ground-Plane Slot Polygons</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 9 -->
               <div class="flow-node" data-stage="9" id="fnode-9">
-                <div class="node-icon">🤖</div>
+                <div class="node-icon">≡ƒñû</div>
                 <div class="node-text">
                   <span class="node-title">9. YOLO Object Detection</span>
                   <span class="node-sub">YOLOv8 Real-Time Inference</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 10 -->
               <div class="flow-node" data-stage="10" id="fnode-10">
-                <div class="node-icon">🎯</div>
+                <div class="node-icon">≡ƒÄ»</div>
                 <div class="node-text">
                   <span class="node-title">10. Cars / Bikes / People / Obstacles</span>
                   <span class="node-sub">Multi-Class Entity Classification</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 11 -->
               <div class="flow-node" data-stage="11" id="fnode-11">
-                <div class="node-icon">🔍</div>
+                <div class="node-icon">≡ƒöì</div>
                 <div class="node-text">
                   <span class="node-title">11. Parking Space Analysis</span>
-                  <span class="node-sub">🟢 Suitable • 🔴 Occupied • 🟡 Blocked</span>
+                  <span class="node-sub">≡ƒƒó Suitable ΓÇó ≡ƒö┤ Occupied ΓÇó ≡ƒƒí Blocked</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 12 -->
               <div class="flow-node" data-stage="12" id="fnode-12">
-                <div class="node-icon">📏</div>
+                <div class="node-icon">≡ƒôÅ</div>
                 <div class="node-text">
                   <span class="node-title">12. Vehicle-Space Matching</span>
                   <span class="node-sub">Door Clearance &amp; Metric Fit</span>
                 </div>
                 <div class="node-status-dot"></div>
               </div>
-              <div class="flow-arrow">⬇️</div>
+              <div class="flow-arrow">Γ¼ç∩╕Å</div>
 
               <!-- Stage 13 -->
               <div class="flow-node highlight-stage" data-stage="13" id="fnode-13">
-                <div class="node-icon">⭐</div>
+                <div class="node-icon">Γ¡É</div>
                 <div class="node-text">
                   <span class="node-title">13. Best Parking Recommendation</span>
                   <span class="node-sub">Optimal Bay Selection &amp; AR HUD</span>
@@ -1519,7 +1519,7 @@
             <div class="arch-inspector glass-panel" id="arch-stage-inspector">
               <div class="inspector-badge">STAGE DETAILS &amp; MATHEMATICS</div>
               <div class="inspector-header">
-                <span class="inspector-icon" id="insp-icon">🚗</span>
+                <span class="inspector-icon" id="insp-icon">≡ƒÜù</span>
                 <div>
                   <h3 id="insp-title">1. Vehicle Details</h3>
                   <span class="inspector-step-tag" id="insp-tag">Stage 1 of 13</span>
@@ -1536,7 +1536,7 @@
                 <div class="insp-section">
                   <label>Algorithm / Scientific Technique:</label>
                   <div class="insp-code-block" id="insp-formula">
-                    Dataset Query: lookup_vehicle(name) → {length_m, width_m, door_clearance: ±0.30m}
+                    Dataset Query: lookup_vehicle(name) ΓåÆ {length_m, width_m, door_clearance: ┬▒0.30m}
                   </div>
                 </div>
                 <div class="insp-section">
@@ -1567,7 +1567,7 @@
             <div class="dstat-card">
               <div class="dstat-val">12,417</div>
               <div class="dstat-lbl">Total Real Images (PKLot)</div>
-              <div class="dstat-sub">High-resolution 1280×720</div>
+              <div class="dstat-sub">High-resolution 1280├ù720</div>
             </div>
             <div class="dstat-card">
               <div class="dstat-val">695,899</div>
@@ -1589,17 +1589,17 @@
           <!-- Weather Conditions Split -->
           <div class="arch-weather-row">
             <div class="weather-chip">
-              <span class="w-icon">☀️</span>
+              <span class="w-icon">ΓÿÇ∩╕Å</span>
               <span class="w-name">Sunny:</span>
               <strong>5,405 images (43.5%)</strong>
             </div>
             <div class="weather-chip">
-              <span class="w-icon">⛅</span>
+              <span class="w-icon">Γ¢à</span>
               <span class="w-name">Cloudy:</span>
               <strong>4,180 images (33.7%)</strong>
             </div>
             <div class="weather-chip">
-              <span class="w-icon">🌧️</span>
+              <span class="w-icon">≡ƒîº∩╕Å</span>
               <span class="w-name">Rainy:</span>
               <strong>2,832 images (22.8%)</strong>
             </div>
@@ -1610,7 +1610,7 @@
           <div class="arch-classes-grid">
             <div class="class-card">
               <div class="class-head">
-                <span class="class-icon">🚗</span>
+                <span class="class-icon">≡ƒÜù</span>
                 <span class="class-title">Cars &amp; SUVs</span>
               </div>
               <p>Sedans, compacts, SUVs, hatchbacks, and crossovers.</p>
@@ -1622,7 +1622,7 @@
 
             <div class="class-card">
               <div class="class-head">
-                <span class="class-icon">🏍️</span>
+                <span class="class-icon">≡ƒÅì∩╕Å</span>
                 <span class="class-title">Motorcycles &amp; Scooters</span>
               </div>
               <p>Bikes, scooters, mopeds, and electric two-wheelers.</p>
@@ -1634,7 +1634,7 @@
 
             <div class="class-card">
               <div class="class-head">
-                <span class="class-icon">🚌</span>
+                <span class="class-icon">≡ƒÜî</span>
                 <span class="class-title">Other Vehicles</span>
               </div>
               <p>Delivery trucks, vans, auto rickshaws, and transit buses.</p>
@@ -1646,7 +1646,7 @@
 
             <div class="class-card">
               <div class="class-head">
-                <span class="class-icon">🧍</span>
+                <span class="class-icon">≡ƒºì</span>
                 <span class="class-title">People / Pedestrians</span>
               </div>
               <p>Pedestrians walking across lots and drivers entering/exiting bays.</p>
@@ -1658,7 +1658,7 @@
 
             <div class="class-card">
               <div class="class-head">
-                <span class="class-icon">🚧</span>
+                <span class="class-icon">≡ƒÜº</span>
                 <span class="class-title">Obstacles &amp; Hazards</span>
               </div>
               <p>Bicycles parked in bays, traffic cones, debris, bollards, hydrants.</p>
@@ -1670,7 +1670,7 @@
 
             <div class="class-card">
               <div class="class-head">
-                <span class="class-icon">🅿️</span>
+                <span class="class-icon">≡ƒà┐∩╕Å</span>
                 <span class="class-title">Parking Spaces</span>
               </div>
               <p>4-corner homography ground boundary polygons for each bay.</p>
@@ -1695,16 +1695,16 @@
           <!-- Scenario Tabs -->
           <div class="arch-scenario-tabs" id="arch-scenario-tab-bar">
             <button type="button" class="arch-scen-btn active" data-scen="scenario_1_aerial">
-              <span>🏙️ Scenario 1: Overhead Angle Grid</span>
+              <span>≡ƒÅÖ∩╕Å Scenario 1: Overhead Angle Grid</span>
             </button>
             <button type="button" class="arch-scen-btn" data-scen="scenario_2_driver">
-              <span>🚘 Scenario 2: Driver Dashcam (Obstruction)</span>
+              <span>≡ƒÜÿ Scenario 2: Driver Dashcam (Obstruction)</span>
             </button>
             <button type="button" class="arch-scen-btn" data-scen="scenario_3_rooftop">
-              <span>🏢 Scenario 3: Elevated Rooftop (Pedestrian)</span>
+              <span>≡ƒÅó Scenario 3: Elevated Rooftop (Pedestrian)</span>
             </button>
             <button type="button" class="arch-scen-btn" data-scen="scenario_4_tight">
-              <span>📐 Scenario 4: Narrow Slot SUV Fit Test</span>
+              <span>≡ƒôÉ Scenario 4: Narrow Slot SUV Fit Test</span>
             </button>
           </div>
 
@@ -1713,13 +1713,13 @@
             <span class="view-mode-label">Inspection View:</span>
             <div class="view-mode-chips" id="arch-view-mode-chips">
               <button type="button" class="view-chip active" data-vmode="annotated">
-                <span>🎯 Annotated Detection Overlay</span>
+                <span>≡ƒÄ» Annotated Detection Overlay</span>
               </button>
               <button type="button" class="view-chip" data-vmode="input">
-                <span>📷 Original Input Camera View</span>
+                <span>≡ƒô╖ Original Input Camera View</span>
               </button>
               <button type="button" class="view-chip" data-vmode="bev">
-                <span>📐 Bird's-Eye View (BEV Homography)</span>
+                <span>≡ƒôÉ Bird's-Eye View (BEV Homography)</span>
               </button>
             </div>
           </div>
@@ -1729,14 +1729,14 @@
             <div class="arch-scen-left">
               <div class="scen-image-container">
                 <img id="arch-scen-img" src="/static/outputs/output_annotated.jpg" alt="Scenario Result Visualization" class="arch-result-img" onerror="this.src='/static/scenarios/scenario_1_aerial.jpg'">
-                <div class="scen-overlay-badge" id="arch-scen-overlay-badge">🟢 2 AVAILABLE • 🔴 4 OCCUPIED</div>
+                <div class="scen-overlay-badge" id="arch-scen-overlay-badge">≡ƒƒó 2 AVAILABLE ΓÇó ≡ƒö┤ 4 OCCUPIED</div>
               </div>
             </div>
 
             <div class="arch-scen-right">
               <h3 class="scen-title" id="arch-scen-title">Scenario 1: Overhead Angle Parking Bay Grid</h3>
               <p class="scen-desc" id="arch-scen-desc">
-                Standard 6-bay parking row with 4 parked vehicles and 2 vacant slots. Perspective homography calculates 2.72m × 5.48m real-world bay dimensions.
+                Standard 6-bay parking row with 4 parked vehicles and 2 vacant slots. Perspective homography calculates 2.72m ├ù 5.48m real-world bay dimensions.
               </p>
 
               <!-- Slot State Taxonomy Legend -->
@@ -1744,31 +1744,31 @@
                 <div class="slegend-item">
                   <span class="slegend-dot green"></span>
                   <div>
-                    <strong>🟢 Suitable Space:</strong>
-                    <span>Bay vacant, legal rules verified, vehicle fits with door clearance margin ≥ 0.60m</span>
+                    <strong>≡ƒƒó Suitable Space:</strong>
+                    <span>Bay vacant, legal rules verified, vehicle fits with door clearance margin ΓëÑ 0.60m</span>
                   </div>
                 </div>
                 <div class="slegend-item">
                   <span class="slegend-dot red"></span>
                   <div>
-                    <strong>🔴 Occupied Space:</strong>
-                    <span>Parked car, truck, or motorcycle present (Vehicle IoU overlap ≥ 0.20)</span>
+                    <strong>≡ƒö┤ Occupied Space:</strong>
+                    <span>Parked car, truck, or motorcycle present (Vehicle IoU overlap ΓëÑ 0.20)</span>
                   </div>
                 </div>
                 <div class="slegend-item">
                   <span class="slegend-dot yellow"></span>
                   <div>
-                    <strong>🟡 Blocked Space:</strong>
-                    <span>Obstacle detected (pedestrian, bicycle, traffic cone, debris) blocking entry (IoU ≥ 0.05)</span>
+                    <strong>≡ƒƒí Blocked Space:</strong>
+                    <span>Obstacle detected (pedestrian, bicycle, traffic cone, debris) blocking entry (IoU ΓëÑ 0.05)</span>
                   </div>
                 </div>
               </div>
 
               <!-- Recommendation Card -->
               <div class="arch-rec-card" id="arch-scen-rec-box">
-                <div class="arch-rec-badge">⭐ SYSTEM RECOMMENDATION</div>
+                <div class="arch-rec-badge">Γ¡É SYSTEM RECOMMENDATION</div>
                 <div class="arch-rec-text" id="arch-scen-rec-text">
-                  Bay 3 Recommended — Optimal Fit (2.72m × 5.48m) with +0.82m door swing clearance.
+                  Bay 3 Recommended ΓÇö Optimal Fit (2.72m ├ù 5.48m) with +0.82m door swing clearance.
                 </div>
               </div>
 
@@ -1827,7 +1827,7 @@
             <div class="metric-card glow">
               <div class="metric-val">96.5%</div>
               <div class="metric-label">Slot Occupancy Accuracy</div>
-              <div class="metric-desc">Correct 🟢/🔴/🟡 slot state classification</div>
+              <div class="metric-desc">Correct ≡ƒƒó/≡ƒö┤/≡ƒƒí slot state classification</div>
             </div>
             <div class="metric-card glow">
               <div class="metric-val">38.4 ms</div>
@@ -1852,35 +1852,35 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td><strong>🚗 Cars &amp; SUVs</strong></td>
+                    <td><strong>≡ƒÜù Cars &amp; SUVs</strong></td>
                     <td class="high">93.4%</td>
                     <td class="high">91.2%</td>
                     <td class="high">0.923</td>
                     <td class="high">94.8%</td>
                   </tr>
                   <tr>
-                    <td><strong>🏍️ Motorcycles &amp; Scooters</strong></td>
+                    <td><strong>≡ƒÅì∩╕Å Motorcycles &amp; Scooters</strong></td>
                     <td class="high">91.8%</td>
                     <td class="high">88.5%</td>
                     <td class="high">0.901</td>
                     <td class="high">90.2%</td>
                   </tr>
                   <tr>
-                    <td><strong>🚌 Buses &amp; Trucks</strong></td>
+                    <td><strong>≡ƒÜî Buses &amp; Trucks</strong></td>
                     <td class="high">92.0%</td>
                     <td class="high">87.6%</td>
                     <td class="high">0.897</td>
                     <td class="high">92.1%</td>
                   </tr>
                   <tr>
-                    <td><strong>🧍 Pedestrians</strong></td>
+                    <td><strong>≡ƒºì Pedestrians</strong></td>
                     <td class="med">89.2%</td>
                     <td class="med">85.1%</td>
                     <td class="med">0.871</td>
                     <td class="med">88.4%</td>
                   </tr>
                   <tr>
-                    <td><strong>🚧 Obstacles / Bicycles</strong></td>
+                    <td><strong>≡ƒÜº Obstacles / Bicycles</strong></td>
                     <td class="med">88.0%</td>
                     <td class="med">83.5%</td>
                     <td class="med">0.857</td>
@@ -1901,26 +1901,26 @@
                       <th colspan="3">Predicted Class</th>
                     </tr>
                     <tr>
-                      <th>🟢 Available</th>
-                      <th>🔴 Occupied</th>
-                      <th>🟡 Blocked</th>
+                      <th>≡ƒƒó Available</th>
+                      <th>≡ƒö┤ Occupied</th>
+                      <th>≡ƒƒí Blocked</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td><strong>🟢 Available</strong></td>
+                      <td><strong>≡ƒƒó Available</strong></td>
                       <td class="cm-cell hit"><strong>98.2%</strong></td>
                       <td class="cm-cell miss">1.4%</td>
                       <td class="cm-cell miss">0.4%</td>
                     </tr>
                     <tr>
-                      <td><strong>🔴 Occupied</strong></td>
+                      <td><strong>≡ƒö┤ Occupied</strong></td>
                       <td class="cm-cell miss">1.9%</td>
                       <td class="cm-cell hit"><strong>97.4%</strong></td>
                       <td class="cm-cell miss">0.7%</td>
                     </tr>
                     <tr>
-                      <td><strong>🟡 Blocked</strong></td>
+                      <td><strong>≡ƒƒí Blocked</strong></td>
                       <td class="cm-cell miss">2.1%</td>
                       <td class="cm-cell miss">3.3%</td>
                       <td class="cm-cell hit"><strong>94.6%</strong></td>
@@ -1928,7 +1928,7 @@
                   </tbody>
                 </table>
                 <div class="cmatrix-caption">
-                  Overall Accuracy: <strong>96.73%</strong> • Evaluated on 695,899 parking segments across sunny, cloudy, and rainy conditions.
+                  Overall Accuracy: <strong>96.73%</strong> ΓÇó Evaluated on 695,899 parking segments across sunny, cloudy, and rainy conditions.
                 </div>
               </div>
             </div>
@@ -1955,22 +1955,22 @@
 
             <div class="future-work-grid">
               <div class="fwork-card">
-                <div class="fwork-icon">📡</div>
+                <div class="fwork-icon">≡ƒôí</div>
                 <h4>1. Municipal IoT &amp; Telemetry Integration</h4>
                 <p>Hybrid integration with smart city parking meter APIs for proactive space pre-allocation before camera line-of-sight.</p>
               </div>
               <div class="fwork-card">
-                <div class="fwork-icon">🌙</div>
+                <div class="fwork-icon">≡ƒîÖ</div>
                 <h4>2. Night-Vision &amp; Low-Light Robustness</h4>
                 <p>Multi-spectral IR and low-light image enhancement for unlit underground lots and nighttime curbside parking.</p>
               </div>
               <div class="fwork-card">
-                <div class="fwork-icon">⚡</div>
+                <div class="fwork-icon">ΓÜí</div>
                 <h4>3. Edge NPU &amp; Apple CoreML / ONNX</h4>
                 <p>Compiling the model onto Apple Neural Engine, Google Coral TPU, and Qualcomm NPU for sub-10ms localized inference.</p>
               </div>
               <div class="fwork-card">
-                <div class="fwork-icon">🏙️</div>
+                <div class="fwork-icon">≡ƒÅÖ∩╕Å</div>
                 <h4>4. Multi-City GIS Expansion</h4>
                 <p>Expanding the pre-calibrated geographic hubs from 6 metropolitan centers to 50+ major tier-1 and tier-2 cities worldwide.</p>
               </div>
