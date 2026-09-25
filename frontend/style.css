@@ -4876,6 +4876,7 @@ select.custom-select:focus {
   margin: 0 0 0.65rem 0;
   background: linear-gradient(135deg, #ffffff 40%, #93c5fd 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
