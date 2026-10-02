@@ -307,11 +307,11 @@ const state = {
 
 // Preset Quick Fallbacks if offline
 const BIKE_PRESETS = {
-  bike_cruiser: { name: 'Royal Enfield Classic 350', length: 2.14, width: 0.84, clearance: 0.20, icon: '≡ƒÅì∩╕Å' },
-  bike_scooter: { name: 'Honda Activa 6G', length: 1.83, width: 0.69, clearance: 0.15, icon: '≡ƒ¢╡' },
-  bike_commuter: { name: 'Hero Splendor Plus', length: 2.00, width: 0.72, clearance: 0.15, icon: '≡ƒÅì∩╕Å' },
-  bike_sports: { name: 'Yamaha YZF R15 V4', length: 1.99, width: 0.72, clearance: 0.18, icon: '≡ƒÅì∩╕Å' },
-  bike_ev: { name: 'Ather 450X', length: 1.83, width: 0.73, clearance: 0.15, icon: 'ΓÜí' }
+  bike_cruiser: { name: 'Royal Enfield Classic 350', length: 2.14, width: 0.84, clearance: 0.20, icon: '🏍️' },
+  bike_scooter: { name: 'Honda Activa 6G', length: 1.83, width: 0.69, clearance: 0.15, icon: '🛵' },
+  bike_commuter: { name: 'Hero Splendor Plus', length: 2.00, width: 0.72, clearance: 0.15, icon: '🏍️' },
+  bike_sports: { name: 'Yamaha YZF R15 V4', length: 1.99, width: 0.72, clearance: 0.18, icon: '🏍️' },
+  bike_ev: { name: 'Ather 450X', length: 1.83, width: 0.73, clearance: 0.15, icon: '⚡' }
 };
 
 // ==========================================================================
@@ -411,15 +411,15 @@ function initProfileUI() {
     const vehDimsEl = document.getElementById('nav-veh-dims');
     const vehPlateEl = document.getElementById('nav-veh-plate');
 
-    const vIcon = p.icon || (p.wheels === 4 ? '≡ƒÜù' : (p.wheels === 3 ? '≡ƒ¢║' : '≡ƒÅì∩╕Å'));
+    const vIcon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
     if (riderNameEl) riderNameEl.textContent = p.name;
     if (vehNameEl) vehNameEl.textContent = `${vIcon} ${p.bikeModel}`;
-    if (vehDimsEl) vehDimsEl.textContent = `(${p.length}m ├ù ${p.width}m)`;
+    if (vehDimsEl) vehDimsEl.textContent = `(${p.length}m × ${p.width}m)`;
     if (vehPlateEl) vehPlateEl.textContent = p.licensePlate || 'NO-PLATE';
 
     const camBikeTag = document.getElementById('cam-active-bike-tag');
     if (camBikeTag) {
-      camBikeTag.textContent = `${vIcon} ${p.bikeModel} (${p.length}m ├ù ${p.width}m)`;
+      camBikeTag.textContent = `${vIcon} ${p.bikeModel} (${p.length}m × ${p.width}m)`;
     }
 
     const recBikeLen = document.getElementById('cam-rec-bike-len');
@@ -433,12 +433,12 @@ function initProfileUI() {
 
     const camBikeTag = document.getElementById('cam-active-bike-tag');
     if (camBikeTag) {
-      camBikeTag.textContent = `≡ƒÜù Register Vehicle to Auto-Match`;
+      camBikeTag.textContent = `🚗 Register Vehicle to Auto-Match`;
     }
 
     const recBikeLen = document.getElementById('cam-rec-bike-len');
     if (recBikeLen) {
-      recBikeLen.textContent = `ΓÇö`;
+      recBikeLen.textContent = `—`;
     }
   }
 }
@@ -527,7 +527,7 @@ function initRegistrationModal() {
       state.userProfile = null;
       localStorage.removeItem('PARKVISION_USER_PROFILE');
       initProfileUI();
-      showToast('≡ƒæï You have been logged out.');
+      showToast('👋 You have been logged out.');
     });
   }
 
@@ -553,7 +553,7 @@ function initRegistrationModal() {
     if (widthInput) widthInput.value = v.width_m;
     if (clearanceInput && v.clearance_m) clearanceInput.value = v.clearance_m;
 
-    const icon = v.icon || (v.wheels === 4 ? '≡ƒÜù' : (v.wheels === 3 ? '≡ƒ¢║' : '≡ƒÅì∩╕Å'));
+    const icon = v.icon || (v.wheels === 4 ? '🚗' : (v.wheels === 3 ? '🛺' : '🏍️'));
     if (modalBikeIcon) modalBikeIcon.textContent = icon;
 
     // Update banner
@@ -584,16 +584,16 @@ function initRegistrationModal() {
         if (modelInput) {
           if (modalWheelsFilter === 4) {
             modelInput.placeholder = 'Type car name e.g. Swift, Creta, Thar, Fortuner, Nexon...';
-            if (modalBikeIcon) modalBikeIcon.textContent = '≡ƒÜù';
+            if (modalBikeIcon) modalBikeIcon.textContent = '🚗';
           } else if (modalWheelsFilter === 3) {
             modelInput.placeholder = 'Type 3-wheeler name e.g. Bajaj RE, Piaggio Ape, Treo...';
-            if (modalBikeIcon) modalBikeIcon.textContent = '≡ƒ¢║';
+            if (modalBikeIcon) modalBikeIcon.textContent = '🛺';
           } else if (modalWheelsFilter === 2) {
             modelInput.placeholder = 'Type 2-wheeler name e.g. Activa, Splendor, Pulsar, Classic 350...';
-            if (modalBikeIcon) modalBikeIcon.textContent = '≡ƒÅì∩╕Å';
+            if (modalBikeIcon) modalBikeIcon.textContent = '🏍️';
           } else {
             modelInput.placeholder = 'Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Creta...';
-            if (modalBikeIcon) modalBikeIcon.textContent = '≡ƒÜù';
+            if (modalBikeIcon) modalBikeIcon.textContent = '🚗';
           }
         }
 
@@ -612,7 +612,7 @@ function initRegistrationModal() {
         if (modelInput) modelInput.value = vname;
         applyModalVehicleDetection(vname);
         if (suggestionsList) suggestionsList.classList.add('hidden');
-        showToast(`Γ£¿ Auto-detected: ${vname}`);
+        showToast(`✨ Auto-detected: ${vname}`);
       });
     });
   }
@@ -631,18 +631,18 @@ function initRegistrationModal() {
       item.className = 'autocomplete-item';
       const wTag = v.wheels === 4 ? '<span class="wz-ac-tag tag-4w">4W Car</span>' : (v.wheels === 3 ? '<span class="wz-ac-tag tag-3w">3W Auto</span>' : '<span class="wz-ac-tag tag-2w">2W Bike</span>');
       item.innerHTML = `
-        <div class="auto-item-name">${v.icon || '≡ƒÜù'} ${v.name}</div>
+        <div class="auto-item-name">${v.icon || '🚗'} ${v.name}</div>
         <div class="auto-item-meta">
           ${wTag}
           <span class="auto-item-cat">${v.category}</span>
-          <span class="auto-item-dims">${v.length_m}m ├ù ${v.width_m}m</span>
+          <span class="auto-item-dims">${v.length_m}m × ${v.width_m}m</span>
         </div>
       `;
       item.addEventListener('click', () => {
         if (modelInput) modelInput.value = v.name;
         applyModalVehicleDetection(v.name, v);
         suggestionsList.classList.add('hidden');
-        showToast(`Γ£¿ Auto-fetched: ${v.name} (${v.length_m}m ├ù ${v.width_m}m)`);
+        showToast(`✨ Auto-fetched: ${v.name} (${v.length_m}m × ${v.width_m}m)`);
       });
       suggestionsList.appendChild(item);
     });
@@ -732,7 +732,7 @@ function initRegistrationModal() {
 
       const wheelsVal = vInfo ? (vInfo.wheels || 2) : 2;
       const categoryVal = vInfo ? (vInfo.category || 'Vehicle') : 'Vehicle';
-      const iconVal = vInfo ? (vInfo.icon || (wheelsVal === 4 ? '≡ƒÜù' : (wheelsVal === 3 ? '≡ƒ¢║' : '≡ƒÅì∩╕Å'))) : '≡ƒÜù';
+      const iconVal = vInfo ? (vInfo.icon || (wheelsVal === 4 ? '🚗' : (wheelsVal === 3 ? '🛺' : '🏍️'))) : '🚗';
 
       let bikeTypeVal = 'bike_cruiser';
       if (wheelsVal === 4) {
@@ -765,7 +765,7 @@ function initRegistrationModal() {
 
       saveUserProfile(profile);
       closeModal();
-      showToast(`Γ£à Profile registered & saved: ${iconVal} ${modelVal} (${lenVal}m ├ù ${widVal}m)`);
+      showToast(`✅ Profile registered & saved: ${iconVal} ${modelVal} (${lenVal}m × ${widVal}m)`);
       refreshUserGPS();
       if (state.currentTab === 'cv-lab') runCVAnalysis();
 
@@ -855,7 +855,7 @@ function initRegistrationModal() {
 
           saveUserProfile(profile);
           closeModal();
-          showToast(`≡ƒæï Welcome, ${profile.name}!`);
+          showToast(`👋 Welcome, ${profile.name}!`);
           refreshUserGPS();
           if (state.currentTab === 'cv-lab') runCVAnalysis();
         } else {
@@ -869,7 +869,7 @@ function initRegistrationModal() {
           state.userProfile = JSON.parse(saved);
           initProfileUI();
           closeModal();
-          showToast('≡ƒæï Session restored from local storage.');
+          showToast('👋 Session restored from local storage.');
         }
       }
     });
@@ -1007,7 +1007,7 @@ function initCameraScanner() {
 
   if (confirmParkedBtn) {
     confirmParkedBtn.addEventListener('click', () => {
-      showToast('≡ƒÄë Parking Confirmed! Have a safe trip.');
+      showToast('🎉 Parking Confirmed! Have a safe trip.');
       speakGuidance('Your bike is safely parked in the recommended free bay. Have a great day!');
     });
   }
@@ -1043,9 +1043,9 @@ async function startCameraStream() {
     await video.play();
 
     permOverlay.classList.add('hidden');
-    statusLabel.textContent = `≡ƒƒó Live Rear Camera Feed (${state.camera.facingMode})`;
+    statusLabel.textContent = `🟢 Live Rear Camera Feed (${state.camera.facingMode})`;
     document.getElementById('lbl-cam-toggle').textContent = 'Stop Feed';
-    document.getElementById('icon-cam-toggle').textContent = 'ΓÅ╣∩╕Å';
+    document.getElementById('icon-cam-toggle').textContent = '⏹️';
 
     video.onloadedmetadata = () => {
       resizeARCanvas();
@@ -1055,7 +1055,7 @@ async function startCameraStream() {
     };
   } catch (err) {
     console.error('Camera access error:', err);
-    statusLabel.textContent = 'ΓÜá∩╕Å Camera Access Denied';
+    statusLabel.textContent = '⚠️ Camera Access Denied';
     alert(`Camera Permission Notice:\n${err.message || 'Permission denied.'}\n\nYou can click 'Use Simulated Camera Feed' to test the Computer Vision pipeline without physical camera hardware.`);
   }
 }
@@ -1073,9 +1073,9 @@ function startSimulatedCamera() {
   video.poster = `${API_BASE}/static/scenarios/scenario_2_driver.jpg`;
   
   permOverlay.classList.add('hidden');
-  statusLabel.textContent = '≡ƒÄ¼ Simulated Smartphone Camera Feed (Driver View)';
+  statusLabel.textContent = '🎬 Simulated Smartphone Camera Feed (Driver View)';
   document.getElementById('lbl-cam-toggle').textContent = 'Stop Feed';
-  document.getElementById('icon-cam-toggle').textContent = 'ΓÅ╣∩╕Å';
+  document.getElementById('icon-cam-toggle').textContent = '⏹️';
 
   resizeARCanvas();
   // Trigger single scan & auto-scan
@@ -1103,7 +1103,7 @@ function stopCamera() {
   document.getElementById('cam-permission-card').classList.remove('hidden');
   document.getElementById('cam-status-label').textContent = 'Camera Stopped';
   document.getElementById('lbl-cam-toggle').textContent = 'Start Feed';
-  document.getElementById('icon-cam-toggle').textContent = 'Γû╢∩╕Å';
+  document.getElementById('icon-cam-toggle').textContent = '▶️';
   clearARCanvas();
 }
 
@@ -1200,9 +1200,9 @@ function renderLiveScanResults(data) {
 
   if (rec) {
     recTitle.textContent = rec.label || `Bay ${rec.id}`;
-    recStatus.textContent = '≡ƒƒó Available & Fits Bike';
+    recStatus.textContent = '🟢 Available & Fits Bike';
     recStatus.style.color = '#34d399';
-    recDims.textContent = `${rec.metrics.length_m}m (L) ├ù ${rec.metrics.width_m}m (W)`;
+    recDims.textContent = `${rec.metrics.length_m}m (L) × ${rec.metrics.width_m}m (W)`;
     
     const margin = rec.vehicle_fit ? rec.vehicle_fit.width_margin_m : 0.35;
     recClearance.textContent = `+${margin}m clearance`;
@@ -1217,9 +1217,9 @@ function renderLiveScanResults(data) {
     }
   } else {
     recTitle.textContent = 'Scanning View...';
-    recStatus.textContent = '≡ƒƒí No Fitting Spot Found';
+    recStatus.textContent = '🟡 No Fitting Spot Found';
     recStatus.style.color = '#fbbf24';
-    recDims.textContent = 'ΓÇö';
+    recDims.textContent = '—';
     recClearance.textContent = '0.0m';
     recMsg.textContent = `All spaces in this camera angle are occupied or too small for your ${p.bikeModel} (${p.length}m length). Move camera forward.`;
   }
@@ -1237,9 +1237,9 @@ function renderLiveScanResults(data) {
       item.className = `live-bay-item ${isRec ? 'suggested' : ''}`;
       item.innerHTML = `
         <div>
-          <strong>${s.label}</strong> (${s.length_m}m ├ù ${s.width_m}m)
+          <strong>${s.label}</strong> (${s.length_m}m × ${s.width_m}m)
           <div style="font-size:0.74rem;font-weight:600;color:${s.status === 'AVAILABLE' ? 'var(--color-green)' : 'var(--color-red)'};">
-            ${s.status === 'AVAILABLE' ? '≡ƒƒó Available' : '≡ƒö┤ Occupied'} ΓÇó ${isRec ? 'Γ¡É Optimal Fit' : s.fit_badge}
+            ${s.status === 'AVAILABLE' ? '🟢 Available' : '🔴 Occupied'} • ${isRec ? '⭐ Optimal Fit' : s.fit_badge}
           </div>
         </div>
         <div style="text-align:right;">
@@ -1306,7 +1306,7 @@ function drawAROverlay(arSlots, recommendedSlot) {
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('≡ƒà┐∩╕Å', cx, cy);
+      ctx.fillText('🅿️', cx, cy);
 
       // Position AR Floating Pointer Arrow
       if (pointer) {
@@ -1363,7 +1363,9 @@ function speakGuidance(text, force = false) {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.0;
     utterance.pitch = 1.05;
-    utterance.lang = 'en-US';
+    const langCodes = { en: 'en-US', hi: 'hi-IN', gu: 'gu-IN', mr: 'mr-IN', es: 'es-ES', fr: 'fr-FR' };
+    const curLang = (window.i18n && window.i18n.currentLang) || 'en';
+    utterance.lang = langCodes[curLang] || 'en-US';
     window.speechSynthesis.speak(utterance);
   } catch (e) {
     console.warn('Speech synthesis error:', e);
@@ -1405,9 +1407,9 @@ function initGPSFeatures() {
     state.userLocationLive = false;
     const coordsLabel = document.getElementById('gps-live-coords');
     if (coordsLabel) {
-      coordsLabel.textContent = `${lat.toFixed(4)}┬░ N, ${lng.toFixed(4)}┬░ E (${cityName})`;
+      coordsLabel.textContent = `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E (${cityName})`;
     }
-    showToast(`≡ƒôì Set location to ${cityName} ΓÇö finding nearby parking`);
+    showToast(`📍 Set location to ${cityName} — finding nearby parking`);
     if (state.map) {
       state.map.setView(state.userLocation, 15);
       updateUserMapMarker();
@@ -1469,7 +1471,7 @@ function initGPSFeatures() {
 
       const lat = parseFloat(btn.getAttribute('data-lat'));
       const lng = parseFloat(btn.getAttribute('data-lng'));
-      const cityName = btn.textContent.replace('≡ƒôì', '').trim();
+      const cityName = btn.textContent.replace('📍', '').trim();
       if (!isNaN(lat) && !isNaN(lng)) {
         setCityLocation(lat, lng, cityName);
       }
@@ -1479,16 +1481,16 @@ function initGPSFeatures() {
 
 async function refreshUserGPS() {
   const coordsLabel = document.getElementById('gps-live-coords');
-  if (coordsLabel) coordsLabel.textContent = '≡ƒôí Detecting live GPS location...';
+  if (coordsLabel) coordsLabel.textContent = '📡 Detecting live GPS location...';
 
   try {
     const loc = await detectRealLiveLocation();
     state.userLocation = [loc.latitude, loc.longitude];
     state.userLocationLive = loc.isLive;
     if (coordsLabel) {
-      coordsLabel.textContent = `${loc.latitude.toFixed(4)}┬░ N, ${loc.longitude.toFixed(4)}┬░ E (${loc.city} ΓÇó ${loc.source} Γ£à)`;
+      coordsLabel.textContent = `${loc.latitude.toFixed(4)}° N, ${loc.longitude.toFixed(4)}° E (${loc.city} • ${loc.source} ✅)`;
     }
-    showToast(`≡ƒôì Live Location: ${loc.city} (${loc.source})`);
+    showToast(`📍 Live Location: ${loc.city} (${loc.source})`);
     if (state.map) {
       updateUserMapMarker();
       loadMapParkingLots();
@@ -1497,7 +1499,7 @@ async function refreshUserGPS() {
     console.warn('refreshUserGPS error:', err);
     state.userLocation = [22.2904, 70.7915];
     state.userLocationLive = false;
-    if (coordsLabel) coordsLabel.textContent = `22.2904┬░ N, 70.7915┬░ E (Rajkot Central Hub)`;
+    if (coordsLabel) coordsLabel.textContent = `22.2904° N, 70.7915° E (Rajkot Central Hub)`;
     if (state.map) {
       updateUserMapMarker();
       loadMapParkingLots();
@@ -1545,7 +1547,7 @@ function updateUserMapMarker() {
 
   const userIcon = L.divIcon({
     className: 'user-map-pin',
-    html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:11px;">≡ƒôì</div>`,
+    html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:11px;">📍</div>`,
     iconSize: [22, 22],
     iconAnchor: [11, 11]
   });
@@ -1553,7 +1555,7 @@ function updateUserMapMarker() {
   const vehName = (state.userProfile && state.userProfile.bikeModel) ? state.userProfile.bikeModel : 'Your Vehicle';
   state.mapUserMarker = L.marker(state.userLocation, { icon: userIcon })
     .addTo(state.map)
-    .bindPopup(`<strong>≡ƒôì You (${vehName})</strong><br>GPS Active ΓÇó Finding nearby free parking bays`);
+    .bindPopup(`<strong>📍 You (${vehName})</strong><br>GPS Active • Finding nearby free parking bays`);
 
   state.map.panTo(state.userLocation);
 }
@@ -1605,7 +1607,7 @@ async function loadMapParkingLots() {
       // Map marker with free bike parking styling
       const lotIcon = L.divIcon({
         className: 'lot-map-pin',
-        html: `<div style="background:${lot.live_available > 0 ? '#059669' : '#dc2626'};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.2);">${lot.live_available} ≡ƒÅì∩╕Å</div>`,
+        html: `<div style="background:${lot.live_available > 0 ? '#059669' : '#dc2626'};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.2);">${lot.live_available} 🏍️</div>`,
         iconSize: [44, 24],
         iconAnchor: [22, 12]
       });
@@ -1614,7 +1616,7 @@ async function loadMapParkingLots() {
       marker.bindPopup(`
         <strong>${lot.name}</strong><br>
         <span style="color:#10b981;font-weight:bold;">${lot.live_available} Free Bays</span> (No Fee)<br>
-        <small style="color:#64748b;">Live Occupancy: ${lot.occupancy_pct || 65}% ΓÇó ${lot.total_capacity || 40} Total Bays</small>
+        <small style="color:#64748b;">Live Occupancy: ${lot.occupancy_pct || 65}% • ${lot.total_capacity || 40} Total Bays</small>
       `);
       marker.on('click', () => selectParkingLot(lot));
       state.mapMarkers.push(marker);
@@ -1630,13 +1632,13 @@ async function loadMapParkingLots() {
           </div>
           <div class="lot-meta">
             <span>${lot.type}</span>
-            <span class="lot-avail-tag ${lot.live_available > 5 ? 'avail-good' : 'avail-low'}">≡ƒƒó ${lot.live_available} Free Bays</span>
+            <span class="lot-avail-tag ${lot.live_available > 5 ? 'avail-good' : 'avail-low'}">🟢 ${lot.live_available} Free Bays</span>
             <span class="lot-occ-tag" style="background:rgba(59,130,246,0.1);color:#2563eb;font-size:0.75rem;padding:2px 6px;border-radius:4px;font-weight:600;">${lot.occupancy_pct || 65}% Occ</span>
             <span class="fee-free-badge">Zero Fee</span>
           </div>
           <div class="lot-actions">
             <button class="btn-nav-lot" onclick="event.stopPropagation(); triggerNavigation('${lot.id}')">
-              ≡ƒº¡ Navigate & Scan
+              🧭 Navigate & Scan
             </button>
           </div>
         `;
@@ -1700,7 +1702,7 @@ window.triggerNavigation = function(lotId) {
   const lot = (state.allLotsData && state.allLotsData.find(l => l.id === lotId)) || state.activeLot;
   if (lot) {
     selectParkingLot(lot);
-    showToast(`≡ƒº¡ Route calculated to ${lot.name}. Zero fee parking bay.`);
+    showToast(`🧭 Route calculated to ${lot.name}. Zero fee parking bay.`);
     switchTab('camera-scan');
     startCameraStream();
   }
@@ -1879,7 +1881,7 @@ function renderLabResults(data) {
   if (recSlot) {
     document.getElementById('rec-slot-title').textContent = recSlot.label || `Bay ${recSlot.id}`;
     document.getElementById('rec-status-pill').textContent = `${recSlot.status_icon} ${recSlot.status}`;
-    document.getElementById('rec-dims-text').textContent = `${recSlot.metrics.width_m}m (W) ├ù ${recSlot.metrics.length_m}m (L)`;
+    document.getElementById('rec-dims-text').textContent = `${recSlot.metrics.width_m}m (W) × ${recSlot.metrics.length_m}m (L)`;
     document.getElementById('rec-guidance-text').textContent = recSlot.vehicle_fit.message;
   }
 
@@ -1890,14 +1892,14 @@ function renderLabResults(data) {
     data.slots.forEach(s => {
       const card = document.createElement('div');
       card.className = 'slot-item-card';
-      const fitNote = s.status === 'AVAILABLE' ? s.vehicle_fit.fit_badge : (s.occupied_by || s.blocked_reason || 'ΓÇö');
+      const fitNote = s.status === 'AVAILABLE' ? s.vehicle_fit.fit_badge : (s.occupied_by || s.blocked_reason || '—');
       card.innerHTML = `
         <div class="slot-item-info">
           <div class="slot-card-header">
             <span class="slot-item-title">${s.label}</span>
-            <span class="slot-item-dims">${s.metrics.width_m}├ù${s.metrics.length_m}m</span>
+            <span class="slot-item-dims">${s.metrics.width_m}×${s.metrics.length_m}m</span>
           </div>
-          <div class="slot-item-desc">${fitNote} ΓÇó Free Bay Γ£à</div>
+          <div class="slot-item-desc">${fitNote} • Free Bay ✅</div>
         </div>
         <div class="slot-item-status-badge ${s.status === 'AVAILABLE' ? 'badge-avail' : 'badge-occ'}">
           ${s.status_icon} ${s.status}
@@ -1965,27 +1967,27 @@ function renderFlowStage(stepNum) {
       desc: 'Enter your profile, bike model, length, handlebar width, and license plate for real-time space matching.',
       html: state.userProfile ? `
         <div style="background:var(--primary-light);border:1px solid var(--primary-border);padding:1.2rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
-          <div style="font-size:2.8rem;">≡ƒÅì∩╕Å</div>
+          <div style="font-size:2.8rem;">🏍️</div>
           <div>
-            <h4 style="color:var(--text-primary);font-size:1.15rem;font-weight:700;">Registered: ${p.name} ΓÇó ${p.bikeModel}</h4>
-            <p style="color:var(--text-secondary);font-size:0.88rem;margin-top:0.25rem;">Length: <strong style="color:var(--text-primary);">${p.length}m</strong> ΓÇó Width: <strong style="color:var(--text-primary);">${p.width}m</strong> ΓÇó Plate: <strong style="color:var(--text-primary);">${p.licensePlate}</strong></p>
+            <h4 style="color:var(--text-primary);font-size:1.15rem;font-weight:700;">Registered: ${p.name} • ${p.bikeModel}</h4>
+            <p style="color:var(--text-secondary);font-size:0.88rem;margin-top:0.25rem;">Length: <strong style="color:var(--text-primary);">${p.length}m</strong> • Width: <strong style="color:var(--text-primary);">${p.width}m</strong> • Plate: <strong style="color:var(--text-primary);">${p.licensePlate}</strong></p>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="setFlowStep(2)">Proceed to Step 2: Live Location ΓåÆ</button>
-          <button class="action-btn btn-secondary" onclick="document.getElementById('modal-registration').classList.remove('hidden')">Edit Bike Info Γ£Å∩╕Å</button>
+          <button class="action-btn glow-btn" onclick="setFlowStep(2)">Proceed to Step 2: Live Location →</button>
+          <button class="action-btn btn-secondary" onclick="document.getElementById('modal-registration').classList.remove('hidden')">Edit Bike Info ✏️</button>
         </div>
       ` : `
         <div style="background:var(--bg-surface);border:1px dashed var(--border-subtle);padding:1.4rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
-          <div style="font-size:2.8rem;">≡ƒô¥</div>
+          <div style="font-size:2.8rem;">📝</div>
           <div>
             <h4 style="color:var(--text-primary);font-size:1.15rem;font-weight:700;">No Rider Profile Registered Yet</h4>
             <p style="color:var(--text-secondary);font-size:0.88rem;margin-top:0.25rem;">Register your name and bike model to automatically pull length and width dimensions from the official vehicle dataset.</p>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="document.getElementById('modal-registration').classList.remove('hidden')">≡ƒöÉ Register / Login Now</button>
-          <button class="action-btn btn-secondary" onclick="setFlowStep(2)">Continue as Guest Rider ΓåÆ</button>
+          <button class="action-btn glow-btn" onclick="document.getElementById('modal-registration').classList.remove('hidden')">🔐 Register / Login Now</button>
+          <button class="action-btn btn-secondary" onclick="setFlowStep(2)">Continue as Guest Rider →</button>
         </div>
       `
     },
@@ -1994,14 +1996,14 @@ function renderFlowStage(stepNum) {
       desc: 'Acquire your real-time coordinates via browser geolocation to find the nearest free bike parking bays.',
       html: `
         <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);padding:1.2rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
-          <div style="font-size:2.8rem;">≡ƒôí</div>
+          <div style="font-size:2.8rem;">📡</div>
           <div>
-            <h4 style="color:var(--text-primary);font-size:1.1rem;font-weight:700;">Live Location: ${state.userLocation[0].toFixed(4)}┬░ N, ${state.userLocation[1].toFixed(4)}┬░ W</h4>
-            <p style="color:var(--color-green-text);font-size:0.88rem;font-weight:600;margin-top:0.25rem;">≡ƒƒó Satellite fix acquired ΓÇó Querying municipal free parking database</p>
+            <h4 style="color:var(--text-primary);font-size:1.1rem;font-weight:700;">Live Location: ${state.userLocation[0].toFixed(4)}° N, ${state.userLocation[1].toFixed(4)}° W</h4>
+            <p style="color:var(--color-green-text);font-size:0.88rem;font-weight:600;margin-top:0.25rem;">🟢 Satellite fix acquired • Querying municipal free parking database</p>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="setFlowStep(3)">Find Nearest Free Bays ΓåÆ</button>
+          <button class="action-btn glow-btn" onclick="setFlowStep(3)">Find Nearest Free Bays →</button>
         </div>
       `
     },
@@ -2010,14 +2012,14 @@ function renderFlowStage(stepNum) {
       desc: 'System searches and filters 100% free two-wheeler parking facilities near your live location.',
       html: `
         <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);padding:1.2rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
-          <div style="font-size:2.8rem;">≡ƒà┐∩╕Å</div>
+          <div style="font-size:2.8rem;">🅿️</div>
           <div>
             <h4 style="color:var(--text-primary);font-size:1.15rem;font-weight:700;">Found: Central Two-Wheeler & Bike Hub (0.4 km away)</h4>
-            <p style="color:var(--color-green-text);font-size:0.88rem;font-weight:700;margin-top:0.25rem;">14 Free Bays Available ΓÇó 100% Free Public Parking (Zero Fees)</p>
+            <p style="color:var(--color-green-text);font-size:0.88rem;font-weight:700;margin-top:0.25rem;">14 Free Bays Available • 100% Free Public Parking (Zero Fees)</p>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="setFlowStep(4)">Start Navigation ΓåÆ</button>
+          <button class="action-btn glow-btn" onclick="setFlowStep(4)">Start Navigation →</button>
         </div>
       `
     },
@@ -2026,14 +2028,14 @@ function renderFlowStage(stepNum) {
       desc: 'Ride to the chosen parking lot with live GPS route guidance.',
       html: `
         <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);padding:1.2rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
-          <div style="font-size:2.8rem;">≡ƒº¡≡ƒÆ¿</div>
+          <div style="font-size:2.8rem;">🧭💨</div>
           <div>
             <h4 style="color:var(--text-primary);font-size:1.1rem;font-weight:700;">Riding towards Central Bike Hub via Market St...</h4>
-            <p style="color:var(--text-secondary);font-size:0.88rem;margin-top:0.25rem;">Distance remaining: 150m ΓÇó Entrance on the right</p>
+            <p style="color:var(--text-secondary);font-size:0.88rem;margin-top:0.25rem;">Distance remaining: 150m • Entrance on the right</p>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="setFlowStep(5)">Arrived at Entrance ΓåÆ</button>
+          <button class="action-btn glow-btn" onclick="setFlowStep(5)">Arrived at Entrance →</button>
         </div>
       `
     },
@@ -2042,14 +2044,14 @@ function renderFlowStage(stepNum) {
       desc: 'You have arrived at the two-wheeler lot entrance. Time to scan the parking row.',
       html: `
         <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);padding:1.2rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
-          <div style="font-size:2.8rem;">≡ƒôì≡ƒÅì∩╕Å</div>
+          <div style="font-size:2.8rem;">📍🏍️</div>
           <div>
             <h4 style="color:var(--text-primary);font-size:1.15rem;font-weight:700;">Welcome to Central Two-Wheeler Hub!</h4>
             <p style="color:var(--text-secondary);font-size:0.88rem;margin-top:0.25rem;">Slow down to 5 km/h. Mount phone or aim rear camera forward at the parking row.</p>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="setFlowStep(6)">Launch Phone Camera Scan ΓåÆ</button>
+          <button class="action-btn glow-btn" onclick="setFlowStep(6)">Launch Phone Camera Scan →</button>
         </div>
       `
     },
@@ -2058,14 +2060,14 @@ function renderFlowStage(stepNum) {
       desc: 'Browser requests mobile camera permission to stream high-resolution video frames.',
       html: `
         <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);padding:1.2rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
-          <div style="font-size:2.8rem;">≡ƒô▒≡ƒô╖</div>
+          <div style="font-size:2.8rem;">📱📷</div>
           <div>
             <h4 style="color:var(--text-primary);font-size:1.1rem;font-weight:700;">Rear Camera Permission Granted (1080p 60fps)</h4>
-            <p style="color:var(--color-green-text);font-size:0.88rem;font-weight:600;margin-top:0.25rem;">≡ƒƒó Live video feed active ΓÇó Feeding frames into YOLOv8 engine</p>
+            <p style="color:var(--color-green-text);font-size:0.88rem;font-weight:600;margin-top:0.25rem;">🟢 Live video feed active • Feeding frames into YOLOv8 engine</p>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="setFlowStep(7)">Run Computer Vision Scan ΓåÆ</button>
+          <button class="action-btn glow-btn" onclick="setFlowStep(7)">Run Computer Vision Scan →</button>
         </div>
       `
     },
@@ -2074,14 +2076,14 @@ function renderFlowStage(stepNum) {
       desc: 'Deep learning detects objects, perspective homography computes space dimensions, and checks if space fits your bike length.',
       html: `
         <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);padding:1.2rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
-          <div style="font-size:2.8rem;">≡ƒö¼</div>
+          <div style="font-size:2.8rem;">🔬</div>
           <div>
             <h4 style="color:var(--text-primary);font-size:1.1rem;font-weight:700;">YOLOv8 + Perspective Ground Plane Active</h4>
-            <p style="color:var(--text-secondary);font-size:0.88rem;margin-top:0.25rem;">Detected: Bay B2 (2.50m Length ├ù 1.40m Width). Clearance: +0.35m safe margin.</p>
+            <p style="color:var(--text-secondary);font-size:0.88rem;margin-top:0.25rem;">Detected: Bay B2 (2.50m Length × 1.40m Width). Clearance: +0.35m safe margin.</p>
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="setFlowStep(8)">View AR Recommendation ΓåÆ</button>
+          <button class="action-btn glow-btn" onclick="setFlowStep(8)">View AR Recommendation →</button>
         </div>
       `
     },
@@ -2092,14 +2094,14 @@ function renderFlowStage(stepNum) {
         <div style="background:var(--color-green-bg);border:1px solid var(--color-green-border);padding:1.5rem;border-radius:var(--radius-lg);">
           <h3 style="color:var(--color-green-text);font-size:1.35rem;font-weight:800;margin-bottom:0.5rem;">Γÿà SUGGESTED: PARK IN BAY B2 Γÿà</h3>
           <p style="color:var(--text-primary);font-size:0.95rem;line-height:1.6;">
-            ≡ƒƒó Space Clear & Fits your <strong>${p.bikeModel}</strong> (Length: ${p.length}m)<br>
-            ≡ƒÅì∩╕Å Safe handlebar & kickstand clearance (+0.35m)<br>
-            ≡ƒåô 100% Free Public Parking ΓÇó Zero Fees<br>
-            Γ£¿ Pull forward 4 meters and engage side-stand.
+            🟢 Space Clear & Fits your <strong>${p.bikeModel}</strong> (Length: ${p.length}m)<br>
+            🏍️ Safe handlebar & kickstand clearance (+0.35m)<br>
+            🆓 100% Free Public Parking • Zero Fees<br>
+            ✨ Pull forward 4 meters and engage side-stand.
           </p>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="switchTab('camera-scan'); startCameraStream();">Open Live Camera Scanner ≡ƒô╖</button>
+          <button class="action-btn glow-btn" onclick="switchTab('camera-scan'); startCameraStream();">Open Live Camera Scanner 📷</button>
           <button class="action-btn btn-secondary" onclick="setFlowStep(1)">Restart Flow Γå║</button>
         </div>
       `
@@ -2135,7 +2137,7 @@ function showToast(msg) {
 }
 
 // ==========================================================================
-// WIZARD MODULE ΓÇö Real-Life 5-Step Guided Parking Flow
+// WIZARD MODULE — Real-Life 5-Step Guided Parking Flow
 // ==========================================================================
 const wz = {
   step: 1,
@@ -2167,7 +2169,7 @@ function initWizard() {
   // Show wizard by default; hide main app tabs
   showWizardOverlay(true);
 
-  // Advanced View button ΓÇö hides wizard, shows main tabbed app
+  // Advanced View button — hides wizard, shows main tabbed app
   if (advancedBtn) {
     advancedBtn.addEventListener('click', () => {
       showWizardOverlay(false);
@@ -2294,7 +2296,7 @@ function wzInitStep1() {
     if (lengthInput) lengthInput.value = v.length_m;
     if (widthInput) widthInput.value = v.width_m;
 
-    const icon = v.icon || (v.wheels === 4 ? '≡ƒÜù' : (v.wheels === 3 ? '≡ƒ¢║' : '≡ƒÅì∩╕Å'));
+    const icon = v.icon || (v.wheels === 4 ? '🚗' : (v.wheels === 3 ? '🛺' : '🏍️'));
     if (vehicleIconEl) vehicleIconEl.textContent = icon;
 
     // Update banner
@@ -2328,16 +2330,16 @@ function wzInitStep1() {
         if (vehicleInput) {
           if (wzWheelsFilter === 4) {
             vehicleInput.placeholder = 'Type car name e.g. Swift, Creta, Thar, Fortuner, Nexon...';
-            if (vehicleIconEl) vehicleIconEl.textContent = '≡ƒÜù';
+            if (vehicleIconEl) vehicleIconEl.textContent = '🚗';
           } else if (wzWheelsFilter === 3) {
             vehicleInput.placeholder = 'Type 3-wheeler name e.g. Bajaj RE, Piaggio Ape, Treo...';
-            if (vehicleIconEl) vehicleIconEl.textContent = '≡ƒ¢║';
+            if (vehicleIconEl) vehicleIconEl.textContent = '🛺';
           } else if (wzWheelsFilter === 2) {
             vehicleInput.placeholder = 'Type 2-wheeler name e.g. Activa, Splendor, Pulsar, Classic 350...';
-            if (vehicleIconEl) vehicleIconEl.textContent = '≡ƒÅì∩╕Å';
+            if (vehicleIconEl) vehicleIconEl.textContent = '🏍️';
           } else {
             vehicleInput.placeholder = 'Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Creta...';
-            if (vehicleIconEl) vehicleIconEl.textContent = '≡ƒÜù';
+            if (vehicleIconEl) vehicleIconEl.textContent = '🚗';
           }
         }
 
@@ -2357,7 +2359,7 @@ function wzInitStep1() {
         if (vehicleInput) vehicleInput.value = vname;
         wzApplyVehicleDetection(vname);
         if (suggestionsList) suggestionsList.classList.add('hidden');
-        showToast(`Γ£¿ Auto-detected: ${vname}`);
+        showToast(`✨ Auto-detected: ${vname}`);
       });
     });
   }
@@ -2394,7 +2396,7 @@ function wzInitStep1() {
     if (!suggestionsList) return;
     const clientList = window.searchVehiclesClient ? window.searchVehiclesClient(q, 15, wzWheelsFilter) : [];
     if (clientList.length === 0) {
-      suggestionsList.innerHTML = '<div class="wz-ac-item wz-ac-none">Custom vehicle ΓÇö dimensions auto-estimated by keywords</div>';
+      suggestionsList.innerHTML = '<div class="wz-ac-item wz-ac-none">Custom vehicle — dimensions auto-estimated by keywords</div>';
       suggestionsList.classList.remove('hidden');
       return;
     }
@@ -2405,19 +2407,19 @@ function wzInitStep1() {
       const wTag = v.wheels === 4 ? '<span class="wz-ac-tag tag-4w">4W Car</span>' : (v.wheels === 3 ? '<span class="wz-ac-tag tag-3w">3W Auto</span>' : '<span class="wz-ac-tag tag-2w">2W Bike</span>');
       item.innerHTML = `
         <div class="wz-ac-info">
-          <span class="wz-ac-icon">${v.icon || '≡ƒÜù'}</span>
+          <span class="wz-ac-icon">${v.icon || '🚗'}</span>
           <span class="wz-ac-name">${v.name}</span>
         </div>
         <div class="wz-ac-meta">
           ${wTag}
-          <span class="wz-ac-dims">${v.length_m}m ├ù ${v.width_m}m</span>
+          <span class="wz-ac-dims">${v.length_m}m × ${v.width_m}m</span>
         </div>
       `;
       item.addEventListener('click', () => {
         if (vehicleInput) vehicleInput.value = v.name;
         wzApplyVehicleDetection(v.name, v);
         suggestionsList.classList.add('hidden');
-        showToast(`Γ£¿ Auto-detected: ${v.name} (${v.length_m}m ├ù ${v.width_m}m)`);
+        showToast(`✨ Auto-detected: ${v.name} (${v.length_m}m × ${v.width_m}m)`);
       });
       suggestionsList.appendChild(item);
     });
@@ -2501,7 +2503,7 @@ function wzInitStep1() {
 
       const wheelsVal = vInfo ? (vInfo.wheels || 2) : 2;
       const categoryVal = vInfo ? (vInfo.category || 'Vehicle') : 'Vehicle';
-      const iconVal = vInfo ? (vInfo.icon || (wheelsVal === 4 ? '≡ƒÜù' : (wheelsVal === 3 ? '≡ƒ¢║' : '≡ƒÅì∩╕Å'))) : '≡ƒÜù';
+      const iconVal = vInfo ? (vInfo.icon || (wheelsVal === 4 ? '🚗' : (wheelsVal === 3 ? '🛺' : '🏍️'))) : '🚗';
 
       let bikeTypeVal = 'bike_cruiser';
       if (wheelsVal === 4) {
@@ -2533,7 +2535,7 @@ function wzInitStep1() {
 
       saveUserProfile(profile);
       wzShowRegisteredBanner(profile);
-      showToast(`Γ£à Profile saved: ${iconVal} ${modelVal} (${lenVal}m ├ù ${widVal}m)`);
+      showToast(`✅ Profile saved: ${iconVal} ${modelVal} (${lenVal}m × ${widVal}m)`);
 
       // Sync to backend
       try {
@@ -2564,9 +2566,9 @@ function wzShowRegisteredBanner(p) {
   const vehicleEl = document.getElementById('wz-reg-vehicle');
 
   if (banner && nameEl && vehicleEl && p) {
-    const icon = p.icon || (p.wheels === 4 ? '≡ƒÜù' : (p.wheels === 3 ? '≡ƒ¢║' : '≡ƒÅì∩╕Å'));
-    nameEl.textContent = `≡ƒæñ ${p.name}`;
-    vehicleEl.textContent = `${icon} ${p.bikeModel} ┬╖ ${p.length}m ├ù ${p.width}m ┬╖ ${p.licensePlate || ''}`;
+    const icon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
+    nameEl.textContent = `👤 ${p.name}`;
+    vehicleEl.textContent = `${icon} ${p.bikeModel} · ${p.length}m × ${p.width}m · ${p.licensePlate || ''}`;
     banner.classList.remove('hidden');
     if (form) form.classList.add('hidden');
 
@@ -2576,7 +2578,7 @@ function wzShowRegisteredBanner(p) {
       continueBtn.id = 'wz-banner-continue';
       continueBtn.className = 'wz-btn-primary';
       continueBtn.style.marginTop = '1rem';
-      continueBtn.innerHTML = '<span>Γ£à Continue to GPS ΓåÆ</span>';
+      continueBtn.innerHTML = '<span>✅ Continue to GPS →</span>';
       continueBtn.addEventListener('click', () => {
         wzGoToStep(2);
         setTimeout(() => wzDetectGPS(), 400);
@@ -2611,9 +2613,9 @@ async function wzDetectGPS() {
   const iconEl = document.getElementById('wz-gps-icon');
   const detectBtn = document.getElementById('wz-detect-gps');
 
-  if (statusEl) statusEl.textContent = '≡ƒôí Detecting live GPS location...';
+  if (statusEl) statusEl.textContent = '📡 Detecting live GPS location...';
   if (coordsEl) coordsEl.textContent = 'Acquiring satellite / network fix...';
-  if (iconEl) iconEl.textContent = '≡ƒôí';
+  if (iconEl) iconEl.textContent = '📡';
   if (detectBtn) detectBtn.disabled = true;
 
   try {
@@ -2640,13 +2642,13 @@ function wzSetLocation(lat, lng, cityName, isLive, sourceName = 'Live GPS') {
   const coordsEl = document.getElementById('wz-gps-coords');
   const iconEl = document.getElementById('wz-gps-icon');
 
-  if (statusEl) statusEl.textContent = isLive ? `≡ƒƒó Live Location: ${cityName}` : `≡ƒôì Location Set: ${cityName}`;
-  if (coordsEl) coordsEl.textContent = `${lat.toFixed(4)}┬░ N, ${lng.toFixed(4)}┬░ E ΓÇó ${sourceName}`;
-  if (iconEl) iconEl.textContent = isLive ? 'Γ£à' : '≡ƒôì';
+  if (statusEl) statusEl.textContent = isLive ? `🟢 Live Location: ${cityName}` : `📍 Location Set: ${cityName}`;
+  if (coordsEl) coordsEl.textContent = `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E • ${sourceName}`;
+  if (iconEl) iconEl.textContent = isLive ? '✅' : '📍';
 
   // Show mini map
   wzInitMiniMap(lat, lng);
-  showToast(`≡ƒôì Location set: ${cityName} (${lat.toFixed(4)}┬░, ${lng.toFixed(4)}┬░)`);
+  showToast(`📍 Location set: ${cityName} (${lat.toFixed(4)}°, ${lng.toFixed(4)}°)`);
 
   // Enable continue button if disabled
   const continueBtn = document.getElementById('wz-goto-lots');
@@ -2673,7 +2675,7 @@ function wzInitMiniMap(lat, lng) {
 
   const icon = L.divIcon({
     className: '',
-    html: `<div style="background:#2563eb;width:20px;height:20px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;">≡ƒôì</div>`,
+    html: `<div style="background:#2563eb;width:20px;height:20px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;">📍</div>`,
     iconSize: [20, 20], iconAnchor: [10, 10]
   });
   L.marker([lat, lng], { icon }).addTo(wz.miniMap);
@@ -2710,10 +2712,10 @@ async function wzLoadParkingLots() {
       // User marker
       const userIcon = L.divIcon({
         className: '',
-        html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);font-size:11px;display:flex;align-items:center;justify-content:center;">≡ƒôì</div>`,
+        html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);font-size:11px;display:flex;align-items:center;justify-content:center;">📍</div>`,
         iconSize: [22, 22], iconAnchor: [11, 11]
       });
-      L.marker(state.userLocation, { icon: userIcon }).addTo(wz.parkingMap).bindPopup(`≡ƒôì You are in ${state.cityName || 'your area'}`);
+      L.marker(state.userLocation, { icon: userIcon }).addTo(wz.parkingMap).bindPopup(`📍 You are in ${state.cityName || 'your area'}`);
     }
   } else {
     wz.parkingMap.setView(state.userLocation, 15);
@@ -2762,11 +2764,11 @@ async function wzLoadParkingLots() {
       if (wz.parkingMap) {
         const pinIcon = L.divIcon({
           className: '',
-          html: `<div style="background:${lot.live_available > 0 ? '#059669' : '#dc2626'};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${lot.live_available} ≡ƒÅì∩╕Å</div>`,
+          html: `<div style="background:${lot.live_available > 0 ? '#059669' : '#dc2626'};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${lot.live_available} 🏍️</div>`,
           iconSize: [50, 26], iconAnchor: [25, 13]
         });
         const marker = L.marker([lot.latitude, lot.longitude], { icon: pinIcon }).addTo(wz.parkingMap);
-        marker.bindPopup(`<strong>${lot.name}</strong><br><span style="color:#10b981;font-weight:bold;">${lot.live_available} Free Bays (Zero Fee)</span><br><small style="color:#64748b;">Live Occupancy: ${lot.occupancy_pct || 65}% ΓÇó ${lot.total_capacity || 40} Total Bays</small>`);
+        marker.bindPopup(`<strong>${lot.name}</strong><br><span style="color:#10b981;font-weight:bold;">${lot.live_available} Free Bays (Zero Fee)</span><br><small style="color:#64748b;">Live Occupancy: ${lot.occupancy_pct || 65}% • ${lot.total_capacity || 40} Total Bays</small>`);
         marker.on('click', () => wzSelectLot(lot));
         wz.parkingMarkers.push(marker);
       }
@@ -2791,9 +2793,9 @@ async function wzLoadParkingLots() {
             </div>
           </div>
           <div class="wz-lot-tags">
-            <span class="wz-lot-tag free">≡ƒƒó Zero Fee</span>
-            <span class="wz-lot-tag bike">≡ƒÅì∩╕Å ${lot.total_capacity || 40} Total</span>
-            <span class="wz-lot-tag" style="background:rgba(16,185,129,0.12);color:#059669;font-weight:600;">ΓÜí Live Telemetry</span>
+            <span class="wz-lot-tag free">🟢 Zero Fee</span>
+            <span class="wz-lot-tag bike">🏍️ ${lot.total_capacity || 40} Total</span>
+            <span class="wz-lot-tag" style="background:rgba(16,185,129,0.12);color:#059669;font-weight:600;">⚡ Live Telemetry</span>
           </div>
         `;
         card.addEventListener('click', () => wzSelectLot(lot));
@@ -2805,7 +2807,7 @@ async function wzLoadParkingLots() {
     console.error('Failed to load wizard parking lots:', err);
     if (loadingEl) loadingEl.style.display = 'none';
     if (lotsList) {
-      lotsList.innerHTML = `<div class="wz-lots-error">ΓÜá∩╕Å Could not load parking data. Please check backend connection.<br><small>Make sure the Python backend is running.</small></div>`;
+      lotsList.innerHTML = `<div class="wz-lots-error">⚠️ Could not load parking data. Please check backend connection.<br><small>Make sure the Python backend is running.</small></div>`;
     }
   }
 }
@@ -2867,7 +2869,7 @@ function wzInitNavMap() {
   const baysEl = document.getElementById('wz-nav-bays');
 
   if (lotNameEl) lotNameEl.textContent = lot.name;
-  if (lotMetaEl) lotMetaEl.textContent = `${lot.type || 'Bike Parking'} ┬╖ ${lot.address || 'Public Lot'}`;
+  if (lotMetaEl) lotMetaEl.textContent = `${lot.type || 'Bike Parking'} · ${lot.address || 'Public Lot'}`;
   if (distEl) distEl.textContent = lot.wz_dist || lot.distance_km;
   if (timeEl) timeEl.textContent = Math.max(1, Math.round((lot.wz_dist || lot.distance_km) * 3));
   if (baysEl) baysEl.textContent = lot.live_available;
@@ -2894,15 +2896,15 @@ function wzInitNavMap() {
   // You marker
   const userIcon = L.divIcon({
     className: '',
-    html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:11px;display:flex;align-items:center;justify-content:center;">≡ƒôì</div>`,
+    html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:11px;display:flex;align-items:center;justify-content:center;">📍</div>`,
     iconSize: [22, 22], iconAnchor: [11, 11]
   });
-  L.marker(state.userLocation, { icon: userIcon }).addTo(wz.navMap).bindPopup('≡ƒôì You');
+  L.marker(state.userLocation, { icon: userIcon }).addTo(wz.navMap).bindPopup('📍 You');
 
   // Lot marker
   const lotIcon = L.divIcon({
     className: '',
-    html: `<div style="background:#059669;color:white;font-weight:700;font-size:11px;padding:4px 9px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${lot.live_available} ≡ƒÅì∩╕Å FREE</div>`,
+    html: `<div style="background:#059669;color:white;font-weight:700;font-size:11px;padding:4px 9px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${lot.live_available} 🏍️ FREE</div>`,
     iconSize: [80, 28], iconAnchor: [40, 14]
   });
   L.marker([lot.latitude, lot.longitude], { icon: lotIcon }).addTo(wz.navMap).bindPopup(`<strong>${lot.name}</strong><br>Zero Fee Bike Parking`);
@@ -2960,7 +2962,7 @@ function wzInitStep5() {
 
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
-      showToast('≡ƒÄë Parking Confirmed! Have a safe trip!');
+      showToast('🎉 Parking Confirmed! Have a safe trip!');
       speakGuidance('Your bike is safely parked. Have a great day!');
       wzStopCamera();
     });
@@ -3004,7 +3006,7 @@ async function wzStartCamera() {
     await video.play();
 
     if (permOverlay) permOverlay.classList.add('hidden');
-    if (statusEl) statusEl.textContent = `≡ƒƒó Live ${wz.cam.facingMode === 'environment' ? 'Rear' : 'Front'} Camera Active`;
+    if (statusEl) statusEl.textContent = `🟢 Live ${wz.cam.facingMode === 'environment' ? 'Rear' : 'Front'} Camera Active`;
 
     video.onloadedmetadata = () => {
       wzResizeARCanvas();
@@ -3014,12 +3016,12 @@ async function wzStartCamera() {
     // Update vehicle tag in HUD
     const hudVehicle = document.getElementById('wz-hud-vehicle');
     if (hudVehicle && state.userProfile) {
-      const vIcon = state.userProfile.icon || (state.userProfile.wheels === 4 ? '≡ƒÜù' : (state.userProfile.wheels === 3 ? '≡ƒ¢║' : '≡ƒÅì∩╕Å'));
+      const vIcon = state.userProfile.icon || (state.userProfile.wheels === 4 ? '🚗' : (state.userProfile.wheels === 3 ? '🛺' : '🏍️'));
       hudVehicle.textContent = `${vIcon} ${state.userProfile.bikeModel || 'Vehicle'} (${state.userProfile.length}m)`;
     }
   } catch (err) {
     console.error('Wizard camera error:', err);
-    if (statusEl) statusEl.textContent = 'ΓÜá∩╕Å Camera Access Denied';
+    if (statusEl) statusEl.textContent = '⚠️ Camera Access Denied';
     alert(`Camera Permission Needed\n\n${err.message}\n\nTip: Use HTTPS or allow camera in browser settings. You can also try "Simulated Feed".`);
   }
 }
@@ -3036,7 +3038,7 @@ function wzStartSimCamera() {
   video.poster = `${API_BASE}/static/scenarios/scenario_2_driver.jpg`;
 
   if (permOverlay) permOverlay.classList.add('hidden');
-  if (statusEl) statusEl.textContent = '≡ƒÄ¼ Simulated Camera Feed (Driver View)';
+  if (statusEl) statusEl.textContent = '🎬 Simulated Camera Feed (Driver View)';
 
   wzResizeARCanvas();
   setTimeout(() => {
@@ -3149,18 +3151,18 @@ function wzRenderScanResults(data) {
   const clearEl = document.getElementById('wz-rec-clearance');
   const msgEl = document.getElementById('wz-rec-msg');
 
-  const vIcon = p.icon || (p.wheels === 4 ? '≡ƒÜù' : (p.wheels === 3 ? '≡ƒ¢║' : '≡ƒÅì∩╕Å'));
+  const vIcon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
   const vehKind = p.wheels === 4 ? 'Car' : (p.wheels === 3 ? 'Auto' : 'Vehicle');
 
   if (bikeEl) bikeEl.textContent = `${vIcon} ${p.bikeModel} (${p.length}m)`;
 
   if (rec) {
     if (titleEl) titleEl.textContent = rec.label || `Bay ${rec.id}`;
-    if (statusEl) { statusEl.textContent = `≡ƒƒó Available & Fits Your ${vehKind}`; statusEl.style.color = '#059669'; }
-    if (dimsEl) dimsEl.textContent = `${rec.metrics.length_m}m ├ù ${rec.metrics.width_m}m`;
+    if (statusEl) { statusEl.textContent = `🟢 Available & Fits Your ${vehKind}`; statusEl.style.color = '#059669'; }
+    if (dimsEl) dimsEl.textContent = `${rec.metrics.length_m}m × ${rec.metrics.width_m}m`;
     const margin = rec.vehicle_fit ? rec.vehicle_fit.width_margin_m : 0.35;
     if (clearEl) clearEl.textContent = `+${margin}m clearance`;
-    if (msgEl) msgEl.textContent = `${rec.vehicle_fit?.message || ''} Free public bay ΓÇö pull straight in.`;
+    if (msgEl) msgEl.textContent = `${rec.vehicle_fit?.message || ''} Free public bay — pull straight in.`;
 
     // Voice
     const now = Date.now();
@@ -3171,9 +3173,9 @@ function wzRenderScanResults(data) {
     }
   } else {
     if (titleEl) titleEl.textContent = 'Scanning...';
-    if (statusEl) { statusEl.textContent = '≡ƒƒí No fitting spot detected'; statusEl.style.color = '#d97706'; }
-    if (dimsEl) dimsEl.textContent = 'ΓÇö';
-    if (clearEl) clearEl.textContent = 'ΓÇö';
+    if (statusEl) { statusEl.textContent = '🟡 No fitting spot detected'; statusEl.style.color = '#d97706'; }
+    if (dimsEl) dimsEl.textContent = '—';
+    if (clearEl) clearEl.textContent = '—';
     if (msgEl) msgEl.textContent = `All visible spaces are occupied or too small. Move your camera angle forward.`;
   }
 
@@ -3190,9 +3192,9 @@ function wzRenderScanResults(data) {
       item.className = `wz-bay-item${isRec ? ' suggested' : ''}`;
       item.innerHTML = `
         <div>
-          <strong>${s.label}</strong> <span style="font-size:0.78rem;color:var(--text-muted);">(${s.length_m}m ├ù ${s.width_m}m)</span>
+          <strong>${s.label}</strong> <span style="font-size:0.78rem;color:var(--text-muted);">(${s.length_m}m × ${s.width_m}m)</span>
           <div style="font-size:0.75rem;font-weight:600;color:${s.status === 'AVAILABLE' ? '#059669' : '#dc2626'};">
-            ${s.status === 'AVAILABLE' ? '≡ƒƒó Available' : '≡ƒö┤ Occupied'}${isRec ? ' ┬╖ Γ¡É Best Fit' : ''}
+            ${s.status === 'AVAILABLE' ? '🟢 Available' : '🔴 Occupied'}${isRec ? ' · ⭐ Best Fit' : ''}
           </div>
         </div>
         <span style="color:#059669;font-weight:700;font-size:0.82rem;">FREE</span>
@@ -3252,7 +3254,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot) {
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('≡ƒà┐∩╕Å', cx, cy);
+      ctx.fillText('🅿️', cx, cy);
 
       // Label text
       ctx.fillStyle = '#10b981';
@@ -3290,37 +3292,37 @@ const PIPELINE_STAGES = [
   {
     step: 1,
     title: "1. Vehicle Details",
-    icon: "≡ƒÜù",
+    icon: "🚗",
     tag: "Stage 1 of 13",
     desc: "Retrieves exact physical dimensions (length, width, door opening swing) automatically from the 200+ vehicle dataset to ensure zero guesswork.",
-    formula: "Dataset Query: lookup_vehicle(name) ΓåÆ {length_m, width_m, door_clearance: ┬▒0.30m}",
+    formula: "Dataset Query: lookup_vehicle(name) → {length_m, width_m, door_clearance: ±0.30m}",
     input: "Rider vehicle model name (e.g. Swift, Activa, Treo, Thar)",
     output: "Dimensional constraint vector: [L, W, C_door]"
   },
   {
     step: 2,
     title: "2. GPS Location",
-    icon: "≡ƒôì",
+    icon: "📍",
     tag: "Stage 2 of 13",
     desc: "Acquires current latitude and longitude via HTML5 Geolocation API with IP-based reverse geocoding fallback for dynamic city resolution.",
-    formula: "GeoIP / WGS84: {lat, lng} ΓåÆ Nominatim Reverse Geocode: (City, State, Country)",
+    formula: "GeoIP / WGS84: {lat, lng} → Nominatim Reverse Geocode: (City, State, Country)",
     input: "Browser GPS coordinates or Network IP address",
-    output: "Resolved municipal center [22.2904┬░ N, 70.7915┬░ E, 'Rajkot']"
+    output: "Resolved municipal center [22.2904° N, 70.7915° E, 'Rajkot']"
   },
   {
     step: 3,
     title: "3. Nearby Parking Identification",
-    icon: "≡ƒù║∩╕Å",
+    icon: "🗺️",
     tag: "Stage 3 of 13",
     desc: "Executes a Haversine radius query to find free public and municipal bike/vehicle parking lots within 2ΓÇô5 km radius.",
-    formula: "d = 2R ┬╖ arcsin(ΓêÜ(sin┬▓(╬ö╧å/2) + cos(╧åΓéü)cos(╧åΓéé)sin┬▓(╬ö╬╗/2))) Γëñ 5.0 km",
+    formula: "d = 2R · arcsin(√(sin²(Δφ/2) + cos(φ₁)cos(φ₂)sin²(Δλ/2))) Γëñ 5.0 km",
     input: "User location [lat, lng] and target radius R_max",
     output: "Ranked candidate parking hubs sorted by distance [d_km, name, capacity]"
   },
   {
     step: 4,
     title: "4. Reach Candidate Area",
-    icon: "≡ƒô▒",
+    icon: "📱",
     tag: "Stage 4 of 13",
     desc: "Guides the user to the physical parking entrance using OpenStreetMap Leaflet waypoints or external Google Maps turn-by-turn routing.",
     formula: "Routing: polyline([[lat_user, lng_user], ..., [lat_lot, lng_lot]])",
@@ -3330,59 +3332,59 @@ const PIPELINE_STAGES = [
   {
     step: 5,
     title: "5. Smartphone Camera",
-    icon: "≡ƒô╖",
+    icon: "📷",
     tag: "Stage 5 of 13",
     desc: "Ingests live smartphone camera feed (or dashcam / simulated stream) via HTML5 WebRTC getUserMedia API at 1080p / 720p.",
     formula: "WebRTC Video Stream: navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}})",
     input: "Rear camera optical lens sensor stream",
-    output: "Uncompressed BGR video frames @ 30 FPS [H ├ù W ├ù 3]"
+    output: "Uncompressed BGR video frames @ 30 FPS [H × W × 3]"
   },
   {
     step: 6,
     title: "6. Image Preprocessing",
-    icon: "≡ƒöä",
+    icon: "🔄",
     tag: "Stage 6 of 13",
-    desc: "Applies bilinear resizing to 640├ù640, CLAHE contrast histogram equalization to counter glare/shadows, and normalization.",
+    desc: "Applies bilinear resizing to 640×640, CLAHE contrast histogram equalization to counter glare/shadows, and normalization.",
     formula: "CLAHE: g(x, y) = clip_limit(equalize(hist(I(x, y)))); Tensor: (I / 255.0 - ╬╝) / ╧â",
-    input: "Raw BGR frame array [1376 ├ù 768 ├ù 3]",
-    output: "Normalized model tensor [1 ├ù 3 ├ù 640 ├ù 640]"
+    input: "Raw BGR frame array [1376 × 768 × 3]",
+    output: "Normalized model tensor [1 × 3 × 640 × 640]"
   },
   {
     step: 7,
     title: "7. Perspective Transformation",
-    icon: "≡ƒôÉ",
+    icon: "📐",
     tag: "Stage 7 of 13",
-    desc: "Calculates the 3├ù3 projective homography matrix H to rectify camera pitch and perspective foreshortening into an orthographic Bird's-Eye View (BEV).",
-    formula: "x' = H ┬╖ x = [[h11, h12, h13], [h21, h22, h23], [h31, h32, 1.0]] ┬╖ [u, v, 1]ß╡Ç",
+    desc: "Calculates the 3×3 projective homography matrix H to rectify camera pitch and perspective foreshortening into an orthographic Bird's-Eye View (BEV).",
+    formula: "x' = H · x = [[h11, h12, h13], [h21, h22, h23], [h31, h32, 1.0]] · [u, v, 1]ß╡Ç",
     input: "4 ground calibration coordinates (src_points, dst_points)",
-    output: "3├ù3 Homography Matrix H & Bird's-Eye View (BEV) orthographic image"
+    output: "3×3 Homography Matrix H & Bird's-Eye View (BEV) orthographic image"
   },
   {
     step: 8,
     title: "8. Parking Region Segmentation",
-    icon: "≡ƒà┐∩╕Å",
+    icon: "🅿️",
     tag: "Stage 8 of 13",
     desc: "Delineates 4-corner metric ground polygons for each designated bay, calibrated in pixel and metric space.",
-    formula: "Slot_i = Polygon([[x1, y1], [x2, y2], [x3, y3], [x4, y4]]), Area = 0.5┬╖|╬ú(x_i┬╖y_{i+1} - x_{i+1}┬╖y_i)|",
+    formula: "Slot_i = Polygon([[x1, y1], [x2, y2], [x3, y3], [x4, y4]]), Area = 0.5·|╬ú(x_i·y_{i+1} - x_{i+1}·y_i)|",
     input: "Lot boundary layout / painted road marker coordinates",
     output: "Collection of calibrated ground slot polygons [SlotΓéü, SlotΓéé, ..., Slot_N]"
   },
   {
     step: 9,
     title: "9. YOLO Object Detection",
-    icon: "≡ƒñû",
+    icon: "🤖",
     tag: "Stage 9 of 13",
     desc: "Runs YOLOv8 forward inference (3.16M params) across 80 COCO classes, detecting bounding boxes, category IDs, and confidence scores.",
     formula: "Forward Pass: BBoxes = NMS(AnchorFreeHead(YOLOv8(Tensor)), IoU_thresh=0.45)",
-    input: "Normalized image tensor [1 ├ù 3 ├ù 640 ├ù 640]",
+    input: "Normalized image tensor [1 × 3 × 640 × 640]",
     output: "List of detected object bounding boxes [xΓéü, yΓéü, xΓéé, yΓéé, conf, class_id]"
   },
   {
     step: 10,
     title: "10. Cars / Bikes / People / Obstacles",
-    icon: "≡ƒÄ»",
+    icon: "🎯",
     tag: "Stage 10 of 13",
-    desc: "Filters and partitions detections into ≡ƒÜù Cars/SUVs, ≡ƒÅì∩╕Å Two-Wheelers, ≡ƒÜî Heavy Vehicles, ≡ƒºì Pedestrians, and ≡ƒÜº Obstacles.",
+    desc: "Filters and partitions detections into 🚗 Cars/SUVs, 🏍️ Two-Wheelers, 🚌 Heavy Vehicles, 🚶 Pedestrians, and 🚧 Obstacles.",
     formula: "Partition: Category(c) Γêê {Vehicle, Obstacle, Pedestrian, Hazard}",
     input: "Raw YOLO detection classes",
     output: "Categorized entities with contact points (bottom_center)"
@@ -3390,27 +3392,27 @@ const PIPELINE_STAGES = [
   {
     step: 11,
     title: "11. Parking Space Analysis",
-    icon: "≡ƒöì",
+    icon: "🔍",
     tag: "Stage 11 of 13",
-    desc: "Performs Shapely polygon intersection (IoU) between slot boundaries and detected objects: ≡ƒƒó Available, ≡ƒö┤ Occupied, or ≡ƒƒí Blocked.",
-    formula: "IoU = Area(Slot Γê⌐ BBox) / Area(Slot Γê¬ BBox); If IoU_veh ΓëÑ 0.20 ΓåÆ ≡ƒö┤ Occupied; If IoU_obs ΓëÑ 0.05 ΓåÆ ≡ƒƒí Blocked; Else ΓåÆ ≡ƒƒó Available",
+    desc: "Performs Shapely polygon intersection (IoU) between slot boundaries and detected objects: 🟢 Available, 🔴 Occupied, or 🟡 Blocked.",
+    formula: "IoU = Area(Slot ∩ BBox) / Area(Slot ∪ BBox); If IoU_veh ≥ 0.20 → 🔴 Occupied; If IoU_obs ≥ 0.05 → 🟡 Blocked; Else → 🟢 Available",
     input: "Slot polygons & object contact bounding polygons",
-    output: "Classified slot state array [≡ƒƒó Suitable, ≡ƒö┤ Occupied, ≡ƒƒí Blocked]"
+    output: "Classified slot state array [🟢 Suitable, 🔴 Occupied, 🟡 Blocked]"
   },
   {
     step: 12,
     title: "12. Vehicle-Space Matching",
-    icon: "≡ƒôÅ",
+    icon: "📏",
     tag: "Stage 12 of 13",
-    desc: "Compares real slot dimensions against registered vehicle profile to ensure driver door swing clearance [╬öW = W_slot - W_veh ΓëÑ 0.60m].",
-    formula: "Margin_W = W_slot - W_vehicle; If Margin_W ΓëÑ 0.60m ΓåÆ Optimal Fit; If 0.30m Γëñ Margin_W < 0.60m ΓåÆ Tight Fit; Else ΓåÆ Incompatible",
+    desc: "Compares real slot dimensions against registered vehicle profile to ensure driver door swing clearance [ΔW = W_slot - W_veh ≥ 0.60m].",
+    formula: "Margin_W = W_slot - W_vehicle; If Margin_W ≥ 0.60m → Optimal Fit; If 0.30m Γëñ Margin_W < 0.60m → Tight Fit; Else → Incompatible",
     input: "Slot metric width & length [W_slot, L_slot] vs Vehicle [W_veh, L_veh]",
     output: "Fit score, door clearance margin (+0.82m), and suitability flag"
   },
   {
     step: 13,
     title: "13. Best Parking Recommendation",
-    icon: "Γ¡É",
+    icon: "⭐",
     tag: "Stage 13 of 13",
     desc: "Synthesizes availability, spatial clearance, and municipal rules (EV, handicap, permits) to highlight the best bay on AR HUD with voice guidance.",
     formula: "BestSlot = argmax_{s Γêê Available}(Clearance(s, v)) such that Legal(s) = True",
@@ -3422,19 +3424,19 @@ const PIPELINE_STAGES = [
 const SCENARIO_GALLERY = {
   scenario_1_aerial: {
     title: "Scenario 1: Overhead Angle Parking Bay Grid",
-    desc: "Standard 6-bay parking row with 4 parked vehicles and 2 vacant slots. Perspective homography calculates 2.72m ├ù 5.48m real-world bay dimensions.",
+    desc: "Standard 6-bay parking row with 4 parked vehicles and 2 vacant slots. Perspective homography calculates 2.72m × 5.48m real-world bay dimensions.",
     input_url: "/static/scenarios/scenario_1_aerial.jpg",
     annotated_url: "/static/outputs/output_annotated.jpg",
     bev_url: "/static/outputs/output_bev.jpg",
-    badge: "≡ƒƒó 2 AVAILABLE ΓÇó ≡ƒö┤ 4 OCCUPIED",
-    recommendation: "Γ¡É Bay 3 Recommended ΓÇö Space (2.72m ├ù 5.48m) comfortably fits your vehicle with +0.82m door swing clearance.",
+    badge: "🟢 2 AVAILABLE • 🔴 4 OCCUPIED",
+    recommendation: "⭐ Bay 3 Recommended — Space (2.72m × 5.48m) comfortably fits your vehicle with +0.82m door swing clearance.",
     slots: [
-      { id: "Bay 1", status: "≡ƒö┤ OCCUPIED", dims: "2.8m ├ù 5.5m", fit: "Occupied by Truck (36% conf)" },
-      { id: "Bay 2", status: "≡ƒö┤ OCCUPIED", dims: "2.7m ├ù 5.5m", fit: "Occupied by Car (74% conf)" },
-      { id: "Bay 3", status: "≡ƒƒó AVAILABLE", dims: "2.7m ├ù 5.5m", fit: "≡ƒƒó Optimal Fit (+0.82m clearance)" },
-      { id: "Bay 4", status: "≡ƒö┤ OCCUPIED", dims: "2.7m ├ù 5.5m", fit: "Occupied by Car (67% conf)" },
-      { id: "Bay 5", status: "≡ƒƒó AVAILABLE", dims: "2.7m ├ù 5.5m", fit: "≡ƒƒó Optimal Fit (+0.82m clearance)" },
-      { id: "Bay 6", status: "≡ƒö┤ OCCUPIED", dims: "2.8m ├ù 5.5m", fit: "Occupied by Car (86% conf)" }
+      { id: "Bay 1", status: "🔴 OCCUPIED", dims: "2.8m × 5.5m", fit: "Occupied by Truck (36% conf)" },
+      { id: "Bay 2", status: "🔴 OCCUPIED", dims: "2.7m × 5.5m", fit: "Occupied by Car (74% conf)" },
+      { id: "Bay 3", status: "🟢 AVAILABLE", dims: "2.7m × 5.5m", fit: "🟢 Optimal Fit (+0.82m clearance)" },
+      { id: "Bay 4", status: "🔴 OCCUPIED", dims: "2.7m × 5.5m", fit: "Occupied by Car (67% conf)" },
+      { id: "Bay 5", status: "🟢 AVAILABLE", dims: "2.7m × 5.5m", fit: "🟢 Optimal Fit (+0.82m clearance)" },
+      { id: "Bay 6", status: "🔴 OCCUPIED", dims: "2.8m × 5.5m", fit: "Occupied by Car (86% conf)" }
     ]
   },
   scenario_2_driver: {
@@ -3443,12 +3445,12 @@ const SCENARIO_GALLERY = {
     input_url: "/static/scenarios/scenario_2_driver.jpg",
     annotated_url: "/static/outputs/output_scenario2.jpg",
     bev_url: "/static/outputs/output_bev.jpg",
-    badge: "≡ƒƒó 1 AVAILABLE ΓÇó ≡ƒö┤ 1 OCCUPIED ΓÇó ≡ƒƒí 1 BLOCKED",
-    recommendation: "Γ¡É Bay 115 Recommended ΓÇö Bay 116 rejected due to bicycle obstruction (96% conf). +1.29m clearance in Bay 115.",
+    badge: "🟢 1 AVAILABLE • 🔴 1 OCCUPIED • 🟡 1 BLOCKED",
+    recommendation: "⭐ Bay 115 Recommended — Bay 116 rejected due to bicycle obstruction (96% conf). +1.29m clearance in Bay 115.",
     slots: [
-      { id: "Bay 114", status: "≡ƒö┤ OCCUPIED", dims: "3.2m ├ù 5.2m", fit: "Occupied by Car (68% conf)" },
-      { id: "Bay 115", status: "≡ƒƒó AVAILABLE", dims: "3.2m ├ù 5.2m", fit: "≡ƒƒó Optimal Fit (+1.29m clearance)" },
-      { id: "Bay 116", status: "≡ƒƒí BLOCKED", dims: "3.1m ├ù 5.2m", fit: "Blocked by Bicycle (96% conf)" }
+      { id: "Bay 114", status: "🔴 OCCUPIED", dims: "3.2m × 5.2m", fit: "Occupied by Car (68% conf)" },
+      { id: "Bay 115", status: "🟢 AVAILABLE", dims: "3.2m × 5.2m", fit: "🟢 Optimal Fit (+1.29m clearance)" },
+      { id: "Bay 116", status: "🟡 BLOCKED", dims: "3.1m × 5.2m", fit: "Blocked by Bicycle (96% conf)" }
     ]
   },
   scenario_3_rooftop: {
@@ -3457,13 +3459,13 @@ const SCENARIO_GALLERY = {
     input_url: "/static/scenarios/scenario_3_rooftop.jpg",
     annotated_url: "/static/outputs/output_rooftop.jpg",
     bev_url: "/static/outputs/output_bev.jpg",
-    badge: "≡ƒö┤ 3 OCCUPIED ΓÇó ≡ƒƒí 1 BLOCKED ΓÇó ≡ƒƒó 0 FREE",
-    recommendation: "ΓÜá∩╕Å No Suitable Parking Available ΓÇö All designated bays are occupied or blocked by crossing pedestrians.",
+    badge: "🔴 3 OCCUPIED • 🟡 1 BLOCKED • 🟢 0 FREE",
+    recommendation: "⚠️ No Suitable Parking Available — All designated bays are occupied or blocked by crossing pedestrians.",
     slots: [
-      { id: "Bay 124", status: "≡ƒö┤ OCCUPIED", dims: "3.3m ├ù 5.8m", fit: "Occupied by Car (85% conf)" },
-      { id: "Bay 125", status: "≡ƒö┤ OCCUPIED", dims: "2.8m ├ù 5.9m", fit: "Occupied by Car (85% conf)" },
-      { id: "Bay 126", status: "≡ƒö┤ OCCUPIED", dims: "2.6m ├ù 6.0m", fit: "Occupied by Car (92% conf)" },
-      { id: "Bay 127", status: "≡ƒƒí BLOCKED", dims: "2.2m ├ù 6.0m", fit: "Blocked by Pedestrian (81% conf)" }
+      { id: "Bay 124", status: "🔴 OCCUPIED", dims: "3.3m × 5.8m", fit: "Occupied by Car (85% conf)" },
+      { id: "Bay 125", status: "🔴 OCCUPIED", dims: "2.8m × 5.9m", fit: "Occupied by Car (85% conf)" },
+      { id: "Bay 126", status: "🔴 OCCUPIED", dims: "2.6m × 6.0m", fit: "Occupied by Car (92% conf)" },
+      { id: "Bay 127", status: "🟡 BLOCKED", dims: "2.2m × 6.0m", fit: "Blocked by Pedestrian (81% conf)" }
     ]
   },
   scenario_4_tight: {
@@ -3472,10 +3474,10 @@ const SCENARIO_GALLERY = {
     input_url: "/static/scenarios/scenario_4_tight.jpg",
     annotated_url: "/static/outputs/output_tight_suv.jpg",
     bev_url: "/static/outputs/output_bev.jpg",
-    badge: "ΓÜá∩╕Å NARROW BAY (2.2m) ΓÇó SUV TOO TIGHT",
-    recommendation: "ΓÜá∩╕Å Rejected for SUV / 4x4 (Door clearance < 0.30m) ΓÇö Recommended for Compact Cars & Two-Wheelers only.",
+    badge: "⚠️ NARROW BAY (2.2m) • SUV TOO TIGHT",
+    recommendation: "⚠️ Rejected for SUV / 4x4 (Door clearance < 0.30m) — Recommended for Compact Cars & Two-Wheelers only.",
     slots: [
-      { id: "Bay 44", status: "≡ƒö┤ NARROW / FIT FAIL", dims: "2.2m ├ù 5.0m", fit: "SUV width 1.9m requires ΓëÑ 2.5m for door swing" }
+      { id: "Bay 44", status: "🔴 NARROW / FIT FAIL", dims: "2.2m × 5.0m", fit: "SUV width 1.9m requires ≥ 2.5m for door swing" }
     ]
   }
 };
@@ -3630,3 +3632,9 @@ function updateScenarioImage() {
     imgEl.src = `${base}${scen.bev_url}`;
   }
 }
+
+// Listen for UI language changes to refresh dynamic text
+window.addEventListener('languageChanged', (e) => {
+  if (typeof wzUpdateUI === 'function') wzUpdateUI();
+  if (typeof wzUpdateLiveHUD === 'function') wzUpdateLiveHUD();
+});
