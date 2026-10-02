@@ -397,19 +397,44 @@
             <div id="wz-mini-map" class="wz-mini-map"></div>
           </div>
 
+          <!-- GPS Permission Error / Alert Banner -->
+          <div class="wz-gps-alert hidden" id="wz-gps-alert">
+            <div class="wz-alert-icon">⚠️</div>
+            <div class="wz-alert-body">
+              <div class="wz-alert-title" id="wz-alert-title">GPS Access Denied</div>
+              <div class="wz-alert-desc" id="wz-alert-desc">Browser location permission was denied. You can search or select a city below, or retry GPS.</div>
+            </div>
+            <button type="button" class="wz-alert-retry-btn" id="wz-alert-retry">Retry GPS</button>
+          </div>
+
+          <!-- Manual City / Address Search -->
+          <div class="wz-search-row">
+            <div class="wz-search-input-wrap">
+              <span class="wz-search-icon">🔍</span>
+              <input type="text" id="wz-city-input" class="wz-search-input" placeholder="Type any city or address (e.g. Rajkot, Ahmedabad, Mumbai, London)...">
+              <button type="button" class="wz-search-btn" id="wz-city-search-btn">Search City</button>
+            </div>
+          </div>
+
           <div class="wz-city-row">
-            <span class="wz-city-label" data-i18n="lbl_or_set_city">Or set location:</span>
+            <span class="wz-city-label" data-i18n="lbl_or_set_city">Quick hubs:</span>
             <button type="button" class="wz-city-chip" data-lat="22.2904" data-lng="70.7915" data-city="Rajkot">🏙️ Rajkot</button>
+            <button type="button" class="wz-city-chip" data-lat="23.0225" data-lng="72.5714" data-city="Ahmedabad">🏙️ Ahmedabad</button>
             <button type="button" class="wz-city-chip" data-lat="19.0760" data-lng="72.8777" data-city="Mumbai">🏙️ Mumbai</button>
+            <button type="button" class="wz-city-chip" data-lat="18.5204" data-lng="73.8567" data-city="Pune">🏙️ Pune</button>
             <button type="button" class="wz-city-chip" data-lat="28.6139" data-lng="77.2090" data-city="Delhi">🏙️ Delhi</button>
             <button type="button" class="wz-city-chip" data-lat="12.9716" data-lng="77.5946" data-city="Bengaluru">🏙️ Bengaluru</button>
-            <button type="button" class="wz-city-chip" data-lat="23.0225" data-lng="72.5714" data-city="Ahmedabad">🏙️ Ahmedabad</button>
-            <button type="button" class="wz-city-chip" data-lat="18.5204" data-lng="73.8567" data-city="Pune">🏙️ Pune</button>
+            <button type="button" class="wz-city-chip" data-lat="51.5074" data-lng="-0.1278" data-city="London">🏙️ London</button>
+            <button type="button" class="wz-city-chip" data-lat="37.7749" data-lng="-122.4194" data-city="San Francisco">🏙️ San Francisco</button>
+            <button type="button" class="wz-city-chip" data-lat="40.7128" data-lng="-74.0060" data-city="New York">🏙️ New York</button>
           </div>
 
           <div class="wz-actions">
             <button type="button" class="wz-btn-primary" id="wz-detect-gps">
-              <span data-i18n="btn_detect_gps">📍 Detect My GPS Location</span>
+              <span data-i18n="btn_detect_gps">📍 Use My Current Location (GPS)</span>
+            </button>
+            <button type="button" class="wz-btn-secondary" id="wz-retry-gps-btn">
+              <span>🔄 Retry GPS Detection</span>
             </button>
             <button type="button" class="wz-btn-back" id="wz-back-1">
               ← Back
@@ -423,8 +448,33 @@
         <div class="wz-panel-inner">
           <div class="wz-panel-heading">
             <div class="wz-panel-step-tag" data-i18n="wz_s3_tag">Step 3 of 5</div>
-            <h2 class="wz-title" data-i18n="wz_s3_title">Free Parking Near You</h2>
-            <p class="wz-subtitle" data-i18n="wz_s3_sub">Showing 100% free public bike parking lots nearby. Zero fees, no booking required. Tap a lot to select it.</p>
+            <h2 class="wz-title" data-i18n="wz_s3_title">Nearby Parking Discovery</h2>
+            <p class="wz-subtitle" data-i18n="wz_s3_sub">Geographically filtered parking facilities based on your live coordinates. Distances and availabilities update dynamically.</p>
+          </div>
+
+          <!-- Radius & Refresh Discovery Toolbar -->
+          <div class="geo-discovery-toolbar">
+            <div class="radius-selector-group">
+              <span class="toolbar-label">Radius:</span>
+              <div class="radius-chips" id="wz-radius-chips">
+                <button type="button" class="radius-chip" data-radius="1">1 km</button>
+                <button type="button" class="radius-chip" data-radius="3">3 km</button>
+                <button type="button" class="radius-chip active" data-radius="5">5 km</button>
+                <button type="button" class="radius-chip" data-radius="10">10 km</button>
+              </div>
+            </div>
+            <div class="toolbar-actions-group">
+              <button type="button" class="refresh-action-btn" id="wz-btn-refresh-parking" title="Refresh parking availability">
+                <span class="refresh-icon">🔄</span> Refresh Parking
+              </button>
+              <span class="timestamp-tag" id="wz-last-updated-text">Last updated: just now</span>
+              <span class="stale-badge hidden" id="wz-stale-badge">⚠️ Availability may be outdated</span>
+            </div>
+          </div>
+
+          <div class="demo-disclaimer-strip" id="wz-demo-strip">
+            <span class="disclaimer-badge">PROTOTYPE DEMO DATA</span>
+            <span class="disclaimer-text">Candidate test parking facilities with individual coordinates & live status calculation.</span>
           </div>
 
           <div class="wz-parking-layout">
@@ -912,8 +962,28 @@
             
             <div class="gps-actions-row">
               <button class="mini-btn glow-btn" id="btn-refresh-gps" title="Request browser GPS location">
-                <span>📡 Detect Live GPS</span>
+                <span>📍 Use My Current Location</span>
               </button>
+              <button class="mini-btn" id="btn-refresh-parking-tab" title="Refresh nearby parking data">
+                <span>🔄 Refresh Parking</span>
+              </button>
+            </div>
+
+            <!-- Tab 2 Radius Selector & Status Row -->
+            <div class="tab-radius-row">
+              <div class="radius-selector-group">
+                <span class="toolbar-label">Radius:</span>
+                <div class="radius-chips" id="tab-radius-chips">
+                  <button type="button" class="radius-chip" data-radius="1">1 km</button>
+                  <button type="button" class="radius-chip" data-radius="3">3 km</button>
+                  <button type="button" class="radius-chip active" data-radius="5">5 km</button>
+                  <button type="button" class="radius-chip" data-radius="10">10 km</button>
+                </div>
+              </div>
+              <div class="tab-meta-status">
+                <span class="timestamp-tag" id="tab-last-updated-text">Last updated: just now</span>
+                <span class="stale-badge hidden" id="tab-stale-badge">⚠️ Stale</span>
+              </div>
             </div>
 
             <!-- Location Search / City Picker -->
@@ -2023,5 +2093,41 @@
   <script src="vehicles.js?v=2.2"></script>
   <!-- Application Controller JS -->
   <script src="app.js?v=2.2"></script>
+
+  <!-- ============================================================= -->
+  <!-- FRONTEND LOCATION & PARKING DEBUG PANEL (Requirement 14)       -->
+  <!-- ============================================================= -->
+  <aside class="geo-debug-dock" id="geo-debug-dock" aria-label="Geo Debugging Panel">
+    <div class="geo-debug-bar" id="geo-debug-bar">
+      <div class="debug-bar-left">
+        <span class="debug-status-dot"></span>
+        <span class="debug-title">Geo & Location Debugger</span>
+        <span class="debug-preview" id="dbg-preview">Initializing...</span>
+      </div>
+      <button type="button" class="debug-toggle-btn" id="dbg-toggle-btn">Minimize</button>
+    </div>
+    <div class="geo-debug-body" id="geo-debug-body">
+      <div class="debug-grid">
+        <div class="debug-card">
+          <div class="debug-card-title">📍 Current Location State</div>
+          <div class="debug-kv"><span class="debug-k">Latitude:</span> <span class="debug-v" id="dbg-lat">—</span></div>
+          <div class="debug-kv"><span class="debug-k">Longitude:</span> <span class="debug-v" id="dbg-lng">—</span></div>
+          <div class="debug-kv"><span class="debug-k">Accuracy:</span> <span class="debug-v" id="dbg-acc">—</span></div>
+          <div class="debug-kv"><span class="debug-k">Source:</span> <span class="debug-v" id="dbg-source">—</span></div>
+          <div class="debug-kv"><span class="debug-k">City:</span> <span class="debug-v" id="dbg-city">—</span></div>
+          <div class="debug-kv"><span class="debug-k">Timestamp:</span> <span class="debug-v" id="dbg-time">—</span></div>
+        </div>
+        <div class="debug-card">
+          <div class="debug-card-title">🔍 Parking Geo Search API</div>
+          <div class="debug-kv"><span class="debug-k">Search Radius:</span> <span class="debug-v" id="dbg-radius">5.0 km</span></div>
+          <div class="debug-kv"><span class="debug-k">Results Found:</span> <span class="debug-v" id="dbg-count">0</span></div>
+          <div class="debug-kv"><span class="debug-k">Data Mode:</span> <span class="debug-v" id="dbg-mode">DEMO DATA</span></div>
+          <div class="debug-kv"><span class="debug-k">Last Refresh:</span> <span class="debug-v" id="dbg-refresh">—</span></div>
+          <div class="debug-kv"><span class="debug-k">API Endpoint:</span> <span class="debug-v font-mono">/api/parking/nearby</span></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
 </body>
 </html>

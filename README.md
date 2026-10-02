@@ -392,3 +392,88 @@ Outputs are saved to `output_annotated.jpg` and `output_bev.jpg`.
 
 ---
 *Developed for College Computer Vision Mini-Project Coursework.*
+
+---
+
+## 15. Location & Dynamic Parking Discovery Architecture
+
+This section documents the location-aware parking discovery system, geo-filtering, and dynamic availability calculations.
+
+### 1. How GPS Location Works
+- **Browser Geolocation API**: The web client uses `navigator.geolocation.getCurrentPosition()` with `enableHighAccuracy: true`, `timeout: 10000ms`, and `maximumAge: 0`.
+- **Honest Location Acquisition**:
+  - The application **does not** assume or hardcode a fallback city (e.g. Rajkot/Gujarat).
+  - While acquiring satellite/cellular fix, it shows a clear loading state: *"Requesting browser GPS permission..."*.
+  - Returns `latitude`, `longitude`, and metric `accuracy` (in meters).
+  - If accuracy exceeds 1000 meters, the system warns the user about low accuracy.
+- **Permission & Error Handling**:
+  - `PERMISSION_DENIED` (Code 1): Displays a clear alert explaining that browser location access was dismissed/denied, provides a *"Retry GPS"* button, and prompts the user to manually select or search their city.
+  - `POSITION_UNAVAILABLE` (Code 2): Alerts the user that hardware location fix is unavailable on the device.
+  - `TIMEOUT` (Code 3): Handles slow satellite acquisition and allows instant retry or city search.
+- **Single Source of Truth (`locationState`)**:
+  All parking queries, map centers, and distance calculations pull from a single unified state:
+  ```json
+  {
+    "latitude": 22.3072,
+    "longitude": 70.8022,
+    "accuracy": 15,
+    "source": "gps",
+    "timestamp": 1727838500000,
+    "cityName": "Rajkot",
+    "radiusKm": 5.0
+  }
+  ```
+
+### 2. How Nearby Parking Search Works
+- **API Endpoint**:
+  ```http
+  GET /api/parking/nearby?lat={latitude}&lng={longitude}&radius={radius}&city={cityName}
+  ```
+- **Geo-filtering & Distance Calculation**:
+  - The backend uses the **Haversine formula** to calculate the great-circle distance between the user's coordinates `(lat, lng)` and each parking facility's `(latitude, longitude)`.
+  - Facilities are strictly filtered: only facilities where `distanceKm <= radius` are returned.
+  - Results are sorted in ascending order by `distanceKm`.
+  - Supported radius values: **1 km, 3 km, 5 km, 10 km**.
+- **Preventing the "Old Data" Bug**:
+  - When the user changes location or updates the search radius:
+    1. Previous results and map markers are cleared immediately.
+    2. A loading spinner is displayed.
+    3. The new coordinates are queried against `/api/parking/nearby`.
+    4. New results replace the old dataset (results are never appended across locations).
+    5. The Leaflet map, distance tags, and availability cards re-center and update.
+
+### 3. How Availability is Calculated
+Every parking facility calculates its own independent availability according to strict mathematical rules:
+
+$$\text{availableSpaces} = \text{totalCapacity} - \text{occupiedSpaces}$$
+
+- **Status Rules**:
+  - `availableSpaces == 0` $\rightarrow$ **`FULL`** 🔴
+  - `availableSpaces / totalCapacity <= 0.20` $\rightarrow$ **`LIMITED`** 🟡
+  - `availableSpaces / totalCapacity > 0.20` $\rightarrow$ **`AVAILABLE`** 🟢
+  - If capacity or occupancy is unknown $\rightarrow$ **`UNKNOWN`** ⚪
+- Each facility has its own capacity, occupied count, and operating hours. Availability is never shared or globally duplicated across facilities.
+
+### 4. Data Sources: Demo vs. Real Data
+| Data Type | Source | Distinguishing Marker | Behavior |
+| :--- | :--- | :--- | :--- |
+| **Real Live Camera Space** | On-site YOLOv8 Computer Vision | `is_suitable`, `can_park_legally` | Real-time optical verification of vacant bays |
+| **Pre-configured Hubs** | Curated Urban Facility Profiles (Mumbai, Rajkot, Ahmedabad, Pune, Delhi, Bengaluru, London, San Francisco, New York, Surat, Vadodara) | `data_source: "DEMO DATA (Verified Test Prototype)"` | Geographically accurate facilities with independent coordinates and availability states |
+| **Custom Local Prototype** | Geographically Anchored Synthesizer | `data_source: "DEMO DATA (Calibrated Local Prototype)"` | Generated strictly within `radius` km of user GPS coordinates if testing outside pre-configured hubs |
+
+> **Important Rule**: GPS and GIS indicate *where* a parking facility is located; they do not physically guarantee whether a bay is vacant right now. Physical occupancy is assessed on-site by the Computer Vision pipeline upon arrival.
+
+### 5. Environment Variables & API Keys
+No paid third-party API keys are strictly required for baseline operation:
+- OpenStreetMap Leaflet tiles and Nominatim geocoding run via open public endpoints.
+- If running behind custom reverse proxies or cloud ports:
+  - `PORT`: Server port (defaults to `8000`).
+  - `PYTHONPATH`: Set to `.` when executing from workspace root.
+
+### 6. How to Test with Different Locations
+- **Test 1 (Rajkot)**: Select "Rajkot" in Step 2 or search "Rajkot". 5 distinct Rajkot facilities appear (Junction Station Deck [Full], Dharmendrasinhji College [Available], Yagnik Road [Limited], etc.).
+- **Test 2 (Location Change to Ahmedabad)**: Select "Ahmedabad". Rajkot facilities disappear completely. 3 Ahmedabad facilities appear (Navrangpura AMC [Available], Sabarmati Riverfront [Available], Kalupur Station [Full]).
+- **Test 3 (Return to Location A)**: Switch back to "Rajkot". Rajkot facilities return immediately.
+- **Test 4 (Radius Filtering)**: In Ahmedabad, click `1 km` radius $\rightarrow$ shows *"No parking data found nearby within 1 km"*. Click `5 km` $\rightarrow$ 3 facilities return.
+- **Test 5 (Refresh Parking)**: Click *"Refresh Parking"* $\rightarrow$ triggers an immediate live API poll, resets data timestamps to *"Last updated: just now"*.
+- **Test 6 (Development Debug Panel)**: Observe the floating debug dock in the bottom right corner of the screen. It displays live latitude, longitude, accuracy, source (GPS vs Manual), search radius, and results count in real-time.

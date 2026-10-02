@@ -8209,3 +8209,464 @@ select.custom-select:focus {
   padding-top: 1rem;
   border-top: 1px solid var(--border-subtle);
 }
+
+
+/* ========================================================================== */
+/* LOCATION-AWARE & DYNAMIC PARKING DISCOVERY STYLES                          */
+/* ========================================================================== */
+
+/* GPS Permission Alert Box */
+.wz-gps-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1.15rem;
+  margin: 0.75rem 0;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius-md, 8px);
+  color: #fca5a5;
+  font-size: 0.88rem;
+  animation: fadeIn 0.25s ease-out;
+}
+.wz-gps-alert.hidden {
+  display: none !important;
+}
+.wz-alert-icon {
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+.wz-alert-body {
+  flex: 1;
+}
+.wz-alert-title {
+  font-weight: 700;
+  color: #f87171;
+  font-size: 0.92rem;
+  margin-bottom: 0.15rem;
+}
+.wz-alert-desc {
+  font-size: 0.82rem;
+  color: #fecaca;
+  line-height: 1.4;
+}
+.wz-alert-retry-btn {
+  padding: 0.4rem 0.85rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+.wz-alert-retry-btn:hover {
+  background: #dc2626;
+}
+
+/* Manual City Search in Wizard Step 2 */
+.wz-search-row {
+  margin: 0.75rem 0;
+}
+.wz-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-surface, #1e293b);
+  border: 1px solid var(--border-medium, #334155);
+  border-radius: var(--radius-lg, 10px);
+  padding: 0.35rem 0.5rem 0.35rem 0.85rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: border-color 0.2s ease;
+}
+.wz-search-input-wrap:focus-within {
+  border-color: var(--primary, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+.wz-search-icon {
+  font-size: 0.95rem;
+  opacity: 0.6;
+}
+.wz-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary, #f8fafc);
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+.wz-search-btn {
+  padding: 0.5rem 1rem;
+  background: var(--primary, #3b82f6);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+.wz-search-btn:hover {
+  background: var(--primary-dark, #2563eb);
+}
+
+/* Discovery Toolbar in Wizard Step 3 */
+.geo-discovery-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle, #334155);
+  border-radius: var(--radius-lg, 10px);
+}
+.radius-selector-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.toolbar-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.radius-chips {
+  display: inline-flex;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 2px;
+  border-radius: var(--radius-pill, 9999px);
+  border: 1px solid var(--border-medium, #334155);
+}
+.radius-chip {
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill, 9999px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.radius-chip:hover {
+  color: var(--text-primary, #f8fafc);
+}
+.radius-chip.active {
+  background: var(--primary, #3b82f6);
+  color: white;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.4);
+}
+.toolbar-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+.refresh-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.refresh-action-btn:hover {
+  background: rgba(59, 130, 246, 0.28);
+  border-color: #60a5fa;
+  color: white;
+}
+.refresh-action-btn.spinning .refresh-icon {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.timestamp-tag {
+  font-size: 0.78rem;
+  color: var(--text-tertiary, #64748b);
+  white-space: nowrap;
+}
+.stale-badge {
+  font-size: 0.75rem;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.15);
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* Demo Disclaimer Banner */
+.demo-disclaimer-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.4rem 0.85rem;
+  margin-bottom: 0.75rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px dashed rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.78rem;
+}
+.disclaimer-badge {
+  background: #d97706;
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.disclaimer-text {
+  color: #fde68a;
+  opacity: 0.9;
+}
+
+/* Tab 2 Meta & Radius Styles */
+.tab-radius-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.65rem 0 0.85rem 0;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border-subtle, #334155);
+}
+.tab-meta-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Individual Parking Lot Status Badges */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-pill, 9999px);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.status-pill.status-available {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+.status-pill.status-limited {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.status-pill.status-full {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.status-pill.status-unknown {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* Empty State when no parking found within radius */
+.no-parking-empty-state {
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px dashed var(--border-medium, #475569);
+  border-radius: var(--radius-lg, 12px);
+  margin: 1rem 0;
+}
+.no-parking-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  opacity: 0.7;
+}
+.no-parking-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary, #f8fafc);
+  margin-bottom: 0.35rem;
+}
+.no-parking-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary, #94a3b8);
+  max-width: 440px;
+  margin: 0 auto 1.25rem auto;
+  line-height: 1.5;
+}
+.no-parking-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.expand-radius-btn {
+  padding: 0.5rem 1.15rem;
+  background: var(--primary, #3b82f6);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.expand-radius-btn:hover {
+  background: var(--primary-dark, #2563eb);
+}
+
+/* ========================================================================== */
+/* FRONTEND LOCATION & PARKING DEBUG PANEL (Requirement 14)                   */
+/* ========================================================================== */
+.geo-debug-dock {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 9999;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+.geo-debug-dock.minimized {
+  width: 270px;
+}
+.geo-debug-dock.minimized .geo-debug-body {
+  display: none;
+}
+.geo-debug-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.85rem;
+  background: rgba(30, 41, 59, 0.8);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.25);
+  cursor: pointer;
+  user-select: none;
+}
+.debug-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  overflow: hidden;
+}
+.debug-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  flex-shrink: 0;
+  animation: pulseDot 2s infinite;
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.debug-title {
+  font-weight: 700;
+  color: #93c5fd;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.debug-preview {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-width: 110px;
+}
+.debug-toggle-btn {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #94a3b8;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.debug-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+.geo-debug-body {
+  padding: 0.75rem 0.85rem;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.debug-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.debug-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(51, 65, 85, 0.7);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+}
+.debug-card-title {
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: #60a5fa;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.debug-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.15rem 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.debug-k {
+  color: #94a3b8;
+}
+.debug-v {
+  font-weight: 600;
+  color: #f1f5f9;
+  text-align: right;
+  word-break: break-all;
+}
+.debug-v.font-mono {
+  font-family: inherit;
+  color: #38bdf8;
+  font-size: 0.7rem;
+}
+

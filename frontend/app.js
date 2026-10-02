@@ -174,111 +174,290 @@ function generateClientNearbyParking(lat, lng, hintCity = null) {
   }).sort((a, b) => a.distance_km - b.distance_km);
 }
 
-// Universal Multi-Stage Real Live Location Detector
-// Handles hardware GPS, browser permissions, file:/// protocols, and laptops without satellite chips
-async function detectRealLiveLocation() {
-  // 1. First, try Browser Geolocation API if available and in a secure context
-  if (navigator.geolocation && (window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    try {
-      const pos = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: false, // Fast Wi-Fi / cellular location in <500ms
-          timeout: 3500,
-          maximumAge: 60000
-        });
-      });
-      if (pos && pos.coords && pos.coords.latitude && pos.coords.longitude) {
-        return {
-          latitude: Number(pos.coords.latitude),
-          longitude: Number(pos.coords.longitude),
-          source: 'Live GPS (Satellite/Wi-Fi)',
-          city: 'Current Location',
-          isLive: true
-        };
-      }
-    } catch (geoErr) {
-      console.warn('Browser geolocation unavailable or dismissed, activating fast network IP geolocation fallback:', geoErr);
+// Pre-configured City Hubs for Rapid Geocoding & Discovery Testing
+const CITIES_COORDS = {
+  'rajkot': [22.3072, 70.8022, 'Rajkot, Gujarat'],
+  'ahmedabad': [23.0225, 72.5714, 'Ahmedabad, Gujarat'],
+  'mumbai': [19.0760, 72.8777, 'Mumbai, Maharashtra'],
+  'delhi': [28.6139, 77.2090, 'New Delhi, Delhi'],
+  'bengaluru': [12.9716, 77.5946, 'Bengaluru, Karnataka'],
+  'bangalore': [12.9716, 77.5946, 'Bengaluru, Karnataka'],
+  'pune': [18.5204, 73.8567, 'Pune, Maharashtra'],
+  'hyderabad': [17.3850, 78.4867, 'Hyderabad, Telangana'],
+  'chennai': [13.0827, 80.2707, 'Chennai, Tamil Nadu'],
+  'kolkata': [22.5726, 88.3639, 'Kolkata, West Bengal'],
+  'surat': [21.1702, 72.8311, 'Surat, Gujarat'],
+  'vadodara': [22.3072, 73.1812, 'Vadodara, Gujarat'],
+  'jaipur': [26.9124, 75.7873, 'Jaipur, Rajasthan'],
+  'london': [51.5074, -0.1278, 'London, UK'],
+  'san francisco': [37.7749, -122.4194, 'San Francisco, USA'],
+  'sf': [37.7749, -122.4194, 'San Francisco, USA'],
+  'new york': [40.7128, -74.0060, 'New York, USA'],
+  'nyc': [40.7128, -74.0060, 'New York, USA'],
+  'dubai': [25.2048, 55.2708, 'Dubai, UAE'],
+  'tokyo': [35.6762, 139.6503, 'Tokyo, Japan']
+};
+
+// ==========================================================================
+// LOCATION STATE - SINGLE SOURCE OF TRUTH (Requirement 2)
+// ==========================================================================
+const locationState = {
+  latitude: null, // No hardcoded fallback - must be real GPS or user choice
+  longitude: null,
+  accuracy: null,
+  source: null, // 'gps' | 'manual' | null
+  timestamp: null,
+  cityName: null,
+  radiusKm: 5.0, // 1, 3, 5, 10 km
+  lastFetchTime: null,
+  isFetchingLocation: false,
+  permissionError: null
+};
+
+function updateDebugPanelLocation() {
+  const elLat = document.getElementById('dbg-lat');
+  const elLng = document.getElementById('dbg-lng');
+  const elAcc = document.getElementById('dbg-acc');
+  const elSrc = document.getElementById('dbg-source');
+  const elCity = document.getElementById('dbg-city');
+  const elTime = document.getElementById('dbg-time');
+  const elPreview = document.getElementById('dbg-preview');
+
+  if (elLat) elLat.textContent = locationState.latitude !== null ? locationState.latitude.toFixed(5) : 'Not Detected';
+  if (elLng) elLng.textContent = locationState.longitude !== null ? locationState.longitude.toFixed(5) : 'Not Detected';
+  if (elAcc) elAcc.textContent = locationState.accuracy !== null ? `±${locationState.accuracy} m` : '—';
+  if (elSrc) {
+    if (locationState.source === 'gps') elSrc.textContent = 'GPS Hardware Fix 🛰️';
+    else if (locationState.source === 'manual') elSrc.textContent = 'Manual Selection 📍';
+    else if (locationState.permissionError) elSrc.textContent = 'GPS Permission Denied ⚠️';
+    else elSrc.textContent = 'Waiting for Location Fix...';
+  }
+  if (elCity) elCity.textContent = locationState.cityName || 'None';
+  if (elTime) {
+    if (locationState.timestamp) {
+      const d = new Date(locationState.timestamp);
+      elTime.textContent = d.toLocaleTimeString();
+    } else {
+      elTime.textContent = '—';
     }
   }
-
-  // 2. High-speed Direct IP Geolocation (returns real user coordinates in <300ms)
-  try {
-    const res = await fetch('https://get.geojs.io/v1/ip/geo.json', { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const data = await res.json();
-      const lat = parseFloat(data.latitude);
-      const lng = parseFloat(data.longitude);
-      if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
-        const city = data.city || data.region || 'India';
-        return {
-          latitude: lat,
-          longitude: lng,
-          source: `Network IP (${city})`,
-          city: city,
-          isLive: true
-        };
-      }
+  if (elPreview) {
+    if (locationState.latitude !== null) {
+      elPreview.textContent = `${locationState.latitude.toFixed(3)}°, ${locationState.longitude.toFixed(3)}° (${locationState.cityName || 'Live'})`;
+    } else {
+      elPreview.textContent = 'Waiting for Location...';
     }
-  } catch (e) {
-    console.warn('GeoJS IP locate failed, trying ipwho.is:', e);
   }
-
-  try {
-    const res = await fetch('https://ipwho.is/', { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.latitude && data.longitude) {
-        const city = data.city || data.region || 'India';
-        return {
-          latitude: parseFloat(data.latitude),
-          longitude: parseFloat(data.longitude),
-          source: `Network IP (${city})`,
-          city: city,
-          isLive: true
-        };
-      }
-    }
-  } catch (e) {
-    console.warn('ipwho.is failed, trying backend /api/gps/detect:', e);
-  }
-
-  // 3. Backend IP Geolocation Proxy
-  try {
-    const bRes = await fetch(`${API_BASE}/api/gps/detect`, { signal: AbortSignal.timeout(3000) });
-    if (bRes.ok) {
-      const bData = await bRes.json();
-      if (bData.latitude && bData.longitude) {
-        return {
-          latitude: parseFloat(bData.latitude),
-          longitude: parseFloat(bData.longitude),
-          source: `Backend IP (${bData.city || 'India'})`,
-          city: bData.city || 'Live Location',
-          isLive: true
-        };
-      }
-    }
-  } catch (e) {
-    console.warn('Backend GPS detect failed:', e);
-  }
-
-  // 4. Fallback to calibrated default (Rajkot, Gujarat)
-  const fallbackLat = (state.userLocation && state.userLocation[0]) ? state.userLocation[0] : 22.2904;
-  const fallbackLng = (state.userLocation && state.userLocation[1]) ? state.userLocation[1] : 70.7915;
-  return {
-    latitude: fallbackLat,
-    longitude: fallbackLng,
-    source: 'Calibrated City Hub',
-    city: 'Rajkot',
-    isLive: false
-  };
 }
+
+function updateDebugPanelApi(totalFound = 0, source = 'DEMO DATA') {
+  const elRad = document.getElementById('dbg-radius');
+  const elCnt = document.getElementById('dbg-count');
+  const elMode = document.getElementById('dbg-mode');
+  const elRef = document.getElementById('dbg-refresh');
+
+  if (elRad) elRad.textContent = `${locationState.radiusKm} km`;
+  if (elCnt) elCnt.textContent = totalFound;
+  if (elMode) elMode.textContent = source;
+  if (elRef) elRef.textContent = new Date().toLocaleTimeString();
+}
+
+// Request Browser Location with enableHighAccuracy: true (Requirement 1)
+function requestBrowserLocation(opts = {}) {
+  const highAccuracy = opts.highAccuracy !== false;
+  const timeout = opts.timeout || 10000;
+
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      const err = new Error('Browser Geolocation API is not supported on this device/browser.');
+      err.code = 2;
+      return reject(err);
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: Math.round(position.coords.accuracy || 0),
+          source: 'gps',
+          timestamp: position.timestamp || Date.now()
+        });
+      },
+      (geoErr) => {
+        let msg = 'Could not determine GPS position.';
+        if (geoErr.code === 1) { // PERMISSION_DENIED
+          msg = 'Location permission was denied. Please allow location access or select a city manually.';
+        } else if (geoErr.code === 2) { // POSITION_UNAVAILABLE
+          msg = 'GPS location is unavailable on this device. Please search or select your city manually.';
+        } else if (geoErr.code === 3) { // TIMEOUT
+          msg = 'Location request timed out. Please retry GPS or search your city manually.';
+        }
+        const err = new Error(msg);
+        err.code = geoErr.code;
+        reject(err);
+      },
+      {
+        enableHighAccuracy: highAccuracy,
+        timeout: timeout,
+        maximumAge: 0 // Force fresh GPS reading
+      }
+    );
+  });
+}
+
+// Detect and update user location using browser GPS
+async function detectUserLocation(opts = {}) {
+  locationState.isFetchingLocation = true;
+  locationState.permissionError = null;
+
+  // Update UI indicators to loading
+  const wzStatus = document.getElementById('wz-gps-status');
+  const wzCoords = document.getElementById('wz-gps-coords');
+  const wzAlert = document.getElementById('wz-gps-alert');
+  const tabCoords = document.getElementById('gps-live-coords');
+
+  if (wzStatus) wzStatus.textContent = '📡 Requesting browser GPS permission...';
+  if (wzCoords) wzCoords.textContent = 'Please allow location access when prompted...';
+  if (wzAlert) wzAlert.classList.add('hidden');
+  if (tabCoords) tabCoords.textContent = '📡 Requesting browser GPS permission...';
+
+  try {
+    const fix = await requestBrowserLocation({ highAccuracy: true, timeout: 10000 });
+    
+    // Determine friendly city name from coordinates
+    let detectedCity = 'My Location';
+    for (const [k, v] of Object.entries(CITIES_COORDS)) {
+      if (haversineDistance(fix.latitude, fix.longitude, v[0], v[1]) <= 30.0) {
+        detectedCity = v[2].split(',')[0].trim();
+        break;
+      }
+    }
+    // If not near pre-configured city hubs, reverse-geocode via OpenStreetMap Nominatim
+    if (detectedCity === 'My Location') {
+      try {
+        const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${fix.latitude}&lon=${fix.longitude}`, { signal: AbortSignal.timeout(2500) });
+        if (rev.ok) {
+          const revData = await rev.json();
+          if (revData && revData.address) {
+            detectedCity = revData.address.city || revData.address.town || revData.address.suburb || revData.address.county || 'My GPS Location';
+          }
+        }
+      } catch (e) {
+        console.warn('Reverse geocode fallback:', e);
+      }
+    }
+
+    // Update location state (single source of truth)
+    locationState.latitude = fix.latitude;
+    locationState.longitude = fix.longitude;
+    locationState.accuracy = fix.accuracy;
+    locationState.source = 'gps';
+    locationState.timestamp = fix.timestamp;
+    locationState.cityName = detectedCity;
+    locationState.permissionError = null;
+
+    // Sync global state
+    state.userLocation = [fix.latitude, fix.longitude];
+    state.userLocationLive = true;
+    state.cityName = detectedCity;
+
+    updateDebugPanelLocation();
+
+    // Accuracy note
+    const accText = fix.accuracy > 1000 ? ` (±${(fix.accuracy / 1000).toFixed(1)} km low accuracy)` : ` (±${fix.accuracy}m)`;
+    if (tabCoords) {
+      tabCoords.textContent = `${fix.latitude.toFixed(4)}° N, ${fix.longitude.toFixed(4)}° E (${detectedCity} • GPS Fix${accText})`;
+    }
+
+    showToast(`📍 GPS acquired: ${detectedCity} (±${fix.accuracy}m)`);
+
+    // In wizard, update mini-map and step UI
+    wzSetLocation(fix.latitude, fix.longitude, detectedCity, true, `GPS Fix (±${fix.accuracy}m)`);
+
+    // Refresh map if open
+    if (state.map) {
+      updateUserMapMarker();
+    }
+
+    // Refresh parking discovery with new coordinates
+    await fetchLocationAwareParking();
+
+    return fix;
+  } catch (err) {
+    console.warn('GPS detection failed:', err);
+    locationState.permissionError = err;
+    locationState.isFetchingLocation = false;
+
+    // Show permission error alert in Wizard
+    if (wzAlert) {
+      wzAlert.classList.remove('hidden');
+      const alertTitle = document.getElementById('wz-alert-title');
+      const alertDesc = document.getElementById('wz-alert-desc');
+      if (alertTitle) alertTitle.textContent = err.code === 1 ? 'Location Permission Denied' : 'GPS Acquisition Failed';
+      if (alertDesc) alertDesc.textContent = err.message;
+    }
+
+    if (wzStatus) wzStatus.textContent = '⚠️ Location Permission Needed';
+    if (wzCoords) wzCoords.textContent = 'Please choose a city below or allow browser location access.';
+    if (tabCoords) tabCoords.textContent = `⚠️ ${err.message}`;
+
+    showToast(`⚠️ ${err.message}`);
+    updateDebugPanelLocation();
+    throw err;
+  } finally {
+    locationState.isFetchingLocation = false;
+  }
+}
+
+// Set manual location (city selection or search)
+async function setManualLocation(lat, lng, cityName) {
+  locationState.latitude = lat;
+  locationState.longitude = lng;
+  locationState.accuracy = 50; // Nominal accuracy for manual selection
+  locationState.source = 'manual';
+  locationState.timestamp = Date.now();
+  locationState.cityName = cityName;
+  locationState.permissionError = null;
+
+  // Sync global state
+  state.userLocation = [lat, lng];
+  state.userLocationLive = true;
+  state.cityName = cityName;
+
+  // Hide wizard alert if open
+  const wzAlert = document.getElementById('wz-gps-alert');
+  if (wzAlert) wzAlert.classList.add('hidden');
+
+  const tabCoords = document.getElementById('gps-live-coords');
+  if (tabCoords) {
+    tabCoords.textContent = `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E (${cityName} • Selected Location 📍)`;
+  }
+
+  updateDebugPanelLocation();
+  showToast(`📍 Set location to ${cityName}`);
+
+  // In wizard, update mini-map
+  wzSetLocation(lat, lng, cityName, true, 'Selected City Hub');
+
+  // Update map marker
+  if (state.map) {
+    state.map.setView(state.userLocation, 14);
+    updateUserMapMarker();
+  }
+
+  // Reload parking for this new location
+  await fetchLocationAwareParking();
+}
+
 
 // Global Application State (No demo data by default - loaded from real session or user input)
 const state = {
   currentTab: 'camera-scan',
   currentScenario: 'scenario_2_driver',
   userProfile: loadUserProfile(),
-  userLocation: [22.2904, 70.7915], // [lat, lng] Default to real coordinates (Rajkot, Gujarat)
+  userLocation: [null, null], // Initialized on GPS or selection
+  cityName: 'Not Detected',
   cityName: 'Rajkot',
   userLocationLive: false,
   activeLot: null,
@@ -1384,25 +1563,11 @@ function initGPSFeatures() {
   const cityInput = document.getElementById('gps-city-input');
   const citySearchBtn = document.getElementById('btn-city-search');
 
-  const CITIES_COORDS = {
-    'mumbai': [19.0760, 72.8777, 'Mumbai, Maharashtra'],
-    'delhi': [28.6139, 77.2090, 'New Delhi, Delhi'],
-    'bengaluru': [12.9716, 77.5946, 'Bengaluru, Karnataka'],
-    'bangalore': [12.9716, 77.5946, 'Bengaluru, Karnataka'],
-    'pune': [18.5204, 73.8567, 'Pune, Maharashtra'],
-    'hyderabad': [17.3850, 78.4867, 'Hyderabad, Telangana'],
-    'chennai': [13.0827, 80.2707, 'Chennai, Tamil Nadu'],
-    'kolkata': [22.5726, 88.3639, 'Kolkata, West Bengal'],
-    'ahmedabad': [23.0225, 72.5714, 'Ahmedabad, Gujarat'],
-    'london': [51.5074, -0.1278, 'London, UK'],
-    'san francisco': [37.7749, -122.4194, 'San Francisco, USA'],
-    'sf': [37.7749, -122.4194, 'San Francisco, USA'],
-    'new york': [40.7128, -74.0060, 'New York, USA'],
-    'dubai': [25.2048, 55.2708, 'Dubai, UAE'],
-    'tokyo': [35.6762, 139.6503, 'Tokyo, Japan']
-  };
-
+  
   function setCityLocation(lat, lng, cityName) {
+  setManualLocation(lat, lng, cityName);
+  return;
+  /* old replaced */
     state.userLocation = [lat, lng];
     state.userLocationLive = false;
     const coordsLabel = document.getElementById('gps-live-coords');
@@ -1480,31 +1645,7 @@ function initGPSFeatures() {
 }
 
 async function refreshUserGPS() {
-  const coordsLabel = document.getElementById('gps-live-coords');
-  if (coordsLabel) coordsLabel.textContent = '📡 Detecting live GPS location...';
-
-  try {
-    const loc = await detectRealLiveLocation();
-    state.userLocation = [loc.latitude, loc.longitude];
-    state.userLocationLive = loc.isLive;
-    if (coordsLabel) {
-      coordsLabel.textContent = `${loc.latitude.toFixed(4)}° N, ${loc.longitude.toFixed(4)}° E (${loc.city} • ${loc.source} ✅)`;
-    }
-    showToast(`📍 Live Location: ${loc.city} (${loc.source})`);
-    if (state.map) {
-      updateUserMapMarker();
-      loadMapParkingLots();
-    }
-  } catch (err) {
-    console.warn('refreshUserGPS error:', err);
-    state.userLocation = [22.2904, 70.7915];
-    state.userLocationLive = false;
-    if (coordsLabel) coordsLabel.textContent = `22.2904° N, 70.7915° E (Rajkot Central Hub)`;
-    if (state.map) {
-      updateUserMapMarker();
-      loadMapParkingLots();
-    }
-  }
+  return detectUserLocation({ forceRetry: true });
 }
 
 function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -1561,98 +1702,7 @@ function updateUserMapMarker() {
 }
 
 async function loadMapParkingLots() {
-  let lots = null;
-  const cityParam = state.cityName ? `&city=${encodeURIComponent(state.cityName)}` : '';
-  try {
-    const response = await fetch(`${API_BASE}/api/parking/nearby?lat=${state.userLocation[0]}&lng=${state.userLocation[1]}${cityParam}`);
-    if (response.ok) {
-      lots = await response.json();
-    }
-  } catch (err) {
-    console.warn('Backend fetch failed for map, using built-in generator:', err);
-  }
-
-  if (!lots || !Array.isArray(lots) || lots.length === 0) {
-    lots = generateClientNearbyParking(state.userLocation[0], state.userLocation[1], state.cityName);
-  }
-
-  try {
-    state.allLotsData = lots;
-
-    // Clear old markers
-    state.mapMarkers.forEach(m => state.map.removeLayer(m));
-    state.mapMarkers = [];
-
-    const lotsList = document.getElementById('nearby-lots-list');
-    if (lotsList) lotsList.innerHTML = '';
-
-    let totalFreeSpots = 0;
-
-    // Compute dynamic distances
-    lots.forEach(lot => {
-      const dist = haversineDistance(state.userLocation[0], state.userLocation[1], lot.latitude, lot.longitude);
-      lot.dynamic_distance = dist > 0 ? dist : lot.distance_km;
-      totalFreeSpots += lot.live_available;
-    });
-
-    // Sort by nearest distance
-    lots.sort((a, b) => a.dynamic_distance - b.dynamic_distance);
-
-    const totalFreeCountEl = document.getElementById('gps-total-free-count');
-    if (totalFreeCountEl) {
-      totalFreeCountEl.textContent = `${totalFreeSpots} Free Bays Available Nearby (${state.cityName || 'Live Area'})`;
-    }
-
-    lots.forEach((lot, idx) => {
-      // Map marker with free bike parking styling
-      const lotIcon = L.divIcon({
-        className: 'lot-map-pin',
-        html: `<div style="background:${lot.live_available > 0 ? '#059669' : '#dc2626'};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.2);">${lot.live_available} 🏍️</div>`,
-        iconSize: [44, 24],
-        iconAnchor: [22, 12]
-      });
-
-      const marker = L.marker([lot.latitude, lot.longitude], { icon: lotIcon }).addTo(state.map);
-      marker.bindPopup(`
-        <strong>${lot.name}</strong><br>
-        <span style="color:#10b981;font-weight:bold;">${lot.live_available} Free Bays</span> (No Fee)<br>
-        <small style="color:#64748b;">Live Occupancy: ${lot.occupancy_pct || 65}% • ${lot.total_capacity || 40} Total Bays</small>
-      `);
-      marker.on('click', () => selectParkingLot(lot));
-      state.mapMarkers.push(marker);
-
-      // Sidebar Card
-      if (lotsList) {
-        const card = document.createElement('div');
-        card.className = `lot-card ${idx === 0 ? 'active' : ''}`;
-        card.innerHTML = `
-          <div class="lot-header">
-            <span class="lot-name">${lot.name}</span>
-            <span class="lot-distance">${lot.dynamic_distance} km</span>
-          </div>
-          <div class="lot-meta">
-            <span>${lot.type}</span>
-            <span class="lot-avail-tag ${lot.live_available > 5 ? 'avail-good' : 'avail-low'}">🟢 ${lot.live_available} Free Bays</span>
-            <span class="lot-occ-tag" style="background:rgba(59,130,246,0.1);color:#2563eb;font-size:0.75rem;padding:2px 6px;border-radius:4px;font-weight:600;">${lot.occupancy_pct || 65}% Occ</span>
-            <span class="fee-free-badge">Zero Fee</span>
-          </div>
-          <div class="lot-actions">
-            <button class="btn-nav-lot" onclick="event.stopPropagation(); triggerNavigation('${lot.id}')">
-              🧭 Navigate & Scan
-            </button>
-          </div>
-        `;
-        card.addEventListener('click', () => selectParkingLot(lot));
-        lotsList.appendChild(card);
-      }
-
-      if (idx === 0) {
-        selectParkingLot(lot);
-      }
-    });
-  } catch (err) {
-    console.error('Failed to load GPS lots:', err);
-  }
+  return fetchLocationAwareParking();
 }
 
 function selectParkingLot(lot) {
@@ -2259,6 +2309,13 @@ function wzGoToStep(stepNum) {
     c.classList.toggle('completed', i < stepNum - 1);
   });
 
+  // On step 2 entering, if location not set, attempt auto GPS
+  if (stepNum === 2 && locationState.latitude === null) {
+    setTimeout(() => {
+      detectUserLocation({ forceRetry: false }).catch(() => {});
+    }, 400);
+  }
+
   // On step 3 entering, load parking lots
   if (stepNum === 3) {
     setTimeout(() => wzLoadParkingLots(), 300);
@@ -2590,6 +2647,47 @@ function wzShowRegisteredBanner(p) {
 
 // ---- STEP 2: GPS ----
 function wzInitStep2() {
+
+  // Manual City Search Input in Step 2
+  const wzCityInput = document.getElementById('wz-city-input');
+  const wzCitySearchBtn = document.getElementById('wz-city-search-btn');
+  const wzRetryGpsBtn = document.getElementById('wz-retry-gps-btn');
+  const wzAlertRetry = document.getElementById('wz-alert-retry');
+
+  const doWzCitySearch = async () => {
+    const q = wzCityInput ? wzCityInput.value.trim().toLowerCase() : '';
+    if (!q) return;
+
+    for (const [k, v] of Object.entries(CITIES_COORDS)) {
+      if (q.includes(k) || k.includes(q)) {
+        await setManualLocation(v[0], v[1], v[2].split(',')[0].trim());
+        return;
+      }
+    }
+
+    try {
+      showToast(`Searching for "${q}"...`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lng = parseFloat(data[0].lon);
+        const display = data[0].display_name.split(',')[0];
+        await setManualLocation(lat, lng, display);
+      } else {
+        alert(`Location "${q}" not found. Please pick from quick chips.`);
+      }
+    } catch (e) {
+      console.warn('Geocode error:', e);
+      alert('Could not resolve location. Please select one of the quick city hubs.');
+    }
+  };
+
+  if (wzCitySearchBtn) wzCitySearchBtn.addEventListener('click', doWzCitySearch);
+  if (wzCityInput) wzCityInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doWzCitySearch(); });
+  if (wzRetryGpsBtn) wzRetryGpsBtn.addEventListener('click', () => detectUserLocation({ forceRetry: true }));
+  if (wzAlertRetry) wzAlertRetry.addEventListener('click', () => detectUserLocation({ forceRetry: true }));
+
   const detectBtn = document.getElementById('wz-detect-gps');
   const backBtn = document.getElementById('wz-back-1');
 
@@ -2602,31 +2700,13 @@ function wzInitStep2() {
       const lat = parseFloat(chip.getAttribute('data-lat'));
       const lng = parseFloat(chip.getAttribute('data-lng'));
       const city = chip.getAttribute('data-city');
-      wzSetLocation(lat, lng, city, false);
+      setManualLocation(lat, lng, city);
     });
   });
 }
 
 async function wzDetectGPS() {
-  const statusEl = document.getElementById('wz-gps-status');
-  const coordsEl = document.getElementById('wz-gps-coords');
-  const iconEl = document.getElementById('wz-gps-icon');
-  const detectBtn = document.getElementById('wz-detect-gps');
-
-  if (statusEl) statusEl.textContent = '📡 Detecting live GPS location...';
-  if (coordsEl) coordsEl.textContent = 'Acquiring satellite / network fix...';
-  if (iconEl) iconEl.textContent = '📡';
-  if (detectBtn) detectBtn.disabled = true;
-
-  try {
-    const loc = await detectRealLiveLocation();
-    wzSetLocation(loc.latitude, loc.longitude, loc.city, loc.isLive, loc.source);
-  } catch (err) {
-    console.warn('wzDetectGPS error:', err);
-    wzSetLocation(22.2904, 70.7915, 'Rajkot', false, 'Default Hub');
-  } finally {
-    if (detectBtn) detectBtn.disabled = false;
-  }
+  return detectUserLocation();
 }
 
 function wzSetLocation(lat, lng, cityName, isLive, sourceName = 'Live GPS') {
@@ -2682,7 +2762,436 @@ function wzInitMiniMap(lat, lng) {
 }
 
 // ---- STEP 3: FIND PARKING ----
+
+// ==========================================================================
+// UNIFIED LOCATION-AWARE PARKING DISCOVERY (Requirements 3, 4, 6, 7, 16)
+// ==========================================================================
+async function fetchLocationAwareParking(opts = {}) {
+  const forceRefresh = opts.forceRefresh || false;
+
+  // Handle case where location is not yet acquired (Requirement 1 & 15)
+  if (locationState.latitude === null || locationState.longitude === null) {
+    const wzLotsList = document.getElementById('wz-lots-list');
+    const tabLotsList = document.getElementById('nearby-lots-list');
+    const noLocHtml = `
+      <div class="no-parking-empty-state">
+        <div class="no-parking-icon">📍</div>
+        <div class="no-parking-title">Location Not Yet Detected</div>
+        <div class="no-parking-desc">We need your real location to find parking near you. Click below to detect your live GPS or pick a city.</div>
+        <div class="no-parking-actions">
+          <button type="button" class="expand-radius-btn" onclick="detectUserLocation({ forceRetry: true })">📍 Use My Current Location (GPS)</button>
+          <button type="button" class="expand-radius-btn" style="background:#475569;" onclick="wzGoToStep(2)">Select City Manually</button>
+        </div>
+      </div>
+    `;
+    if (wzLotsList) wzLotsList.innerHTML = noLocHtml;
+    if (tabLotsList) tabLotsList.innerHTML = noLocHtml;
+    updateDebugPanelApi(0, 'NO LOCATION');
+    return [];
+  }
+
+  const lat = locationState.latitude;
+  const lng = locationState.longitude;
+  const radius = locationState.radiusKm || 5.0;
+
+  // 1. PREVENT OLD DATA BUG (Requirement 16): Clear old results immediately
+  wz.lotsData = [];
+  state.allLotsData = [];
+
+  // Clear map markers
+  if (state.map && state.mapMarkers) {
+    state.mapMarkers.forEach(m => state.map.removeLayer(m));
+    state.mapMarkers = [];
+  }
+  if (wz.parkingMap && wz.parkingMarkers) {
+    wz.parkingMarkers.forEach(m => wz.parkingMap.removeLayer(m));
+    wz.parkingMarkers = [];
+  }
+
+  // 2. Show loading state in both Wizard Step 3 and Tab 2
+  const wzLotsList = document.getElementById('wz-lots-list');
+  const wzLoadingEl = document.getElementById('wz-lots-loading');
+  const tabLotsList = document.getElementById('nearby-lots-list');
+  const wzRefreshBtn = document.getElementById('wz-btn-refresh-parking');
+  const tabRefreshBtn = document.getElementById('btn-refresh-parking-tab');
+
+  if (wzLoadingEl) wzLoadingEl.style.display = 'flex';
+  if (wzLotsList) {
+    wzLotsList.innerHTML = `
+      <div class="wz-lots-loading">
+        <div class="wz-spinner"></div>
+        <span>Searching parking within ${radius} km of ${locationState.cityName}...</span>
+      </div>`;
+  }
+  if (tabLotsList) {
+    tabLotsList.innerHTML = `
+      <div style="padding:2rem;text-align:center;color:#94a3b8;">
+        <div class="mini-spinner" style="display:inline-block;width:24px;height:24px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        <div style="margin-top:0.5rem;font-size:0.85rem;">Searching parking within ${radius} km...</div>
+      </div>`;
+  }
+
+  if (wzRefreshBtn) wzRefreshBtn.classList.add('spinning');
+  if (tabRefreshBtn) tabRefreshBtn.classList.add('spinning');
+
+  try {
+    // 3. Send new latitude/longitude and radius to backend
+    const url = `${API_BASE}/api/parking/nearby?lat=${lat}&lng=${lng}&radius=${radius}&city=${encodeURIComponent(locationState.cityName || '')}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Server returned HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const lots = data.parking || data.lots || [];
+
+    // 4. Update timestamps & debug panel
+    locationState.lastFetchTime = Date.now();
+    updateLastUpdatedLabels();
+    updateDebugPanelApi(lots.length, data.source || (data.isDemo ? 'DEMO DATA' : 'REAL DATA'));
+
+    // 5. Replace old results
+    wz.lotsData = lots;
+    state.allLotsData = lots;
+
+    // Render in UI
+    renderParkingResults(lots);
+
+    if (forceRefresh) {
+      showToast(`🔄 Parking refreshed: ${lots.length} facilities within ${radius} km`);
+    }
+
+    return lots;
+  } catch (err) {
+    console.error('fetchLocationAwareParking error:', err);
+    if (wzLotsList) {
+      wzLotsList.innerHTML = `
+        <div class="wz-lots-error" style="padding:1.5rem;text-align:center;color:#f87171;background:rgba(239,68,68,0.1);border-radius:8px;border:1px solid rgba(239,68,68,0.3);">
+          ⚠️ Failed to reach parking backend service.<br>
+          <small style="color:#cbd5e1;display:block;margin-top:0.4rem;">Ensure the Python backend server is running on port 8000.</small>
+          <button type="button" class="wz-alert-retry-btn" style="margin-top:0.75rem;" onclick="fetchLocationAwareParking({ forceRefresh: true })">Retry</button>
+        </div>`;
+    }
+    if (tabLotsList) {
+      tabLotsList.innerHTML = `
+        <div style="padding:1.5rem;text-align:center;color:#f87171;font-size:0.85rem;">
+          ⚠️ Could not load parking data. Check server connection.
+        </div>`;
+    }
+    return [];
+  } finally {
+    if (wzLoadingEl) wzLoadingEl.style.display = 'none';
+    if (wzRefreshBtn) wzRefreshBtn.classList.remove('spinning');
+    if (tabRefreshBtn) tabRefreshBtn.classList.remove('spinning');
+  }
+}
+
+// Render Parking Results in both Wizard and Tab 2
+function renderParkingResults(lots) {
+  const wzLotsList = document.getElementById('wz-lots-list');
+  const tabLotsList = document.getElementById('nearby-lots-list');
+  const wzFreeCount = document.getElementById('wz-free-count');
+  const tabFreeCount = document.getElementById('gps-total-free-count');
+  const radius = locationState.radiusKm || 5.0;
+
+  // Handle Empty State (Requirement 20 TEST 7)
+  if (!lots || lots.length === 0) {
+    const emptyHtml = `
+      <div class="no-parking-empty-state">
+        <div class="no-parking-icon">🅿️</div>
+        <div class="no-parking-title">No parking data found nearby</div>
+        <div class="no-parking-desc">
+          No registered or prototype parking lots were found within <strong>${radius} km</strong> of <strong>${locationState.cityName || 'your location'}</strong>.
+        </div>
+        <div class="no-parking-actions">
+          <button type="button" class="expand-radius-btn" onclick="setSearchRadius(10)">Expand to 10 km Radius</button>
+          <button type="button" class="expand-radius-btn" style="background:#475569;" onclick="setSearchRadius(5); wzGoToStep(2);">Change Location</button>
+        </div>
+      </div>
+    `;
+
+    if (wzLotsList) wzLotsList.innerHTML = emptyHtml;
+    if (tabLotsList) tabLotsList.innerHTML = emptyHtml;
+    if (wzFreeCount) wzFreeCount.textContent = `0 free bays found within ${radius} km`;
+    if (tabFreeCount) tabFreeCount.textContent = `0 Free Bays Found Nearby (${radius} km)`;
+    return;
+  }
+
+  let totalFree = 0;
+  lots.forEach(l => {
+    totalFree += (l.availableSpaces !== undefined ? l.availableSpaces : (l.live_available || 0));
+  });
+
+  if (wzFreeCount) wzFreeCount.textContent = `${totalFree} free bays in ${locationState.cityName || 'your area'} (${lots.length} lots)`;
+  if (tabFreeCount) tabFreeCount.textContent = `${totalFree} Free Bays Available Nearby (${locationState.cityName || 'Live Area'})`;
+
+  // Render Wizard Step 3
+  if (wzLotsList) {
+    wzLotsList.innerHTML = '';
+    lots.forEach((lot, idx) => {
+      const avail = lot.availableSpaces !== undefined ? lot.availableSpaces : lot.live_available;
+      const total = lot.totalCapacity !== undefined ? lot.totalCapacity : lot.total_capacity;
+      const occ = lot.occupiedSpaces !== undefined ? lot.occupiedSpaces : lot.occupied;
+      const dist = lot.distanceKm !== undefined ? lot.distanceKm : lot.distance_km;
+      const st = (lot.status || 'available').toLowerCase();
+
+      // Availability badge styling per Requirement 6
+      let statusBadgeHtml = '';
+      if (st === 'available') {
+        statusBadgeHtml = `<span class="status-pill status-available">🟢 Available (${avail} free)</span>`;
+      } else if (st === 'limited') {
+        statusBadgeHtml = `<span class="status-pill status-limited">🟡 Limited (${avail} free)</span>`;
+      } else if (st === 'full') {
+        statusBadgeHtml = `<span class="status-pill status-full">🔴 Full (0 free)</span>`;
+      } else {
+        statusBadgeHtml = `<span class="status-pill status-unknown">⚪ Unknown Availability</span>`;
+      }
+
+      const card = document.createElement('div');
+      card.className = `wz-lot-card${idx === 0 ? ' selected' : ''}`;
+      card.id = `wz-lot-${lot.id}`;
+      card.innerHTML = `
+        <div class="wz-lot-top">
+          <div style="flex:1;">
+            <div class="wz-lot-name">${lot.name}</div>
+            <div class="wz-lot-type">${lot.type || 'Parking Facility'}</div>
+          </div>
+          <div class="wz-lot-right" style="text-align:right;">
+            <div class="wz-lot-dist" style="font-weight:700;color:#60a5fa;">${dist} km</div>
+            <div style="font-size:0.75rem;color:#94a3b8;">${lot.drive_time_mins || Math.max(1, Math.round(dist * 2.8))} min drive</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:0.5rem 0;flex-wrap:wrap;gap:0.4rem;">
+          ${statusBadgeHtml}
+          <span style="font-size:0.78rem;color:#cbd5e1;font-weight:600;">${avail} / ${total} Bays Free (${occ} occupied)</span>
+        </div>
+        <div class="wz-lot-tags">
+          <span class="wz-lot-tag" style="background:rgba(59,130,246,0.12);color:#60a5fa;font-weight:600;">${lot.rule_badge || 'Registered ✅'}</span>
+          <span class="wz-lot-tag" style="background:rgba(148,163,184,0.12);color:#94a3b8;">🕒 ${lot.timings || '24/7 Open'}</span>
+          <span class="wz-lot-tag" style="background:rgba(245,158,11,0.12);color:#f59e0b;font-size:0.7rem;">${lot.lastUpdated || 'Last updated: 3 min ago'}</span>
+        </div>
+      `;
+      card.addEventListener('click', () => wzSelectLot(lot));
+      wzLotsList.appendChild(card);
+      if (idx === 0) wzSelectLot(lot);
+    });
+  }
+
+  // Render Tab 2 Sidebar Cards
+  if (tabLotsList) {
+    tabLotsList.innerHTML = '';
+    lots.forEach((lot, idx) => {
+      const avail = lot.availableSpaces !== undefined ? lot.availableSpaces : lot.live_available;
+      const total = lot.totalCapacity !== undefined ? lot.totalCapacity : lot.total_capacity;
+      const occ = lot.occupiedSpaces !== undefined ? lot.occupiedSpaces : lot.occupied;
+      const dist = lot.distanceKm !== undefined ? lot.distanceKm : lot.distance_km;
+      const st = (lot.status || 'available').toLowerCase();
+
+      let statusBadge = '';
+      if (st === 'available') statusBadge = `<span class="status-pill status-available">🟢 Available (${avail} free)</span>`;
+      else if (st === 'limited') statusBadge = `<span class="status-pill status-limited">🟡 Limited (${avail} free)</span>`;
+      else if (st === 'full') statusBadge = `<span class="status-pill status-full">🔴 Full</span>`;
+      else statusBadge = `<span class="status-pill status-unknown">⚪ Unknown</span>`;
+
+      const card = document.createElement('div');
+      card.className = `lot-card${idx === 0 ? ' active' : ''}`;
+      card.innerHTML = `
+        <div class="lot-header">
+          <span class="lot-name">${lot.name}</span>
+          <span class="lot-distance">${dist} km</span>
+        </div>
+        <div class="lot-meta" style="margin:0.4rem 0;">
+          <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;">${lot.type}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap;">
+            ${statusBadge}
+            <span style="font-size:0.75rem;color:#cbd5e1;">${avail}/${total} bays free</span>
+          </div>
+        </div>
+        <div class="lot-actions" style="margin-top:0.5rem;">
+          <button class="btn-nav-lot" onclick="event.stopPropagation(); triggerNavigation('${lot.id}')">
+            🧭 Navigate & Scan
+          </button>
+        </div>
+      `;
+      card.addEventListener('click', () => selectParkingLot(lot));
+      tabLotsList.appendChild(card);
+    });
+  }
+
+  // Update Leaflet Map Markers
+  updateMapMarkers(lots);
+}
+
+// Update Map Markers for both Wizard and Tab 2
+function updateMapMarkers(lots) {
+  const userLat = locationState.latitude !== null ? locationState.latitude : state.userLocation[0];
+  const userLng = locationState.longitude !== null ? locationState.longitude : state.userLocation[1];
+
+  // 1. Wizard Step 3 Map
+  if (wz.parkingMap) {
+    wz.parkingMap.setView([userLat, userLng], 14);
+
+    // User pin
+    const userPin = L.divIcon({
+      className: '',
+      html: `<div style="background:#2563eb;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(37,99,235,0.7);display:flex;align-items:center;justify-content:center;font-size:12px;">📍</div>`,
+      iconSize: [24, 24], iconAnchor: [12, 12]
+    });
+    const userMarker = L.marker([userLat, userLng], { icon: userPin }).addTo(wz.parkingMap);
+    userMarker.bindPopup(`<strong>📍 You are here</strong><br>${locationState.cityName || 'Current Coordinates'}`);
+    wz.parkingMarkers.push(userMarker);
+
+    // Parking lot pins
+    lots.forEach(lot => {
+      const avail = lot.availableSpaces !== undefined ? lot.availableSpaces : lot.live_available;
+      const st = (lot.status || 'available').toLowerCase();
+      const pinColor = st === 'available' ? '#10b981' : (st === 'limited' ? '#f59e0b' : '#ef4444');
+
+      const pinIcon = L.divIcon({
+        className: '',
+        html: `<div style="background:${pinColor};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);cursor:pointer;white-space:nowrap;">${avail} 🅿️</div>`,
+        iconSize: [52, 26], iconAnchor: [26, 13]
+      });
+
+      const marker = L.marker([lot.latitude, lot.longitude], { icon: pinIcon }).addTo(wz.parkingMap);
+      marker.bindPopup(`
+        <strong>${lot.name}</strong><br>
+        <span style="color:${pinColor};font-weight:bold;">${avail} Bays Free</span> • ${lot.totalCapacity || lot.total_capacity} Total<br>
+        <small style="color:#64748b;">${lot.distanceKm || lot.distance_km} km away • ${lot.type}</small>
+      `);
+      marker.on('click', () => wzSelectLot(lot));
+      wz.parkingMarkers.push(marker);
+    });
+
+    if (lots.length > 0) {
+      const bounds = L.latLngBounds([[userLat, userLng], ...lots.map(l => [l.latitude, l.longitude])]);
+      wz.parkingMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    }
+  }
+
+  // 2. Tab 2 Leaflet Map
+  if (state.map) {
+    state.map.setView([userLat, userLng], 14);
+    updateUserMapMarker();
+
+    lots.forEach(lot => {
+      const avail = lot.availableSpaces !== undefined ? lot.availableSpaces : lot.live_available;
+      const st = (lot.status || 'available').toLowerCase();
+      const pinColor = st === 'available' ? '#10b981' : (st === 'limited' ? '#f59e0b' : '#ef4444');
+
+      const lotIcon = L.divIcon({
+        className: 'lot-map-pin',
+        html: `<div style="background:${pinColor};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${avail} 🅿️</div>`,
+        iconSize: [52, 26], iconAnchor: [26, 13]
+      });
+
+      const marker = L.marker([lot.latitude, lot.longitude], { icon: lotIcon }).addTo(state.map);
+      marker.bindPopup(`
+        <strong>${lot.name}</strong><br>
+        <span style="color:${pinColor};font-weight:bold;">${avail} Bays Available</span><br>
+        <small style="color:#64748b;">${lot.distanceKm || lot.distance_km} km away • ${lot.type}</small>
+      `);
+      marker.on('click', () => selectParkingLot(lot));
+      state.mapMarkers.push(marker);
+    });
+
+    if (lots.length > 0) {
+      const bounds = L.latLngBounds([[userLat, userLng], ...lots.map(l => [l.latitude, l.longitude])]);
+      state.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    }
+  }
+}
+
+// Update Last Updated Timestamp & Stale Data Warnings (Requirement 13)
+function updateLastUpdatedLabels() {
+  const wzText = document.getElementById('wz-last-updated-text');
+  const tabText = document.getElementById('tab-last-updated-text');
+  const wzStale = document.getElementById('wz-stale-badge');
+  const tabStale = document.getElementById('tab-stale-badge');
+
+  if (!locationState.lastFetchTime) {
+    if (wzText) wzText.textContent = 'Last updated: just now';
+    if (tabText) tabText.textContent = 'Last updated: just now';
+    return;
+  }
+
+  const elapsedSecs = Math.floor((Date.now() - locationState.lastFetchTime) / 1000);
+  let label = 'Last updated: just now';
+  let isStale = false;
+
+  if (elapsedSecs >= 60) {
+    const mins = Math.floor(elapsedSecs / 60);
+    label = `Last updated: ${mins} min ago`;
+    if (mins >= 3) {
+      isStale = true;
+    }
+  }
+
+  if (wzText) wzText.textContent = label;
+  if (tabText) tabText.textContent = label;
+
+  if (wzStale) wzStale.classList.toggle('hidden', !isStale);
+  if (tabStale) tabStale.classList.toggle('hidden', !isStale);
+}
+
+// Global Radius Switcher
+function setSearchRadius(radius) {
+  locationState.radiusKm = parseFloat(radius);
+
+  // Update button active states in both Wizard and Tab 2
+  document.querySelectorAll('.radius-chip').forEach(btn => {
+    const r = parseFloat(btn.getAttribute('data-radius'));
+    btn.classList.toggle('active', r === locationState.radiusKm);
+  });
+
+  updateDebugPanelApi(wz.lotsData.length, 'DEMO DATA');
+  showToast(`🔍 Search radius set to ${locationState.radiusKm} km`);
+  fetchLocationAwareParking();
+}
+
+// Periodic Relative Timestamp Update Loop (every 15s)
+setInterval(() => {
+  updateLastUpdatedLabels();
+}, 15000);
+
 function wzInitStep3() {
+
+  // Radius chips click binding
+  document.querySelectorAll('#wz-radius-chips .radius-chip, #tab-radius-chips .radius-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const r = btn.getAttribute('data-radius');
+      setSearchRadius(r);
+    });
+  });
+
+  // Refresh Parking button binding
+  const wzRefBtn = document.getElementById('wz-btn-refresh-parking');
+  if (wzRefBtn) {
+    wzRefBtn.addEventListener('click', () => fetchLocationAwareParking({ forceRefresh: true }));
+  }
+  const tabRefBtn = document.getElementById('btn-refresh-parking-tab');
+  if (tabRefBtn) {
+    tabRefBtn.addEventListener('click', () => fetchLocationAwareParking({ forceRefresh: true }));
+  }
+
+  // Debug Panel Toggle
+  const dbgToggle = document.getElementById('dbg-toggle-btn');
+  const dbgBar = document.getElementById('geo-debug-bar');
+  const dbgDock = document.getElementById('geo-debug-dock');
+  if (dbgToggle && dbgDock) {
+    dbgToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dbgDock.classList.toggle('minimized');
+      dbgToggle.textContent = dbgDock.classList.contains('minimized') ? '+ Expand' : '− Minimize';
+    });
+  }
+  if (dbgBar && dbgDock) {
+    dbgBar.addEventListener('click', () => {
+      dbgDock.classList.toggle('minimized');
+      if (dbgToggle) dbgToggle.textContent = dbgDock.classList.contains('minimized') ? '+ Expand' : '− Minimize';
+    });
+  }
+
   const navigateBtn = document.getElementById('wz-goto-navigate');
   const backBtn = document.getElementById('wz-back-2');
 
@@ -2695,121 +3204,7 @@ function wzInitStep3() {
 }
 
 async function wzLoadParkingLots() {
-  const lotsList = document.getElementById('wz-lots-list');
-  const loadingEl = document.getElementById('wz-lots-loading');
-  const freeCountEl = document.getElementById('wz-free-count');
-  const navigateBtn = document.getElementById('wz-goto-navigate');
-
-  if (loadingEl) loadingEl.style.display = 'flex';
-
-  // Initialize or refresh parking map
-  if (!wz.parkingMap) {
-    const mapEl = document.getElementById('wz-parking-map');
-    if (mapEl) {
-      wz.parkingMap = L.map('wz-parking-map', { zoomControl: true }).setView(state.userLocation, 15);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(wz.parkingMap);
-
-      // User marker
-      const userIcon = L.divIcon({
-        className: '',
-        html: `<div style="background:#2563eb;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);font-size:11px;display:flex;align-items:center;justify-content:center;">📍</div>`,
-        iconSize: [22, 22], iconAnchor: [11, 11]
-      });
-      L.marker(state.userLocation, { icon: userIcon }).addTo(wz.parkingMap).bindPopup(`📍 You are in ${state.cityName || 'your area'}`);
-    }
-  } else {
-    wz.parkingMap.setView(state.userLocation, 15);
-    wz.parkingMap.invalidateSize();
-  }
-
-  let lots = null;
-  const cityParam = state.cityName ? `&city=${encodeURIComponent(state.cityName)}` : '';
-  try {
-    const res = await fetch(`${API_BASE}/api/parking/nearby?lat=${state.userLocation[0]}&lng=${state.userLocation[1]}${cityParam}`);
-    if (res.ok) {
-      lots = await res.json();
-    }
-  } catch (err) {
-    console.warn('Backend fetch failed for wizard lots, using built-in generator:', err);
-  }
-
-  if (!lots || !Array.isArray(lots) || lots.length === 0) {
-    lots = generateClientNearbyParking(state.userLocation[0], state.userLocation[1], state.cityName);
-  }
-
-  try {
-    wz.lotsData = lots;
-
-    // Clear old markers
-    wz.parkingMarkers.forEach(m => wz.parkingMap && wz.parkingMap.removeLayer(m));
-    wz.parkingMarkers = [];
-
-    if (lotsList) {
-      lotsList.innerHTML = '';
-    }
-    if (loadingEl) loadingEl.style.display = 'none';
-
-    let totalFree = 0;
-    lots.forEach(lot => {
-      const dist = haversineDistance(state.userLocation[0], state.userLocation[1], lot.latitude, lot.longitude);
-      lot.wz_dist = dist > 0 ? dist : lot.distance_km;
-      totalFree += lot.live_available;
-    });
-    lots.sort((a, b) => a.wz_dist - b.wz_dist);
-
-    if (freeCountEl) freeCountEl.textContent = `${totalFree} free bays in ${state.cityName || 'your area'}`;
-
-    lots.forEach((lot, idx) => {
-      // Map pin with live indicator
-      if (wz.parkingMap) {
-        const pinIcon = L.divIcon({
-          className: '',
-          html: `<div style="background:${lot.live_available > 0 ? '#059669' : '#dc2626'};color:white;font-weight:700;font-size:11px;padding:3px 8px;border-radius:12px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${lot.live_available} 🏍️</div>`,
-          iconSize: [50, 26], iconAnchor: [25, 13]
-        });
-        const marker = L.marker([lot.latitude, lot.longitude], { icon: pinIcon }).addTo(wz.parkingMap);
-        marker.bindPopup(`<strong>${lot.name}</strong><br><span style="color:#10b981;font-weight:bold;">${lot.live_available} Free Bays (Zero Fee)</span><br><small style="color:#64748b;">Live Occupancy: ${lot.occupancy_pct || 65}% • ${lot.total_capacity || 40} Total Bays</small>`);
-        marker.on('click', () => wzSelectLot(lot));
-        wz.parkingMarkers.push(marker);
-      }
-
-      // Sidebar card
-      if (lotsList) {
-        const card = document.createElement('div');
-        card.className = `wz-lot-card${idx === 0 ? ' selected' : ''}`;
-        card.id = `wz-lot-${lot.id}`;
-        card.innerHTML = `
-          <div class="wz-lot-top">
-            <div>
-              <div class="wz-lot-name">${lot.name}</div>
-              <div class="wz-lot-type">${lot.type || 'Bike Parking'}</div>
-            </div>
-            <div class="wz-lot-right">
-              <div class="wz-lot-dist">${lot.wz_dist} km</div>
-              <div class="wz-lot-avail ${lot.live_available > 0 ? 'avail' : 'full'}">
-                ${lot.live_available} free
-                <span style="display:block;font-size:0.72rem;font-weight:500;opacity:0.85;">(${lot.occupancy_pct || 65}% occ)</span>
-              </div>
-            </div>
-          </div>
-          <div class="wz-lot-tags">
-            <span class="wz-lot-tag free">🟢 Zero Fee</span>
-            <span class="wz-lot-tag bike">🏍️ ${lot.total_capacity || 40} Total</span>
-            <span class="wz-lot-tag" style="background:rgba(16,185,129,0.12);color:#059669;font-weight:600;">⚡ Live Telemetry</span>
-          </div>
-        `;
-        card.addEventListener('click', () => wzSelectLot(lot));
-        lotsList.appendChild(card);
-        if (idx === 0) wzSelectLot(lot);
-      }
-    });
-  } catch (err) {
-    console.error('Failed to load wizard parking lots:', err);
-    if (loadingEl) loadingEl.style.display = 'none';
-    if (lotsList) {
-      lotsList.innerHTML = `<div class="wz-lots-error">⚠️ Could not load parking data. Please check backend connection.<br><small>Make sure the Python backend is running.</small></div>`;
-    }
-  }
+  return fetchLocationAwareParking();
 }
 
 function wzSelectLot(lot) {
