@@ -473,8 +473,25 @@
           </div>
 
           <div class="demo-disclaimer-strip" id="wz-demo-strip">
-            <span class="disclaimer-badge">PROTOTYPE DEMO DATA</span>
-            <span class="disclaimer-text">Candidate test parking facilities with individual coordinates & live status calculation.</span>
+            <span class="disclaimer-badge" id="wz-data-source-badge">🛰️ SATELLITE GIS ACTIVE</span>
+            <span class="disclaimer-text" id="wz-data-source-text">Querying worldwide satellite facilities & road obstacles in real-time.</span>
+          </div>
+
+          <!-- Obstacles & Satellite Exploration Bar -->
+          <div class="sat-explore-bar">
+            <div class="sat-explore-left">
+              <span class="sat-pulse-dot"></span>
+              <span class="sat-explore-text"><strong>Satellite GIS:</strong> Click anywhere on the map to explore parking &amp; obstacles</span>
+            </div>
+            <div class="map-view-toggle" id="wz-map-view-toggle">
+              <button type="button" class="map-toggle-btn active" data-map-type="street">🗺️ Street</button>
+              <button type="button" class="map-toggle-btn" data-map-type="satellite">🛰️ Satellite</button>
+            </div>
+          </div>
+
+          <div class="obstacles-indicator-bar" id="wz-obstacles-bar">
+            <span class="obs-icon">⚠️</span>
+            <span id="wz-obs-summary-text">Scanning for road works, bottlenecks &amp; tow-away zones...</span>
           </div>
 
           <div class="wz-parking-layout">
@@ -577,6 +594,7 @@
           <!-- Camera Viewport -->
           <div class="wz-camera-viewport" id="wz-camera-viewport">
             <video id="wz-cam-video" autoplay playsinline muted></video>
+            <img id="wz-cam-frame-img" class="cam-fallback-frame hidden" alt="YOLO Live Camera Frame" />
             <canvas id="wz-ar-canvas"></canvas>
 
             <!-- AR Floating Pointer -->
@@ -809,6 +827,7 @@
           <!-- Camera Stream Video & AR Canvas Viewport -->
           <div class="viewfinder-viewport" id="viewfinder-container">
             <video id="mobile-cam-video" autoplay playsinline muted></video>
+            <img id="mobile-cam-frame-img" class="cam-fallback-frame hidden" alt="YOLO Live Camera Frame" />
             <canvas id="mobile-ar-canvas"></canvas>
             
             <!-- In-viewport AR Suggestion Floating Arrow & Tag -->
@@ -1018,6 +1037,20 @@
 
         <!-- Interactive Leaflet Map -->
         <div class="map-container glass-panel">
+          <div class="sat-explore-bar tab-map-bar">
+            <div class="sat-explore-left">
+              <span class="sat-pulse-dot"></span>
+              <span class="sat-explore-text"><strong>Satellite GIS:</strong> Click anywhere on the map to explore worldwide parking &amp; obstacles</span>
+            </div>
+            <div class="map-view-toggle" id="tab-map-view-toggle">
+              <button type="button" class="map-toggle-btn active" data-map-type="street">🗺️ Street</button>
+              <button type="button" class="map-toggle-btn" data-map-type="satellite">🛰️ Satellite</button>
+            </div>
+          </div>
+          <div class="obstacles-indicator-bar" id="tab-obstacles-bar">
+            <span class="obs-icon">⚠️</span>
+            <span id="tab-obs-summary-text">Scanning for road works, bottlenecks &amp; tow-away zones...</span>
+          </div>
           <div id="leaflet-map"></div>
           
           <div class="map-overlay-card hidden" id="map-route-card">

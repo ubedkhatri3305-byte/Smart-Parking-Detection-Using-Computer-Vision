@@ -517,7 +517,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     resizeARCanvas();
     wzResizeARCanvas();
+  
+  // Bind Map View Toggles (Street vs Satellite)
+  document.querySelectorAll('.map-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const type = btn.getAttribute('data-map-type');
+      if (type) toggleMapType(type);
+    });
   });
+
+});
 
   // Run initial diagnostic CV analysis for lab view (background)
   runCVAnalysis();
@@ -1403,8 +1413,21 @@ function renderLiveScanResults(data) {
     recMsg.textContent = `All spaces in this camera angle are occupied or too small for your ${p.bikeModel} (${p.length}m length). Move camera forward.`;
   }
 
-  // 2. Draw AR Canvas Overlays
-  drawAROverlay(data.ar_slots, rec);
+  // 1b. Display YOLO Annotated Video Frame (eliminating black/frozen screens)
+  if (data.annotated_frame) {
+    const mobImg = document.getElementById('mobile-cam-frame-img');
+    if (mobImg) {
+      mobImg.src = data.annotated_frame;
+      mobImg.classList.remove('hidden');
+    }
+  }
+  const mobStatus = document.getElementById('cam-status-label');
+  if (mobStatus) {
+    mobStatus.innerHTML = `🟢 YOLOv8 Active &bull; ${data.vehicles_count || 0} Vehicles &bull; ${data.obstacles_count || 0} Hazards`;
+  }
+
+  // 2. Draw AR Canvas Overlays with live YOLO detections & slots
+  drawAROverlay(data.ar_slots, rec, data.detections, data);
 
   // 3. Populate Live Bays List
   const baysList = document.getElementById('cam-bays-list');
@@ -1430,22 +1453,84 @@ function renderLiveScanResults(data) {
   }
 }
 
-function drawAROverlay(arSlots, recommendedSlot) {
+function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   const canvas = document.getElementById('mobile-ar-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  const cw = canvas.width;
+  const ch = canvas.height;
   const pointer = document.getElementById('ar-floating-pointer');
   let pointerShown = false;
+
+  // 1. Draw YOLO Object Detections (Vehicles & Obstacles)
+  if (detections && detections.length > 0) {
+    detections.forEach(det => {
+      const [xNorm, yNorm, wNorm, hNorm] = det.normalized_bbox;
+      const bx = xNorm * cw;
+      const by = yNorm * ch;
+      const bw = wNorm * cw;
+      const bh = hNorm * ch;
+
+      if (det.is_obstacle) {
+        // Warning Obstacle Box
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([5, 3]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+
+        const label = `⚠️ ${det.class_name} ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(bx, Math.max(0, by - 18), tw + 8, 18);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, bx + 4, Math.max(13, by - 4));
+      } else {
+        // Vehicle Bounding Box
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bx, by, bw, bh);
+
+        const clen = Math.min(10, bw / 4, bh / 4);
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(bx, by + clen); ctx.lineTo(bx, by); ctx.lineTo(bx + clen, by); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + bw - clen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + clen); ctx.stroke();
+
+        const label = `🚗 ${det.class_name} ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(6, 182, 212, 0.9)';
+        ctx.fillRect(bx, Math.max(0, by - 18), tw + 8, 18);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, bx + 4, Math.max(13, by - 4));
+      }
+    });
+  }
+
+  // 2. Draw Top Canvas HUD
+  const vCount = (data && data.vehicles_count !== undefined) ? data.vehicles_count : (detections ? detections.filter(d => !d.is_obstacle).length : 0);
+  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => d.is_obstacle).length : 0);
+  const hudText = `⚡ YOLOv8 Neural Engine • 🚗 Vehicles: ${vCount} • ⚠️ Hazards: ${oCount}`;
+  ctx.font = 'bold 11px monospace';
+  const hudTw = ctx.measureText(hudText).width;
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  ctx.fillRect(cw / 2 - hudTw / 2 - 12, 8, hudTw + 24, 22);
+  ctx.strokeStyle = '#06b6d4';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cw / 2 - hudTw / 2 - 12, 8, hudTw + 24, 22);
+  ctx.fillStyle = '#38bdf8';
+  ctx.textAlign = 'center';
+  ctx.fillText(hudText, cw / 2, 23);
+  ctx.textAlign = 'left';
 
   if (!arSlots || arSlots.length === 0) {
     if (pointer) pointer.classList.add('hidden');
     return;
   }
-
-  const cw = canvas.width;
-  const ch = canvas.height;
 
   arSlots.forEach(s => {
     const isRec = recommendedSlot && s.id === recommendedSlot.id;
@@ -1491,7 +1576,7 @@ function drawAROverlay(arSlots, recommendedSlot) {
       if (pointer) {
         pointer.style.left = `${cx}px`;
         pointer.style.top = `${cy - 20}px`;
-        document.getElementById('ar-pointer-text').textContent = `Γÿà PARK HERE: ${s.label.toUpperCase()} Γÿà`;
+        document.getElementById('ar-pointer-text').textContent = `★ PARK HERE: ${s.label.toUpperCase()} ★`;
         pointer.classList.remove('hidden');
         pointerShown = true;
       }
@@ -1659,6 +1744,119 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return Math.round(R * c * 10) / 10;
 }
 
+
+// ==========================================================================
+// SATELLITE GIS & GLOBAL EXPLORATION CONTROLLER
+// ==========================================================================
+state.mapType = 'street'; // 'street' or 'satellite'
+state.activeTileLayer = null;
+state.obstacleMarkers = [];
+
+function toggleMapType(newType) {
+  state.mapType = newType;
+  
+  // Update toggle buttons in both Tab 2 and Wizard
+  document.querySelectorAll('.map-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-map-type') === newType);
+  });
+
+  const satUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+  const streetUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+  // 1. Tab 2 map
+  if (state.map) {
+    if (state.activeTileLayer) state.map.removeLayer(state.activeTileLayer);
+    state.activeTileLayer = L.tileLayer(newType === 'satellite' ? satUrl : streetUrl, {
+      maxZoom: 19,
+      attribution: newType === 'satellite' ? 'Tiles &copy; Esri World Imagery' : '&copy; OpenStreetMap'
+    }).addTo(state.map);
+  }
+
+  // 2. Wizard Parking Map
+  if (wz.parkingMap) {
+    if (wz.parkingTileLayer) wz.parkingMap.removeLayer(wz.parkingTileLayer);
+    wz.parkingTileLayer = L.tileLayer(newType === 'satellite' ? satUrl : streetUrl, {
+      maxZoom: 19,
+      attribution: newType === 'satellite' ? 'Tiles &copy; Esri World Imagery' : '&copy; OpenStreetMap'
+    }).addTo(wz.parkingMap);
+  }
+
+  // 3. Wizard Nav Map
+  if (wz.navMap) {
+    if (wz.navTileLayer) wz.navMap.removeLayer(wz.navTileLayer);
+    wz.navTileLayer = L.tileLayer(newType === 'satellite' ? satUrl : streetUrl, {
+      maxZoom: 19,
+      attribution: newType === 'satellite' ? 'Tiles &copy; Esri World Imagery' : '&copy; OpenStreetMap'
+    }).addTo(wz.navMap);
+  }
+
+  showToast(newType === 'satellite' ? '🛰️ Switched to High-Resolution Satellite View' : '🗺️ Switched to Standard Street Map');
+}
+
+async function handleMapClickExplore(lat, lng) {
+  showToast(`🛰️ Exploring coordinate [${lat.toFixed(4)}, ${lng.toFixed(4)}] via Satellite GIS...`);
+  
+  locationState.latitude = lat;
+  locationState.longitude = lng;
+  locationState.isLive = false;
+  locationState.source = 'SATELLITE EXPLORER';
+  state.userLocation = [lat, lng];
+
+  // Temporary drop marker
+  if (state.map) {
+    if (state.exploreMarker) state.map.removeLayer(state.exploreMarker);
+    const expIcon = L.divIcon({
+      html: `<div style="background:#06b6d4;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 0 14px #06b6d4;display:flex;align-items:center;justify-content:center;font-size:12px;">🛰️</div>`,
+      iconSize: [24, 24], iconAnchor: [12, 12]
+    });
+    state.exploreMarker = L.marker([lat, lng], { icon: expIcon }).addTo(state.map);
+  }
+
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`);
+    if (res.ok) {
+      const data = await res.json();
+      const addr = data.address || {};
+      const cityName = addr.city || addr.town || addr.village || addr.suburb || addr.county || 'Satellite Point';
+      locationState.cityName = cityName;
+    }
+  } catch (_) {
+    locationState.cityName = `Coordinate (${lat.toFixed(3)}, ${lng.toFixed(3)})`;
+  }
+
+  updateLocationUI();
+  await fetchLocationAwareParking({ forceRefresh: true });
+}
+
+function wzInitParkingMap(lat, lng) {
+  const mapEl = document.getElementById('wz-parking-map');
+  if (!mapEl) return;
+  if (!wz.parkingMap) {
+    wz.parkingMap = L.map('wz-parking-map', { zoomControl: true }).setView([lat, lng], 14);
+    const tileUrl = state.mapType === 'satellite' 
+      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    wz.parkingTileLayer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(wz.parkingMap);
+    wz.parkingMarkers = [];
+    wz.obstacleMarkers = [];
+    
+    // Click anywhere to explore
+    wz.parkingMap.on('click', (e) => {
+      handleMapClickExplore(e.latlng.lat, e.latlng.lng);
+    });
+  } else {
+    wz.parkingMap.invalidateSize();
+    wz.parkingMap.setView([lat, lng], 14);
+  }
+}
+
+function wzLoadParkingLots() {
+  const lat = locationState.latitude !== null ? locationState.latitude : state.userLocation[0];
+  const lng = locationState.longitude !== null ? locationState.longitude : state.userLocation[1];
+  wzInitParkingMap(lat, lng);
+  return fetchLocationAwareParking();
+}
+
 async function initOrRefreshMap() {
   const mapElement = document.getElementById('leaflet-map');
   if (!mapElement) return;
@@ -1666,10 +1864,18 @@ async function initOrRefreshMap() {
   if (!state.map) {
     state.map = L.map('leaflet-map', { zoomControl: true }).setView(state.userLocation, 15);
 
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
+    const satUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    const streetUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    state.activeTileLayer = L.tileLayer(state.mapType === 'satellite' ? satUrl : streetUrl, {
+      attribution: state.mapType === 'satellite' ? 'Tiles &copy; Esri World Imagery' : '&copy; OpenStreetMap contributors',
       maxZoom: 19
     }).addTo(state.map);
+
+    // Interactive Satellite Explorer: Click anywhere to discover parking & obstacles
+    state.map.on('click', (e) => {
+      handleMapClickExplore(e.latlng.lat, e.latlng.lng);
+    });
 
     updateUserMapMarker();
     loadMapParkingLots();
@@ -2142,7 +2348,7 @@ function renderFlowStage(stepNum) {
       desc: 'System renders glowing AR bounding box on your camera feed and speaks voice directions.',
       html: `
         <div style="background:var(--color-green-bg);border:1px solid var(--color-green-border);padding:1.5rem;border-radius:var(--radius-lg);">
-          <h3 style="color:var(--color-green-text);font-size:1.35rem;font-weight:800;margin-bottom:0.5rem;">Γÿà SUGGESTED: PARK IN BAY B2 Γÿà</h3>
+          <h3 style="color:var(--color-green-text);font-size:1.35rem;font-weight:800;margin-bottom:0.5rem;">★ SUGGESTED: PARK IN BAY B2 ★</h3>
           <p style="color:var(--text-primary);font-size:0.95rem;line-height:1.6;">
             🟢 Space Clear & Fits your <strong>${p.bikeModel}</strong> (Length: ${p.length}m)<br>
             🏍️ Safe handlebar & kickstand clearance (+0.35m)<br>
@@ -2193,7 +2399,10 @@ const wz = {
   step: 1,
   miniMap: null,
   parkingMap: null,
+  parkingTileLayer: null,
   navMap: null,
+  navTileLayer: null,
+  obstacleMarkers: [],
   selectedLot: null,
   lotsData: [],
   parkingMarkers: [],
@@ -2844,11 +3053,37 @@ async function fetchLocationAwareParking(opts = {}) {
 
     const data = await response.json();
     const lots = data.parking || data.lots || [];
+    locationState.obstacles = data.obstacles || [];
 
     // 4. Update timestamps & debug panel
     locationState.lastFetchTime = Date.now();
     updateLastUpdatedLabels();
-    updateDebugPanelApi(lots.length, data.source || (data.isDemo ? 'DEMO DATA' : 'REAL DATA'));
+    updateDebugPanelApi(lots.length, data.source || (data.isDemo ? 'DEMO DATA' : 'REAL SATELLITE GIS'));
+
+    // Update Obstacles Indicator Bar
+    const wzObsText = document.getElementById('wz-obs-summary-text');
+    const tabObsText = document.getElementById('tab-obs-summary-text');
+    const obsCount = (data.obstacles || []).length;
+    const obsLabel = obsCount > 0 
+      ? `${obsCount} Road Hazards & Bottlenecks Mapped (Construction, Pedestrian Zone, Tow-Away, Bottleneck)`
+      : `No Impassable Hazards Detected within ${radius} km`;
+    if (wzObsText) wzObsText.textContent = obsLabel;
+    if (tabObsText) tabObsText.textContent = obsLabel;
+
+    // Update Data Source Badge
+    const srcBadge = document.getElementById('wz-data-source-badge');
+    const srcText = document.getElementById('wz-data-source-text');
+    if (srcBadge) {
+      if (data.source && data.source.includes('SATELLITE')) {
+        srcBadge.textContent = '🛰️ REAL SATELLITE GIS & OSM';
+        srcBadge.style.background = 'linear-gradient(135deg, #059669, #0284c7)';
+        if (srcText) srcText.textContent = `Worldwide Satellite GIS: Discovered ${lots.length} real parking locations and ${obsCount} road hazards in ${data.city || 'your area'}.`;
+      } else {
+        srcBadge.textContent = 'PROTOTYPE DEMO DATA';
+        srcBadge.style.background = '#475569';
+        if (srcText) srcText.textContent = 'Candidate test parking facilities with individual coordinates & live status calculation.';
+      }
+    }
 
     // 5. Replace old results
     wz.lotsData = lots;
@@ -3095,9 +3330,67 @@ function updateMapMarkers(lots) {
       state.mapMarkers.push(marker);
     });
 
+    // Draw Ground Obstacles on Tab 2 Map
+    if (state.obstacleMarkers) {
+      state.obstacleMarkers.forEach(m => state.map.removeLayer(m));
+      state.obstacleMarkers = [];
+    } else {
+      state.obstacleMarkers = [];
+    }
+
+    if (locationState.obstacles && locationState.obstacles.length > 0) {
+      locationState.obstacles.forEach(obs => {
+        const obsIcon = L.divIcon({
+          className: 'obstacle-map-pin',
+          html: `<div style="background:#ef4444;color:white;width:28px;height:28px;border-radius:50%;border:2px solid #fecaca;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(239,68,68,0.8);font-size:14px;">${obs.icon}</div>`,
+          iconSize: [28, 28], iconAnchor: [14, 14]
+        });
+        const m = L.marker([obs.lat, obs.lng], { icon: obsIcon }).addTo(state.map);
+        m.bindPopup(`
+          <div style="font-family:sans-serif;font-size:12px;">
+            <strong style="color:#b91c1c;">${obs.icon} ${obs.name}</strong><br>
+            <span style="font-weight:700;color:#ef4444;">HAZARD: ${obs.severity.toUpperCase()}</span><br>
+            <p style="margin:4px 0;color:#475569;">${obs.description}</p>
+            <div style="background:#fef3c7;padding:3px 6px;border-radius:4px;color:#92400e;font-size:11px;"><strong>Avoidance:</strong> ${obs.avoidance}</div>
+          </div>
+        `);
+        state.obstacleMarkers.push(m);
+      });
+    }
+
     if (lots.length > 0) {
       const bounds = L.latLngBounds([[userLat, userLng], ...lots.map(l => [l.latitude, l.longitude])]);
       state.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    }
+  }
+
+  // Draw Ground Obstacles on Wizard Step 3 Map
+  if (wz.parkingMap) {
+    if (wz.obstacleMarkers) {
+      wz.obstacleMarkers.forEach(m => wz.parkingMap.removeLayer(m));
+      wz.obstacleMarkers = [];
+    } else {
+      wz.obstacleMarkers = [];
+    }
+
+    if (locationState.obstacles && locationState.obstacles.length > 0) {
+      locationState.obstacles.forEach(obs => {
+        const obsIcon = L.divIcon({
+          className: 'obstacle-map-pin',
+          html: `<div style="background:#ef4444;color:white;width:28px;height:28px;border-radius:50%;border:2px solid #fecaca;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(239,68,68,0.8);font-size:14px;">${obs.icon}</div>`,
+          iconSize: [28, 28], iconAnchor: [14, 14]
+        });
+        const m = L.marker([obs.lat, obs.lng], { icon: obsIcon }).addTo(wz.parkingMap);
+        m.bindPopup(`
+          <div style="font-family:sans-serif;font-size:12px;">
+            <strong style="color:#b91c1c;">${obs.icon} ${obs.name}</strong><br>
+            <span style="font-weight:700;color:#ef4444;">HAZARD: ${obs.severity.toUpperCase()}</span><br>
+            <p style="margin:4px 0;color:#475569;">${obs.description}</p>
+            <div style="background:#fef3c7;padding:3px 6px;border-radius:4px;color:#92400e;font-size:11px;"><strong>Avoidance:</strong> ${obs.avoidance}</div>
+          </div>
+        `);
+        wz.obstacleMarkers.push(m);
+      });
     }
   }
 }
@@ -3574,8 +3867,21 @@ function wzRenderScanResults(data) {
     if (msgEl) msgEl.textContent = `All visible spaces are occupied or too small. Move your camera angle forward.`;
   }
 
-  // Draw AR overlay
-  wzDrawAROverlay(data.ar_slots, rec);
+  // Display YOLO Annotated Frame in Wizard Camera Viewport
+  if (data.annotated_frame) {
+    const wzImg = document.getElementById('wz-cam-frame-img');
+    if (wzImg) {
+      wzImg.src = data.annotated_frame;
+      wzImg.classList.remove('hidden');
+    }
+  }
+  const wzStatus = document.getElementById('wz-cam-status');
+  if (wzStatus) {
+    wzStatus.innerHTML = `🟢 YOLOv8 Neural Active &bull; ${data.vehicles_count || 0} Vehicles &bull; ${data.obstacles_count || 0} Hazards`;
+  }
+
+  // Draw AR overlay with YOLO bounding boxes and slot polygons
+  wzDrawAROverlay(data.ar_slots, rec, data.detections, data);
 
   // Populate bays list
   const baysList = document.getElementById('wz-bays-list');
@@ -3599,23 +3905,83 @@ function wzRenderScanResults(data) {
   }
 }
 
-function wzDrawAROverlay(arSlots, recommendedSlot) {
+function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   const canvas = document.getElementById('wz-ar-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  const cw = canvas.width;
+  const ch = canvas.height;
   const pointer = document.getElementById('wz-ar-pointer');
   const arTag = document.getElementById('wz-ar-tag');
   let pointerShown = false;
+
+  // 1. Draw YOLO Object Detections (Vehicles & Obstacles)
+  if (detections && detections.length > 0) {
+    detections.forEach(det => {
+      const [xNorm, yNorm, wNorm, hNorm] = det.normalized_bbox;
+      const bx = xNorm * cw;
+      const by = yNorm * ch;
+      const bw = wNorm * cw;
+      const bh = hNorm * ch;
+
+      if (det.is_obstacle) {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([5, 3]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+
+        const label = `⚠️ ${det.class_name} ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(bx, Math.max(0, by - 18), tw + 8, 18);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, bx + 4, Math.max(13, by - 4));
+      } else {
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bx, by, bw, bh);
+
+        const clen = Math.min(10, bw / 4, bh / 4);
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(bx, by + clen); ctx.lineTo(bx, by); ctx.lineTo(bx + clen, by); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + bw - clen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + clen); ctx.stroke();
+
+        const label = `🚗 ${det.class_name} ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(6, 182, 212, 0.9)';
+        ctx.fillRect(bx, Math.max(0, by - 18), tw + 8, 18);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, bx + 4, Math.max(13, by - 4));
+      }
+    });
+  }
+
+  // 2. Draw Top Canvas HUD
+  const vCount = (data && data.vehicles_count !== undefined) ? data.vehicles_count : (detections ? detections.filter(d => !d.is_obstacle).length : 0);
+  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => d.is_obstacle).length : 0);
+  const hudText = `⚡ YOLOv8 Neural Active • 🚗 Vehicles: ${vCount} • ⚠️ Hazards: ${oCount}`;
+  ctx.font = 'bold 11px monospace';
+  const hudTw = ctx.measureText(hudText).width;
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  ctx.fillRect(cw / 2 - hudTw / 2 - 12, 8, hudTw + 24, 22);
+  ctx.strokeStyle = '#06b6d4';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cw / 2 - hudTw / 2 - 12, 8, hudTw + 24, 22);
+  ctx.fillStyle = '#38bdf8';
+  ctx.textAlign = 'center';
+  ctx.fillText(hudText, cw / 2, 23);
+  ctx.textAlign = 'left';
 
   if (!arSlots || arSlots.length === 0) {
     if (pointer) pointer.classList.add('hidden');
     return;
   }
-
-  const cw = canvas.width;
-  const ch = canvas.height;
 
   arSlots.forEach(s => {
     const isRec = recommendedSlot && s.id === recommendedSlot.id;
@@ -3659,7 +4025,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot) {
       if (pointer) {
         pointer.style.left = `${cx}px`;
         pointer.style.top = `${Math.max(10, cy - 60)}px`;
-        if (arTag) arTag.textContent = `Γÿà PARK: ${s.label.toUpperCase()} Γÿà`;
+        if (arTag) arTag.textContent = `★ PARK: ${s.label.toUpperCase()} ★`;
         pointer.classList.remove('hidden');
         pointerShown = true;
       }
