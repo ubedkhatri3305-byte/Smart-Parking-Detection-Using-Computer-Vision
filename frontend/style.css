@@ -8772,3 +8772,67 @@ select.custom-select:focus {
 }
 
 .geo-debug-dock { display: none !important; }
+
+/* ==========================================================================
+   Continuous Live GPS Tracking Banner & Pulse Elements
+   ========================================================================== */
+.live-gps-tracking-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(59, 130, 246, 0.12));
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-md, 8px);
+  margin-bottom: 0.85rem;
+  font-size: 0.82rem;
+  color: #10b981;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.08);
+  transition: all 0.3s ease;
+}
+
+.live-gps-tracking-banner.paused {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #94a3b8;
+}
+
+.live-gps-pulse-dot {
+  width: 10px;
+  height: 10px;
+  background-color: #10b981;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: gpsPulse 1.8s infinite;
+  flex-shrink: 0;
+}
+
+.live-gps-tracking-banner.paused .live-gps-pulse-dot {
+  background-color: #94a3b8;
+  animation: none;
+}
+
+@keyframes gpsPulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.btn-tracking-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid currentColor;
+  color: inherit;
+  border-radius: 6px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-tracking-toggle:hover {
+  background: rgba(255, 255, 255, 0.18);
+}

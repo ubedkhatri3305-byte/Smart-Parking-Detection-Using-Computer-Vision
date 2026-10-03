@@ -391,6 +391,10 @@
               <div class="wz-gps-coords" id="wz-gps-coords" data-i18n="gps_click_hint">Click the button below to start</div>
             </div>
           </div>
+          <div class="gps-continuous-badge" id="gps-continuous-badge" style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:#10b981;font-weight:600;margin:0.4rem 0 0.8rem 0.2rem;">
+            <span class="live-gps-pulse-dot" style="width:8px;height:8px;"></span>
+            <span>Continuous live tracking active — stays updated automatically as you move</span>
+          </div>
 
           <!-- Mini Map -->
           <div class="wz-mini-map-wrap" id="wz-mini-map-wrap">
@@ -474,6 +478,15 @@
               <span class="timestamp-tag" id="wz-last-updated-text">Last updated: just now</span>
               <span class="stale-badge hidden" id="wz-stale-badge">⚠️ Availability may be outdated</span>
             </div>
+          </div>
+
+          <!-- Continuous Live GPS Tracking Banner -->
+          <div class="live-gps-tracking-banner" id="live-gps-tracking-banner">
+            <div style="display:flex;align-items:center;gap:0.6rem;">
+              <span class="live-gps-pulse-dot"></span>
+              <span id="live-tracking-status-text"><strong>Continuous Live GPS Tracking Active</strong> • Updating in real time as you move</span>
+            </div>
+            <button type="button" class="btn-tracking-toggle" id="btn-tracking-toggle" onclick="toggleContinuousGpsTracking()">Pause Tracking</button>
           </div>
 
           <div class="demo-disclaimer-strip" id="wz-demo-strip">
@@ -2120,7 +2133,7 @@
   <!-- Vehicle Dataset & Auto-Dimension Detector (2W, 3W, 4W) -->
   <script src="vehicles.js?v=2.2"></script>
   <!-- Application Controller JS -->
-  <script src="app.js?v=2.4"></script>
+  <script src="app.js?v=2.6"></script>
 
 
 </body>

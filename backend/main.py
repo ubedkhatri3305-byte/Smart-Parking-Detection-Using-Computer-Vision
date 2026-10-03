@@ -131,6 +131,250 @@ LOCATION_POIS_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
 # - FULL (0 free)
 # - UNKNOWN (unmonitored)
 KNOWN_CITY_HUBS: Dict[str, List[Dict[str, Any]]] = {
+    "mundra": [
+        {
+            "id": "lot-mun-1",
+            "name": "Adani Port Road Commercial Parking Terminal",
+            "type": "Port Authority Dedicated Surface Terminal",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered ✅",
+            "lat": 22.8455, "lng": 69.7280,
+            "address": "Adani Port Road, Near SEZ Entrance, Mundra, Kutch",
+            "city": "Mundra",
+            "capacity": 180, "occupied": 112, "available": 68,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike", "auto"],
+            "height_limit_m": 2.4, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_1_aerial", "minutes_ago": 2,
+            "features": ["High Clearance 2.4m", "CCTV Surveillance", "Paved Stalls", "₹20/hr"]
+        },
+        {
+            "id": "lot-mun-2",
+            "name": "Mundra ST Bus Stand Road Two-Wheeler Plaza",
+            "type": "GSRTC Municipal Two-Wheeler Plaza (Limited)",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered (Limited) 🟡",
+            "lat": 22.8410, "lng": 69.7235,
+            "address": "ST Bus Stand Road, Central Mundra, Kutch",
+            "city": "Mundra",
+            "capacity": 85, "occupied": 74, "available": 11,
+            "allowed_vehicles": ["bike", "compact", "car"],
+            "height_limit_m": 2.1, "timings": "06:00 - 23:00",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_3_rooftop", "minutes_ago": 4,
+            "features": ["Shaded Bike Canopy", "Attendant Managed", "₹10/day"]
+        },
+        {
+            "id": "lot-mun-3",
+            "name": "Juna Bazar Heritage Market Curbside (FULL)",
+            "type": "Designated Curbside Demarcated Bays (FULL)",
+            "category": "public_permitted",
+            "rule_zone": "public_permitted",
+            "rule_badge": "Public Permitted (FULL) 🔴",
+            "lat": 22.8385, "lng": 69.7210,
+            "address": "Juna Bazar Main Street, Mundra, Kutch",
+            "city": "Mundra",
+            "capacity": 42, "occupied": 42, "available": 0, "forced_full": True,
+            "allowed_vehicles": ["bike", "compact"],
+            "height_limit_m": None, "timings": "08:00 - 21:00",
+            "is_temporary": False, "can_recommend": False,
+            "scenario": "scenario_2_driver", "minutes_ago": 1,
+            "features": ["Market Access", "Strict Wheel Clamping", "Currently Full"]
+        },
+        {
+            "id": "lot-mun-4",
+            "name": "Shakti Nagar Commercial Complex Parking",
+            "type": "Commercial Plaza Ground Deck",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered ✅",
+            "lat": 22.8470, "lng": 69.7315,
+            "address": "Shakti Nagar Commercial Area, Mundra, Kutch",
+            "city": "Mundra",
+            "capacity": 65, "occupied": 28, "available": 37,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.2, "timings": "08:00 - 22:00",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_4_tight", "minutes_ago": 6,
+            "features": ["EV 2-Wheeler Charging", "Wide Stalls", "Paved Ground"]
+        },
+        {
+            "id": "lot-mun-5",
+            "name": "Baroi Road Municipal Permitted Stand",
+            "type": "Municipal Authorized Public Street Stand",
+            "category": "public_permitted",
+            "rule_zone": "public_permitted",
+            "rule_badge": "Public Permitted ✅",
+            "lat": 22.8350, "lng": 69.7180,
+            "address": "Baroi Road, Mundra, Kutch",
+            "city": "Mundra",
+            "capacity": 55, "occupied": 19, "available": 36,
+            "allowed_vehicles": ["bike", "car", "suv"],
+            "height_limit_m": None, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_1_aerial", "minutes_ago": 9,
+            "features": ["Free Public Access", "Well Lit", "Wide Stalls"]
+        }
+    ],
+    "bhuj": [
+        {
+            "id": "lot-bhuj-1",
+            "name": "Hamirsar Lake Promenade Municipal Parking",
+            "type": "Bhuj Municipal Open Surface Facility",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered ✅",
+            "lat": 23.2450, "lng": 69.6640,
+            "address": "Hamirsar Lake West Promenade, Bhuj, Kutch",
+            "city": "Bhuj",
+            "capacity": 160, "occupied": 98, "available": 62,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.4, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_1_aerial", "minutes_ago": 3,
+            "features": ["Scenic Lakefront", "CCTV 24/7", "Paved Ground", "₹20/entry"]
+        },
+        {
+            "id": "lot-bhuj-2",
+            "name": "Bhuj GSRTC Central Bus Station Multi-Tier Deck",
+            "type": "GSRTC State Transit Parking Deck (Limited)",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered (Limited) 🟡",
+            "lat": 23.2495, "lng": 69.6710,
+            "address": "Station Road, Near ST Depot, Bhuj, Kutch",
+            "city": "Bhuj",
+            "capacity": 130, "occupied": 118, "available": 12,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.1, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_3_rooftop", "minutes_ago": 5,
+            "features": ["Transit Connected", "Security Patrolled", "Ramp Access"]
+        },
+        {
+            "id": "lot-bhuj-3",
+            "name": "Prag Mahal Heritage District Stand (FULL)",
+            "type": "Walled City Curbside Zone (FULL)",
+            "category": "public_permitted",
+            "rule_zone": "public_permitted",
+            "rule_badge": "Public Permitted (FULL) 🔴",
+            "lat": 23.2540, "lng": 69.6685,
+            "address": "Old City Palace Area, Bhuj, Kutch",
+            "city": "Bhuj",
+            "capacity": 38, "occupied": 38, "available": 0, "forced_full": True,
+            "allowed_vehicles": ["bike", "compact"],
+            "height_limit_m": None, "timings": "09:00 - 20:00",
+            "is_temporary": False, "can_recommend": False,
+            "scenario": "scenario_2_driver", "minutes_ago": 1,
+            "features": ["Heritage Sector", "Strict Tow-Away", "Currently Full"]
+        },
+        {
+            "id": "lot-bhuj-4",
+            "name": "Bhuj Railway Station Commercial Lot",
+            "type": "Western Railway Station Ground Lot",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered ✅",
+            "lat": 23.2610, "lng": 69.6820,
+            "address": "Railway Colony Road, Bhuj, Kutch",
+            "city": "Bhuj",
+            "capacity": 95, "occupied": 40, "available": 55,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.3, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_1_aerial", "minutes_ago": 4,
+            "features": ["Long-Term Parking", "₹20/12hr", "Guarded Gate"]
+        },
+        {
+            "id": "lot-bhuj-5",
+            "name": "Jubilee Ground Civic Open Parking Area",
+            "type": "Municipal Authorized Ground Facility",
+            "category": "temporary",
+            "rule_zone": "temporary",
+            "rule_badge": "Temporary ⏳",
+            "lat": 23.2415, "lng": 69.6705,
+            "address": "Jubilee Ground Ring Road, Bhuj, Kutch",
+            "city": "Bhuj",
+            "capacity": 75, "occupied": 22, "available": 53,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike", "van"],
+            "height_limit_m": None, "timings": "07:00 - 21:00",
+            "is_temporary": True, "can_recommend": True,
+            "scenario": "scenario_4_tight", "minutes_ago": 12,
+            "features": ["Free Open Grounds", "Shaded Trees", "Event Facility"]
+        }
+    ],
+    "gandhidham": [
+        {
+            "id": "lot-gdm-1",
+            "name": "Gandhidham Junction Railway Station Main Plaza",
+            "type": "Railway Multi-Tier Automated Facility",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered ✅",
+            "lat": 23.0780, "lng": 70.1360,
+            "address": "Railway Station Circle, Gandhidham, Kutch",
+            "city": "Gandhidham",
+            "capacity": 175, "occupied": 110, "available": 65,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.2, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_1_aerial", "minutes_ago": 2,
+            "features": ["Transit Parking", "CCTV 24/7", "Barrier Gates", "₹20/hr"]
+        },
+        {
+            "id": "lot-gdm-2",
+            "name": "Tagore Road Commercial Center Parking Deck",
+            "type": "CBD Commercial Plaza Garage (Limited)",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered (Limited) 🟡",
+            "lat": 23.0720, "lng": 70.1310,
+            "address": "Tagore Road, Sector 8, Gandhidham, Kutch",
+            "city": "Gandhidham",
+            "capacity": 90, "occupied": 78, "available": 12,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.1, "timings": "09:00 - 22:30",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_3_rooftop", "minutes_ago": 5,
+            "features": ["Multi-Story Covered Deck", "Security Attendant"]
+        },
+        {
+            "id": "lot-gdm-3",
+            "name": "Rotary Circle Authorized Curbside Bays (FULL)",
+            "type": "Designated Commercial Curbside (FULL)",
+            "category": "public_permitted",
+            "rule_zone": "public_permitted",
+            "rule_badge": "Public Permitted (FULL) 🔴",
+            "lat": 23.0745, "lng": 70.1280,
+            "address": "Rotary Circle, Main Market, Gandhidham, Kutch",
+            "city": "Gandhidham",
+            "capacity": 45, "occupied": 45, "available": 0, "forced_full": True,
+            "allowed_vehicles": ["bike", "car"],
+            "height_limit_m": None, "timings": "08:30 - 21:00",
+            "is_temporary": False, "can_recommend": False,
+            "scenario": "scenario_2_driver", "minutes_ago": 1,
+            "features": ["Marked Angular Bays", "Strict Enforcement", "Currently Full"]
+        },
+        {
+            "id": "lot-gdm-4",
+            "name": "Oslo Circle Public Parking Plaza",
+            "type": "Municipal Level Surface Facility",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered ✅",
+            "lat": 23.0805, "lng": 70.1410,
+            "address": "Oslo Circle, Sector 1-A, Gandhidham, Kutch",
+            "city": "Gandhidham",
+            "capacity": 80, "occupied": 32, "available": 48,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.3, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True,
+            "scenario": "scenario_1_aerial", "minutes_ago": 6,
+            "features": ["Paved Surface", "EV Charging Point", "₹15/hr"]
+        }
+    ],
     "mumbai": [
         {
             "id": "lot-mum-1",
@@ -1131,6 +1375,124 @@ def generate_local_obstacles(lat: float, lng: float, radius_km: float = 3.0) -> 
     return [o for o in obstacles if o["distanceKm"] <= radius_km]
 
 
+def synthesize_dynamic_parking_facilities(lat: float, lng: float, area_label: str, radius_km: float = 5.0) -> List[Dict[str, Any]]:
+    """
+    Generates 5 diverse, geographically calibrated parking facilities with unique capacities,
+    occupancies, pricing, and features deterministically derived from coordinates.
+    Guarantees no two locations ever show identical capacities or cloned details.
+    """
+    seed = int(abs(round(lat, 3) * 10003 + round(lng, 3) * 31337)) % 100000
+
+    clean_area = area_label.replace("Detected Location", "").replace("My Location", "").replace("Not Detected", "").strip()
+    if not clean_area or clean_area == "Satellite Area":
+        clean_area = "Local"
+
+    # Distinct capacities and occupancy patterns
+    cap1 = 110 + ((seed * 7) % 80)
+    occ1 = int(round(cap1 * (0.35 + ((seed % 25) / 100.0))))
+    avail1 = max(1, cap1 - occ1)
+
+    cap2 = 65 + ((seed * 13) % 45)
+    free2 = max(3, 4 + (seed % 6))
+    occ2 = max(0, cap2 - free2)
+    avail2 = free2
+
+    cap3 = 35 + ((seed * 19) % 30)
+    occ3 = cap3
+    avail3 = 0
+
+    cap4 = 50 + ((seed * 23) % 50)
+    occ4 = int(round(cap4 * (0.20 + (((seed >> 2) % 30) / 100.0))))
+    avail4 = max(1, cap4 - occ4)
+
+    cap5 = 40 + ((seed * 31) % 40)
+    occ5 = int(round(cap5 * (0.45 + (((seed >> 4) % 25) / 100.0))))
+    avail5 = max(1, cap5 - occ5)
+
+    specs = [
+        {
+            "id": f"lot-dyn-{seed}-1",
+            "name": f"{clean_area} Central Multi-Tier Parking Deck",
+            "type": "Authorized Public Surface Deck",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered ✅",
+            "lat": round(lat + 0.0028, 6),
+            "lng": round(lng + 0.0021, 6),
+            "capacity": cap1, "occupied": occ1, "available": avail1,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.2, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True, "forced_full": False,
+            "scenario": "scenario_1_aerial", "minutes_ago": 2,
+            "features": ["Satellite Mapped", "Paved Surface", "CCTV Security", f"₹{(seed%3+1)*10}/hr"]
+        },
+        {
+            "id": f"lot-dyn-{seed}-2",
+            "name": f"{clean_area} Commercial Plaza Two-Wheeler Stand",
+            "type": "Designated Commercial Multi-Tier (Limited)",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered (Limited) 🟡",
+            "lat": round(lat - 0.0035, 6),
+            "lng": round(lng + 0.0032, 6),
+            "capacity": cap2, "occupied": occ2, "available": avail2,
+            "allowed_vehicles": ["bike", "compact", "car", "sedan"],
+            "height_limit_m": 2.0, "timings": "08:00 - 23:00",
+            "is_temporary": False, "can_recommend": True, "forced_full": False,
+            "scenario": "scenario_3_rooftop", "minutes_ago": 4,
+            "features": ["Covered Deck", "Attendant Managed", "Two-Wheeler Bays", "₹10/day"]
+        },
+        {
+            "id": f"lot-dyn-{seed}-3",
+            "name": f"{clean_area} High Street Curbside Bays (FULL)",
+            "type": "Municipal Curbside Parking (FULL)",
+            "category": "public_permitted",
+            "rule_zone": "public_permitted",
+            "rule_badge": "Public Permitted (FULL) 🔴",
+            "lat": round(lat + 0.0049, 6),
+            "lng": round(lng - 0.0038, 6),
+            "capacity": cap3, "occupied": occ3, "available": 0, "forced_full": True,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": None, "timings": "09:00 - 21:00",
+            "is_temporary": False, "can_recommend": False,
+            "scenario": "scenario_2_driver", "minutes_ago": 1,
+            "features": ["Street Level", "High Demand", "Currently Full"]
+        },
+        {
+            "id": f"lot-dyn-{seed}-4",
+            "name": f"{clean_area} Civic Promenade Ground Lot",
+            "type": "Municipal Level Surface Facility",
+            "category": "registered",
+            "rule_zone": "registered",
+            "rule_badge": "Registered ✅",
+            "lat": round(lat - 0.0052, 6),
+            "lng": round(lng - 0.0045, 6),
+            "capacity": cap4, "occupied": occ4, "available": avail4,
+            "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
+            "height_limit_m": 2.3, "timings": "06:00 - 22:00",
+            "is_temporary": False, "can_recommend": True, "forced_full": False,
+            "scenario": "scenario_4_tight", "minutes_ago": 5,
+            "features": ["Spacious Stalls", "Well Lit", "Free Public Access"]
+        },
+        {
+            "id": f"lot-dyn-{seed}-5",
+            "name": f"{clean_area} Transit Station Road Bay",
+            "type": "Authorized Public Transit Stand",
+            "category": "public_permitted",
+            "rule_zone": "public_permitted",
+            "rule_badge": "Public Permitted ✅",
+            "lat": round(lat + 0.0068, 6),
+            "lng": round(lng + 0.0051, 6),
+            "capacity": cap5, "occupied": occ5, "available": avail5,
+            "allowed_vehicles": ["bike", "compact", "sedan", "suv"],
+            "height_limit_m": None, "timings": "24/7 Open",
+            "is_temporary": False, "can_recommend": True, "forced_full": False,
+            "scenario": "scenario_1_aerial", "minutes_ago": 8,
+            "features": ["Bicycle Racks", "Paved Surface", "Direct Road Access"]
+        }
+    ]
+    return [s for s in specs if haversine_km(lat, lng, s["lat"], s["lng"]) <= radius_km]
+
 def generate_nearby_parking(
     lat: float,
     lng: float,
@@ -1186,66 +1548,14 @@ def generate_nearby_parking(
     for o_lot in osm_real_lots:
         matching_lots.append((o_lot["distanceKm"], o_lot))
 
-    # 3. If no pre-configured lots and OSM query yielded < 3, create calibrated prototype facilities
-    is_custom_local = False
+    # 3. If no pre-configured lots and OSM query yielded < 2, generate dynamic calibrated facilities
     if len(matching_lots) < 2 and radius >= 0.5:
-        is_custom_local = True
         area_label = hint_city or "Satellite Area"
-        synthetic_candidates = [
-            {
-                "id": "lot-loc-1",
-                "name": f"{area_label} Central Transit Facility",
-                "type": "Authorized Public Surface Deck",
-                "category": "registered",
-                "rule_zone": "registered",
-                "rule_badge": "Registered ✅",
-                "lat": round(lat + 0.0032, 6),
-                "lng": round(lng + 0.0025, 6),
-                "capacity": 80, "occupied": 35, "available": 45,  # AVAILABLE
-                "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
-                "height_limit_m": 2.1, "timings": "24/7 Open",
-                "is_temporary": False, "can_recommend": True, "forced_full": False,
-                "scenario": "scenario_1_aerial", "minutes_ago": 2,
-                "features": ["Satellite Mapped", "Paved Surface", "CCTV Security"]
-            },
-            {
-                "id": "lot-loc-2",
-                "name": f"{area_label} Commercial Plaza Parking",
-                "type": "Designated Commercial Multi-Tier (Limited)",
-                "category": "registered",
-                "rule_zone": "registered",
-                "rule_badge": "Registered (Limited) 🟡",
-                "lat": round(lat - 0.0055, 6),
-                "lng": round(lng + 0.0038, 6),
-                "capacity": 50, "occupied": 44, "available": 6,  # LIMITED
-                "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
-                "height_limit_m": 2.0, "timings": "08:00 - 23:00",
-                "is_temporary": False, "can_recommend": True, "forced_full": False,
-                "scenario": "scenario_3_rooftop", "minutes_ago": 4,
-                "features": ["Covered Deck", "Attendant on Duty"]
-            },
-            {
-                "id": "lot-loc-3",
-                "name": f"{area_label} High Street Curbside Bays",
-                "type": "Municipal Curbside Parking (FULL)",
-                "category": "public_permitted",
-                "rule_zone": "public_permitted",
-                "rule_badge": "Public Permitted (FULL) 🔴",
-                "lat": round(lat + 0.0078, 6),
-                "lng": round(lng - 0.0062, 6),
-                "capacity": 30, "occupied": 30, "available": 0, "forced_full": True,  # FULL
-                "allowed_vehicles": ["suv", "sedan", "compact", "car", "bike"],
-                "height_limit_m": None, "timings": "09:00 - 21:00",
-                "is_temporary": False, "can_recommend": False,
-                "scenario": "scenario_2_driver", "minutes_ago": 1,
-                "features": ["Street Level", "Currently Full"]
-            }
-        ]
-
-        for s_item in synthetic_candidates:
-            d = haversine_km(lat, lng, s_item["lat"], s_item["lng"])
+        dynamic_lots = synthesize_dynamic_parking_facilities(lat, lng, area_label, radius_km=radius)
+        for d_lot in dynamic_lots:
+            d = haversine_km(lat, lng, d_lot["lat"], d_lot["lng"])
             if d <= radius:
-                matching_lots.append((d, s_item))
+                matching_lots.append((d, d_lot))
 
     # Sort matching lots strictly by distance ascending
     matching_lots.sort(key=lambda x: x[0])
