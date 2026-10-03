@@ -970,7 +970,7 @@ def query_satellite_osm_parking(lat: float, lng: float, radius_km: float = 3.0) 
 
     radius_m = min(10000, max(500, int(radius_km * 1000)))
     query = f"""
-    [out:json][timeout:3];
+    [out:json][timeout:2];
     (
       node["amenity"="parking"](around:{radius_m},{lat},{lng});
       way["amenity"="parking"](around:{radius_m},{lat},{lng});
@@ -981,11 +981,18 @@ def query_satellite_osm_parking(lat: float, lng: float, radius_km: float = 3.0) 
     """
     url = "https://overpass-api.de/api/interpreter"
     data = urllib.parse.urlencode({'data': query}).encode('utf-8')
-    req = urllib.request.Request(url, data=data, headers={'User-Agent': 'SmartParkingDetection/2.0'})
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            'User-Agent': 'SmartParkingDetection/2.0 (student research prototype)',
+            'Accept': 'application/json'
+        }
+    )
 
     osm_lots = []
     try:
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
+        with urllib.request.urlopen(req, timeout=1.0) as resp:
             raw = json.loads(resp.read().decode('utf-8'))
             elements = raw.get('elements', [])
             for el in elements:
@@ -1052,7 +1059,9 @@ def query_satellite_osm_parking(lat: float, lng: float, radius_km: float = 3.0) 
                     "features": ["Satellite Mapped", "OpenStreetMap Verified", "Public Access"]
                 })
     except Exception as e:
-        print("Live OSM Overpass query skipped:", e)
+        # Cache negative result for 600s so it doesn't repeatedly retry slow Overpass
+        OSM_GEO_CACHE[cache_key] = (now, [])
+        return []
 
     OSM_GEO_CACHE[cache_key] = (now, osm_lots)
     return osm_lots
@@ -1612,16 +1621,17 @@ def get_geoip_location():
     except Exception as e:
         print(f"ip-api lookup failed: {e}")
 
-    # 3. Default fallback (Rajkot municipal hub)
+    # 3. Default fallback if internet IP lookup is offline
     return {
         "success": True,
-        "latitude": 22.2916,
-        "longitude": 70.7932,
-        "city": "Rajkot",
+        "latitude": 22.8427,
+        "longitude": 69.7258,
+        "city": "Mundra / Local Hub",
         "region": "Gujarat",
         "country": "India",
         "source": "fallback",
-        "accuracy": 3000
+        "is_estimated": True,
+        "accuracy": 5000
     }
 
 

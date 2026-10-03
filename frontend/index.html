@@ -411,22 +411,23 @@
           <div class="wz-search-row">
             <div class="wz-search-input-wrap">
               <span class="wz-search-icon">🔍</span>
-              <input type="text" id="wz-city-input" class="wz-search-input" placeholder="Type any city or address (e.g. Rajkot, Ahmedabad, Mumbai, London)...">
-              <button type="button" class="wz-search-btn" id="wz-city-search-btn">Search City</button>
+              <input type="text" id="wz-city-input" class="wz-search-input" placeholder="Type your town or city (e.g. Mundra, Bhuj, Gandhidham, Ahmedabad, Surat)...">
+              <button type="button" class="wz-search-btn" id="wz-city-search-btn">Search Location</button>
             </div>
           </div>
 
           <div class="wz-city-row">
             <span class="wz-city-label" data-i18n="lbl_or_set_city">Quick hubs:</span>
-            <button type="button" class="wz-city-chip" data-lat="22.2904" data-lng="70.7915" data-city="Rajkot">🏙️ Rajkot</button>
+            <button type="button" class="wz-city-chip" data-lat="22.8427" data-lng="69.7258" data-city="Mundra">🏙️ Mundra</button>
+            <button type="button" class="wz-city-chip" data-lat="23.2420" data-lng="69.6669" data-city="Bhuj">🏙️ Bhuj</button>
+            <button type="button" class="wz-city-chip" data-lat="23.0753" data-lng="70.1337" data-city="Gandhidham">🏙️ Gandhidham</button>
+            <button type="button" class="wz-city-chip" data-lat="23.1136" data-lng="70.0277" data-city="Anjar">🏙️ Anjar</button>
+            <button type="button" class="wz-city-chip" data-lat="22.8333" data-lng="69.3556" data-city="Mandvi">🏙️ Mandvi</button>
             <button type="button" class="wz-city-chip" data-lat="23.0225" data-lng="72.5714" data-city="Ahmedabad">🏙️ Ahmedabad</button>
+            <button type="button" class="wz-city-chip" data-lat="21.1702" data-lng="72.8311" data-city="Surat">🏙️ Surat</button>
+            <button type="button" class="wz-city-chip" data-lat="22.3072" data-lng="70.8022" data-city="Rajkot">🏙️ Rajkot</button>
             <button type="button" class="wz-city-chip" data-lat="19.0760" data-lng="72.8777" data-city="Mumbai">🏙️ Mumbai</button>
-            <button type="button" class="wz-city-chip" data-lat="18.5204" data-lng="73.8567" data-city="Pune">🏙️ Pune</button>
             <button type="button" class="wz-city-chip" data-lat="28.6139" data-lng="77.2090" data-city="Delhi">🏙️ Delhi</button>
-            <button type="button" class="wz-city-chip" data-lat="12.9716" data-lng="77.5946" data-city="Bengaluru">🏙️ Bengaluru</button>
-            <button type="button" class="wz-city-chip" data-lat="51.5074" data-lng="-0.1278" data-city="London">🏙️ London</button>
-            <button type="button" class="wz-city-chip" data-lat="37.7749" data-lng="-122.4194" data-city="San Francisco">🏙️ San Francisco</button>
-            <button type="button" class="wz-city-chip" data-lat="40.7128" data-lng="-74.0060" data-city="New York">🏙️ New York</button>
           </div>
 
           <div class="wz-actions">
@@ -435,6 +436,9 @@
             </button>
             <button type="button" class="wz-btn-secondary" id="wz-retry-gps-btn">
               <span>🔄 Retry GPS Detection</span>
+            </button>
+            <button type="button" class="wz-btn-primary hidden" id="wz-goto-lots">
+              <span>🧭 Continue to Parking →</span>
             </button>
             <button type="button" class="wz-btn-back" id="wz-back-1">
               ← Back
@@ -2116,7 +2120,7 @@
   <!-- Vehicle Dataset & Auto-Dimension Detector (2W, 3W, 4W) -->
   <script src="vehicles.js?v=2.2"></script>
   <!-- Application Controller JS -->
-  <script src="app.js?v=2.3"></script>
+  <script src="app.js?v=2.4"></script>
 
 
 </body>
