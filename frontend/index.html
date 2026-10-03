@@ -602,6 +602,20 @@
       <!-- ===== STEP 5: CAMERA CV SCAN ===== -->
       <div class="wz-panel" id="wz-panel-5">
         <div class="wz-panel-inner wz-camera-panel">
+          <!-- Prominent Top Navigation Header: Never get trapped on camera screen -->
+          <div class="wz-cam-top-nav">
+            <button type="button" class="wz-cam-top-back-btn" id="wz-cam-top-back" onclick="handleUserBackNavigation()">
+              <span>← Back to Navigation &amp; Map</span>
+            </button>
+            <div class="wz-cam-top-badge">
+              <span class="wz-live-dot" style="width:8px;height:8px;"></span>
+              <span>AI Camera Active</span>
+            </div>
+            <button type="button" class="wz-cam-close-btn" id="wz-cam-header-close" onclick="handleUserExitCamera()" title="Exit Scanner to Map">
+              ✕ Exit Camera
+            </button>
+          </div>
+
           <div class="wz-panel-heading">
             <div class="wz-panel-step-tag" data-i18n="wz_s5_tag">Step 5 of 5</div>
             <h2 class="wz-title" data-i18n="wz_s5_title">Point Camera at Parking Row</h2>
@@ -651,6 +665,9 @@
 
           <!-- Camera Controls -->
           <div class="wz-cam-controls">
+            <button type="button" class="wz-cam-btn wz-cam-back-pill" id="wz-cam-ctl-back" onclick="handleUserBackNavigation()" title="Go back to previous step">
+              <span>←</span><span>Back</span>
+            </button>
             <button class="wz-cam-btn" id="wz-toggle-cam">
               <span>⏹️</span><span>Stop</span>
             </button>
@@ -2133,7 +2150,7 @@
   <!-- Vehicle Dataset & Auto-Dimension Detector (2W, 3W, 4W) -->
   <script src="vehicles.js?v=2.2"></script>
   <!-- Application Controller JS -->
-  <script src="app.js?v=2.6"></script>
+  <script src="app.js?v=2.7"></script>
 
 
 </body>
