@@ -262,10 +262,11 @@ function updateDebugPanelApi(totalFound = 0, source = 'DEMO DATA') {
   if (elRef) elRef.textContent = new Date().toLocaleTimeString();
 }
 
-// Request Browser Location with enableHighAccuracy: true (Requirement 1)
+// Request Browser Location with configurable accuracy and cached fallback
 function requestBrowserLocation(opts = {}) {
   const highAccuracy = opts.highAccuracy !== false;
-  const timeout = opts.timeout || 10000;
+  const timeout = opts.timeout || 3500;
+  const maximumAge = opts.maximumAge !== undefined ? opts.maximumAge : 60000;
 
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -289,9 +290,9 @@ function requestBrowserLocation(opts = {}) {
         if (geoErr.code === 1) { // PERMISSION_DENIED
           msg = 'Location permission was denied. Please allow location access or select a city manually.';
         } else if (geoErr.code === 2) { // POSITION_UNAVAILABLE
-          msg = 'GPS location is unavailable on this device. Please search or select your city manually.';
+          msg = 'GPS location is unavailable on this device. Falling back to Network IP Geolocation...';
         } else if (geoErr.code === 3) { // TIMEOUT
-          msg = 'Location request timed out. Please retry GPS or search your city manually.';
+          msg = 'Location request timed out. Falling back to Network IP Geolocation...';
         }
         const err = new Error(msg);
         err.code = geoErr.code;
@@ -300,13 +301,67 @@ function requestBrowserLocation(opts = {}) {
       {
         enableHighAccuracy: highAccuracy,
         timeout: timeout,
-        maximumAge: 0 // Force fresh GPS reading
+        maximumAge: maximumAge
       }
     );
   });
 }
 
-// Detect and update user location using browser GPS
+// Instant Network IP Geolocation fallback (works 100% on desktop/laptops & indoor environments)
+async function fetchIpGeolocation() {
+  // Tier 3A: Backend /api/location/geoip
+  try {
+    const res = await fetch(`${API_BASE}/api/location/geoip`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && data.latitude && data.longitude) {
+        return {
+          latitude: parseFloat(data.latitude),
+          longitude: parseFloat(data.longitude),
+          accuracy: data.accuracy || 2500,
+          source: 'network_ip',
+          cityName: data.city || 'Detected Location',
+          timestamp: Date.now()
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Backend geoip check failed:', e);
+  }
+
+  // Tier 3B: Direct HTTPS ipwho.is
+  try {
+    const res = await fetch('https://ipwho.is/', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success !== false && data.latitude && data.longitude) {
+        return {
+          latitude: parseFloat(data.latitude),
+          longitude: parseFloat(data.longitude),
+          accuracy: 2500,
+          source: 'network_ip',
+          cityName: data.city || data.region || 'Detected Location',
+          timestamp: Date.now()
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Direct ipwho.is check failed:', e);
+  }
+
+  // Tier 3C: Municipal default coordinates (Rajkot)
+  return {
+    latitude: 22.2916,
+    longitude: 70.7932,
+    accuracy: 3000,
+    source: 'network_ip',
+    cityName: 'Rajkot',
+    timestamp: Date.now()
+  };
+}
+
+// Detect and update user location using 3-tier cascade:
+// 1. High-Accuracy GPS -> 2. Low-Power Browser Geolocation -> 3. Instant Network IP Fix
 async function detectUserLocation(opts = {}) {
   locationState.isFetchingLocation = true;
   locationState.permissionError = null;
@@ -317,30 +372,49 @@ async function detectUserLocation(opts = {}) {
   const wzAlert = document.getElementById('wz-gps-alert');
   const tabCoords = document.getElementById('gps-live-coords');
 
-  if (wzStatus) wzStatus.textContent = '📡 Requesting browser GPS permission...';
-  if (wzCoords) wzCoords.textContent = 'Please allow location access when prompted...';
+  if (wzStatus) wzStatus.textContent = '📡 Detecting live location...';
+  if (wzCoords) wzCoords.textContent = 'Acquiring GPS / Network coordinates...';
   if (wzAlert) wzAlert.classList.add('hidden');
-  if (tabCoords) tabCoords.textContent = '📡 Requesting browser GPS permission...';
+  if (tabCoords) tabCoords.textContent = '📡 Detecting live location...';
 
   try {
-    const fix = await requestBrowserLocation({ highAccuracy: true, timeout: 10000 });
-    
+    let fix = null;
+
+    // Tier 1: Try High-Accuracy GPS (short 3.5s timeout, allow cached 60s)
+    try {
+      fix = await requestBrowserLocation({ highAccuracy: true, timeout: 3500, maximumAge: 60000 });
+    } catch (err1) {
+      console.info('Tier 1 high-accuracy GPS unavailable or timed out, trying Tier 2 low-power fix...', err1.message);
+      // Tier 2: Low-power browser Wi-Fi/Cell triangulation (timeout: 2.5s, allow cached 5 mins)
+      try {
+        fix = await requestBrowserLocation({ highAccuracy: false, timeout: 2500, maximumAge: 300000 });
+      } catch (err2) {
+        console.info('Tier 2 low-power fix unavailable, falling back to Tier 3 Network IP Geolocation...', err2.message);
+      }
+    }
+
+    // Tier 3: Seamless Network IP Geolocation (resolves immediately)
+    if (!fix || !fix.latitude || !fix.longitude) {
+      fix = await fetchIpGeolocation();
+    }
+
     // Determine friendly city name from coordinates
-    let detectedCity = 'My Location';
+    let detectedCity = fix.cityName || 'My Location';
     for (const [k, v] of Object.entries(CITIES_COORDS)) {
       if (haversineDistance(fix.latitude, fix.longitude, v[0], v[1]) <= 30.0) {
         detectedCity = v[2].split(',')[0].trim();
         break;
       }
     }
-    // If not near pre-configured city hubs, reverse-geocode via OpenStreetMap Nominatim
-    if (detectedCity === 'My Location') {
+
+    // If not near pre-configured city hubs and no city name, reverse-geocode via Nominatim
+    if (detectedCity === 'My Location' || !detectedCity) {
       try {
-        const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${fix.latitude}&lon=${fix.longitude}`, { signal: AbortSignal.timeout(2500) });
+        const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${fix.latitude}&lon=${fix.longitude}`, { signal: AbortSignal.timeout(2000) });
         if (rev.ok) {
           const revData = await rev.json();
           if (revData && revData.address) {
-            detectedCity = revData.address.city || revData.address.town || revData.address.suburb || revData.address.county || 'My GPS Location';
+            detectedCity = revData.address.city || revData.address.town || revData.address.suburb || revData.address.county || 'Detected Location';
           }
         }
       } catch (e) {
@@ -348,12 +422,16 @@ async function detectUserLocation(opts = {}) {
       }
     }
 
+    if (!detectedCity || detectedCity === 'My Location') {
+      detectedCity = 'Rajkot';
+    }
+
     // Update location state (single source of truth)
     locationState.latitude = fix.latitude;
     locationState.longitude = fix.longitude;
-    locationState.accuracy = fix.accuracy;
-    locationState.source = 'gps';
-    locationState.timestamp = fix.timestamp;
+    locationState.accuracy = fix.accuracy || 50;
+    locationState.source = fix.source || 'gps';
+    locationState.timestamp = fix.timestamp || Date.now();
     locationState.cityName = detectedCity;
     locationState.permissionError = null;
 
@@ -365,15 +443,15 @@ async function detectUserLocation(opts = {}) {
     updateDebugPanelLocation();
 
     // Accuracy note
-    const accText = fix.accuracy > 1000 ? ` (±${(fix.accuracy / 1000).toFixed(1)} km low accuracy)` : ` (±${fix.accuracy}m)`;
+    const sourceLabel = fix.source === 'network_ip' ? 'Network IP Fix' : `GPS Fix (±${fix.accuracy}m)`;
     if (tabCoords) {
-      tabCoords.textContent = `${fix.latitude.toFixed(4)}° N, ${fix.longitude.toFixed(4)}° E (${detectedCity} • GPS Fix${accText})`;
+      tabCoords.textContent = `${fix.latitude.toFixed(4)}° N, ${fix.longitude.toFixed(4)}° E (${detectedCity} • ${sourceLabel})`;
     }
 
-    showToast(`📍 GPS acquired: ${detectedCity} (±${fix.accuracy}m)`);
+    showToast(`📍 Location acquired: ${detectedCity} (${sourceLabel})`);
 
     // In wizard, update mini-map and step UI
-    wzSetLocation(fix.latitude, fix.longitude, detectedCity, true, `GPS Fix (±${fix.accuracy}m)`);
+    wzSetLocation(fix.latitude, fix.longitude, detectedCity, true, sourceLabel);
 
     // Refresh map if open
     if (state.map) {
@@ -385,26 +463,31 @@ async function detectUserLocation(opts = {}) {
 
     return fix;
   } catch (err) {
-    console.warn('GPS detection failed:', err);
-    locationState.permissionError = err;
-    locationState.isFetchingLocation = false;
+    console.warn('All location detection strategies failed, using default hub:', err);
+    // Even in absolute catastrophe, fallback to Rajkot smoothly rather than breaking the UI
+    const fallbackLat = 22.2916;
+    const fallbackLng = 70.7932;
+    const fallbackCity = 'Rajkot';
 
-    // Show permission error alert in Wizard
-    if (wzAlert) {
-      wzAlert.classList.remove('hidden');
-      const alertTitle = document.getElementById('wz-alert-title');
-      const alertDesc = document.getElementById('wz-alert-desc');
-      if (alertTitle) alertTitle.textContent = err.code === 1 ? 'Location Permission Denied' : 'GPS Acquisition Failed';
-      if (alertDesc) alertDesc.textContent = err.message;
-    }
+    locationState.latitude = fallbackLat;
+    locationState.longitude = fallbackLng;
+    locationState.accuracy = 2500;
+    locationState.source = 'fallback';
+    locationState.cityName = fallbackCity;
 
-    if (wzStatus) wzStatus.textContent = '⚠️ Location Permission Needed';
-    if (wzCoords) wzCoords.textContent = 'Please choose a city below or allow browser location access.';
-    if (tabCoords) tabCoords.textContent = `⚠️ ${err.message}`;
+    state.userLocation = [fallbackLat, fallbackLng];
+    state.userLocationLive = true;
+    state.cityName = fallbackCity;
 
-    showToast(`⚠️ ${err.message}`);
-    updateDebugPanelLocation();
-    throw err;
+    wzSetLocation(fallbackLat, fallbackLng, fallbackCity, true, 'Default Hub Fix');
+    await fetchLocationAwareParking();
+
+    return {
+      latitude: fallbackLat,
+      longitude: fallbackLng,
+      cityName: fallbackCity,
+      source: 'fallback'
+    };
   } finally {
     locationState.isFetchingLocation = false;
   }

@@ -1562,6 +1562,69 @@ def get_vehicles():
 # ==========================================================================
 # LIVE GPS & REAL NEARBY PARKING ENDPOINTS
 # ==========================================================================
+@app.get("/api/location/geoip")
+def get_geoip_location():
+    """
+    Resolve client's real-time geographic location via IP Geolocation.
+    Provides instant, zero-prompt fallback when hardware GPS is unavailable or times out.
+    """
+    # 1. Try ipwho.is (fast, HTTPS, returns city, region, lat, lng)
+    try:
+        req = urllib.request.Request(
+            "https://ipwho.is/",
+            headers={"User-Agent": "SmartParkingDetection/2.0"}
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data.get("success") is not False and data.get("latitude") and data.get("longitude"):
+                return {
+                    "success": True,
+                    "latitude": float(data["latitude"]),
+                    "longitude": float(data["longitude"]),
+                    "city": data.get("city") or data.get("region") or "Detected Location",
+                    "region": data.get("region"),
+                    "country": data.get("country"),
+                    "source": "network_ip",
+                    "accuracy": 2500
+                }
+    except Exception as e:
+        print(f"ipwho.is lookup failed: {e}")
+
+    # 2. Try ip-api.com
+    try:
+        req = urllib.request.Request(
+            "http://ip-api.com/json/",
+            headers={"User-Agent": "SmartParkingDetection/2.0"}
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data.get("status") == "success" and data.get("lat") and data.get("lon"):
+                return {
+                    "success": True,
+                    "latitude": float(data["lat"]),
+                    "longitude": float(data["lon"]),
+                    "city": data.get("city") or "Detected Location",
+                    "region": data.get("regionName"),
+                    "country": data.get("country"),
+                    "source": "network_ip",
+                    "accuracy": 3500
+                }
+    except Exception as e:
+        print(f"ip-api lookup failed: {e}")
+
+    # 3. Default fallback (Rajkot municipal hub)
+    return {
+        "success": True,
+        "latitude": 22.2916,
+        "longitude": 70.7932,
+        "city": "Rajkot",
+        "region": "Gujarat",
+        "country": "India",
+        "source": "fallback",
+        "accuracy": 3000
+    }
+
+
 @app.get("/api/parking/nearby")
 def get_nearby_parking(
     lat: Optional[Any] = None,
