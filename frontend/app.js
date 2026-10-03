@@ -1210,70 +1210,56 @@ async function startCameraStream() {
   try {
     statusLabel.textContent = 'Requesting Camera Permission...';
     
-    // Check WebRTC support
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('Camera API not supported on this browser. Use Simulated Feed.');
+      throw new Error('Camera API not supported on this browser.');
     }
 
-    const constraints = {
-      video: {
-        facingMode: { ideal: state.camera.facingMode },
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false
-    };
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: state.camera.facingMode ? { ideal: state.camera.facingMode } : 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+    } catch (e) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     state.camera.stream = stream;
     state.camera.isSimulated = false;
 
     video.srcObject = stream;
-    await video.play();
+    video.style.display = 'block';
 
     permOverlay.classList.add('hidden');
-    statusLabel.textContent = `🟢 Live Rear Camera Feed (${state.camera.facingMode})`;
+    statusLabel.textContent = `🟢 Live Camera Feed Active`;
     document.getElementById('lbl-cam-toggle').textContent = 'Stop Feed';
     document.getElementById('icon-cam-toggle').textContent = '⏹️';
 
-    video.onloadedmetadata = () => {
+    let scanStarted = false;
+    const triggerScan = () => {
       resizeARCanvas();
-      if (state.camera.isAutoScanning) {
+      if (!scanStarted) {
+        scanStarted = true;
+        setTimeout(() => captureAndScanFrame(), 250);
         startAutoScanLoop();
       }
     };
+
+    video.onloadedmetadata = triggerScan;
+    video.oncanplay = triggerScan;
+    video.onplaying = triggerScan;
+
+    await video.play().catch(e => console.warn('Video play warning:', e));
+    triggerScan();
   } catch (err) {
     console.error('Camera access error:', err);
     statusLabel.textContent = '⚠️ Camera Access Denied';
-    alert(`Camera Permission Notice:\n${err.message || 'Permission denied.'}\n\nYou can click 'Use Simulated Camera Feed' to test the Computer Vision pipeline without physical camera hardware.`);
+    alert(`Camera Permission Notice:\n${err.message || 'Permission denied.'}`);
   }
-}
-
-function startSimulatedCamera() {
-  const permOverlay = document.getElementById('cam-permission-card');
-  const statusLabel = document.getElementById('cam-status-label');
-  const video = document.getElementById('mobile-cam-video');
-
-  stopCamera();
-  state.camera.isSimulated = true;
-
-  // Set poster / stream frame from scenario
-  video.srcObject = null;
-  video.poster = `${API_BASE}/static/scenarios/scenario_2_driver.jpg`;
-  
-  permOverlay.classList.add('hidden');
-  statusLabel.textContent = '🎬 Simulated Smartphone Camera Feed (Driver View)';
-  document.getElementById('lbl-cam-toggle').textContent = 'Stop Feed';
-  document.getElementById('icon-cam-toggle').textContent = '⏹️';
-
-  resizeARCanvas();
-  // Trigger single scan & auto-scan
-  setTimeout(() => {
-    captureAndScanFrame();
-    if (state.camera.isAutoScanning) {
-      startAutoScanLoop();
-    }
-  }, 400);
 }
 
 function stopCamera() {
@@ -1284,7 +1270,6 @@ function stopCamera() {
   const video = document.getElementById('mobile-cam-video');
   if (video) {
     video.srcObject = null;
-    video.poster = '';
   }
   state.camera.isSimulated = false;
   stopAutoScanLoop();
@@ -1298,12 +1283,12 @@ function stopCamera() {
 
 function startAutoScanLoop() {
   stopAutoScanLoop();
-  // Scan every 1.8 seconds
+  // Live scan every 1.1 seconds
   state.camera.scanInterval = setInterval(() => {
-    if (state.currentTab === 'camera-scan') {
+    if (state.currentTab === 'camera-scan' && state.camera.stream) {
       captureAndScanFrame();
     }
-  }, 1800);
+  }, 1100);
 }
 
 function stopAutoScanLoop() {
@@ -1319,38 +1304,48 @@ function resizeARCanvas() {
   if (!video || !canvas) return;
 
   const rect = video.getBoundingClientRect();
-  canvas.width = rect.width;
-  canvas.height = rect.height;
+  canvas.width = rect.width || video.videoWidth || 640;
+  canvas.height = rect.height || video.videoHeight || 480;
 }
 
 async function captureAndScanFrame() {
   if (state.camera.isScanningNow) return;
-  state.camera.isScanningNow = true;
+  const video = document.getElementById('mobile-cam-video');
+  if (!video || !state.camera.stream) return;
 
+  if (video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < 2) {
+    setTimeout(captureAndScanFrame, 200);
+    return;
+  }
+
+  state.camera.isScanningNow = true;
   const spinner = document.getElementById('cam-scan-spinner');
   if (spinner) spinner.classList.remove('hidden');
 
   try {
-    const video = document.getElementById('mobile-cam-video');
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const maxDim = 800;
+    let cw = vw, ch = vh;
+    if (cw > maxDim || ch > maxDim) {
+      if (cw > ch) { ch = Math.round((ch * maxDim) / cw); cw = maxDim; }
+      else { cw = Math.round((cw * maxDim) / ch); ch = maxDim; }
+    }
+
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = cw;
+    tempCanvas.height = ch;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(video, 0, 0, cw, ch);
+    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.70);
+
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
     const formData = new FormData();
     formData.append('vehicle_type', p.bikeType || 'bike_cruiser');
     formData.append('custom_length', p.length || 2.14);
     formData.append('custom_width', p.width || 0.84);
     formData.append('bike_model', p.bikeModel || 'Vehicle');
-
-    if (state.camera.isSimulated || !state.camera.stream) {
-      formData.append('scenario_key', state.currentScenario || 'scenario_2_driver');
-    } else {
-      // Capture frame from active video element
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = video.videoWidth || 1280;
-      tempCanvas.height = video.videoHeight || 720;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-      const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
-      formData.append('image_base64', dataUrl);
-    }
+    formData.append('image_base64', dataUrl);
 
     const response = await fetch(`${API_BASE}/api/cv/analyze-live-frame`, {
       method: 'POST',
@@ -1389,44 +1384,36 @@ function renderLiveScanResults(data) {
 
   if (rec) {
     recTitle.textContent = rec.label || `Bay ${rec.id}`;
-    recStatus.textContent = '🟢 Available & Fits Bike';
+    recStatus.textContent = '🟢 Available & Fits Vehicle';
     recStatus.style.color = '#34d399';
     recDims.textContent = `${rec.metrics.length_m}m (L) × ${rec.metrics.width_m}m (W)`;
     
     const margin = rec.vehicle_fit ? rec.vehicle_fit.width_margin_m : 0.35;
     recClearance.textContent = `+${margin}m clearance`;
-    recMsg.textContent = `${rec.vehicle_fit.message} Free public parking bay with kickstand room. Pull straight in.`;
+    recMsg.textContent = `${rec.vehicle_fit.message} Free public parking space. Pull straight in.`;
 
     // Voice announcement (throttled to avoid repeat spam)
     const now = Date.now();
     if (state.camera.speechEnabled && (state.camera.lastSpokenSlotId !== rec.id || now - state.camera.lastSpokenTime > 12000)) {
       state.camera.lastSpokenSlotId = rec.id;
       state.camera.lastSpokenTime = now;
-      speakGuidance(data.speech_text || `Free space found! Park your bike in ${rec.label}.`);
+      speakGuidance(data.speech_text || `Free space found! Park your vehicle in ${rec.label}.`);
     }
   } else {
     recTitle.textContent = 'Scanning View...';
-    recStatus.textContent = '🟡 No Fitting Spot Found';
+    recStatus.textContent = '🟡 Evaluating Clearance';
     recStatus.style.color = '#fbbf24';
     recDims.textContent = '—';
     recClearance.textContent = '0.0m';
-    recMsg.textContent = `All spaces in this camera angle are occupied or too small for your ${p.bikeModel} (${p.length}m length). Move camera forward.`;
+    recMsg.textContent = `Point camera directly at parking bays or empty ground. AI is actively scanning.`;
   }
 
-  // 1b. Display YOLO Annotated Video Frame (eliminating black/frozen screens)
-  if (data.annotated_frame) {
-    const mobImg = document.getElementById('mobile-cam-frame-img');
-    if (mobImg) {
-      mobImg.src = data.annotated_frame;
-      mobImg.classList.remove('hidden');
-    }
-  }
   const mobStatus = document.getElementById('cam-status-label');
   if (mobStatus) {
-    mobStatus.innerHTML = `🟢 YOLOv8 Active &bull; ${data.vehicles_count || 0} Vehicles &bull; ${data.obstacles_count || 0} Hazards`;
+    mobStatus.innerHTML = `🟢 Live Camera Active &bull; ${data.vehicles_count || 0} Vehicles &bull; ${data.obstacles_count || 0} Hazards`;
   }
 
-  // 2. Draw AR Canvas Overlays with live YOLO detections & slots
+  // Draw AR Canvas Overlays with live YOLO detections & slots directly on top of video
   drawAROverlay(data.ar_slots, rec, data.detections, data);
 
   // 3. Populate Live Bays List
@@ -3601,8 +3588,7 @@ function wzInitNavMap() {
 // ---- STEP 5: CAMERA CV SCAN ----
 function wzInitStep5() {
   const reqCamBtn = document.getElementById('wz-req-cam');
-  const simCamBtn = document.getElementById('wz-sim-cam');
-  const toggleCamBtn = document.getElementById('wz-toggle-cam');
+    const toggleCamBtn = document.getElementById('wz-toggle-cam');
   const flipCamBtn = document.getElementById('wz-flip-cam');
   const scanNowBtn = document.getElementById('wz-scan-now');
   const autoScanBtn = document.getElementById('wz-autoscan');
@@ -3611,8 +3597,7 @@ function wzInitStep5() {
   const backBtn = document.getElementById('wz-back-4');
 
   if (reqCamBtn) reqCamBtn.addEventListener('click', () => wzStartCamera());
-  if (simCamBtn) simCamBtn.addEventListener('click', () => wzStartSimCamera());
-
+  
   if (toggleCamBtn) {
     toggleCamBtn.addEventListener('click', () => {
       if (wz.cam.stream || wz.cam.isSimulated) {
@@ -3678,28 +3663,52 @@ async function wzStartCamera() {
   if (statusEl) statusEl.textContent = 'Requesting Camera Permission...';
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Camera not supported on this browser. Please use a modern mobile browser like Chrome or Safari.');
+    alert('Camera API is not supported on this browser. Please use Chrome, Safari, or Edge on HTTPS/localhost.');
     return;
   }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: wz.cam.facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: wz.cam.facingMode ? { ideal: wz.cam.facingMode } : 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+    } catch (e) {
+      console.warn('Default camera constraints failed, trying basic video:', e);
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+
     wz.cam.stream = stream;
     wz.cam.isSimulated = false;
 
     video.srcObject = stream;
-    await video.play();
+    video.style.display = 'block';
 
     if (permOverlay) permOverlay.classList.add('hidden');
-    if (statusEl) statusEl.textContent = `🟢 Live ${wz.cam.facingMode === 'environment' ? 'Rear' : 'Front'} Camera Active`;
+    if (statusEl) statusEl.textContent = '🟢 Live Camera Active — Pointing at Parking Row';
 
-    video.onloadedmetadata = () => {
+    // Hook up metadata, canplay, playing events to start scanning immediately
+    let scanStarted = false;
+    const triggerScanLoop = () => {
       wzResizeARCanvas();
-      if (wz.cam.isAutoScanning) wzStartAutoScan();
+      if (!scanStarted) {
+        scanStarted = true;
+        setTimeout(() => wzCaptureAndScan(), 250);
+        wzStartAutoScan();
+      }
     };
+
+    video.onloadedmetadata = triggerScanLoop;
+    video.oncanplay = triggerScanLoop;
+    video.onplaying = triggerScanLoop;
+
+    await video.play().catch(e => console.warn('Video play warning:', e));
+    triggerScanLoop();
 
     // Update vehicle tag in HUD
     const hudVehicle = document.getElementById('wz-hud-vehicle');
@@ -3710,29 +3719,8 @@ async function wzStartCamera() {
   } catch (err) {
     console.error('Wizard camera error:', err);
     if (statusEl) statusEl.textContent = '⚠️ Camera Access Denied';
-    alert(`Camera Permission Needed\n\n${err.message}\n\nTip: Use HTTPS or allow camera in browser settings. You can also try "Simulated Feed".`);
+    alert(`Camera Permission Needed\n\n${err.message || 'Please enable camera in browser settings.'}`);
   }
-}
-
-function wzStartSimCamera() {
-  const permOverlay = document.getElementById('wz-cam-perm-overlay');
-  const statusEl = document.getElementById('wz-cam-status');
-  const video = document.getElementById('wz-cam-video');
-
-  wzStopCamera();
-  wz.cam.isSimulated = true;
-
-  video.srcObject = null;
-  video.poster = `${API_BASE}/static/scenarios/scenario_2_driver.jpg`;
-
-  if (permOverlay) permOverlay.classList.add('hidden');
-  if (statusEl) statusEl.textContent = '🎬 Simulated Camera Feed (Driver View)';
-
-  wzResizeARCanvas();
-  setTimeout(() => {
-    wzCaptureAndScan();
-    if (wz.cam.isAutoScanning) wzStartAutoScan();
-  }, 400);
 }
 
 function wzStopCamera() {
@@ -3741,7 +3729,7 @@ function wzStopCamera() {
     wz.cam.stream = null;
   }
   const video = document.getElementById('wz-cam-video');
-  if (video) { video.srcObject = null; video.poster = ''; }
+  if (video) { video.srcObject = null; }
   wz.cam.isSimulated = false;
   wzStopAutoScan();
   wzClearARCanvas();
@@ -3754,9 +3742,10 @@ function wzStopCamera() {
 
 function wzStartAutoScan() {
   wzStopAutoScan();
+  // Real-time scan interval: 1.1s for responsive live feedback
   wz.cam.scanInterval = setInterval(() => {
-    if (wz.step === 5) wzCaptureAndScan();
-  }, 1800);
+    if (wz.step === 5 && wz.cam.stream) wzCaptureAndScan();
+  }, 1100);
 }
 
 function wzStopAutoScan() {
@@ -3772,7 +3761,7 @@ function wzResizeARCanvas() {
   if (!video || !canvas) return;
   const rect = video.getBoundingClientRect();
   canvas.width = rect.width || video.videoWidth || 640;
-  canvas.height = rect.height || video.videoHeight || 360;
+  canvas.height = rect.height || video.videoHeight || 480;
 }
 
 function wzClearARCanvas() {
@@ -3787,31 +3776,43 @@ function wzClearARCanvas() {
 
 async function wzCaptureAndScan() {
   if (wz.cam.isScanningNow) return;
-  wz.cam.isScanningNow = true;
+  const video = document.getElementById('wz-cam-video');
+  if (!video || !wz.cam.stream) return;
 
+  // Ensure video is ready and has non-zero dimensions
+  if (video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < 2) {
+    setTimeout(wzCaptureAndScan, 200);
+    return;
+  }
+
+  wz.cam.isScanningNow = true;
   const spinner = document.getElementById('wz-scan-spinner');
   if (spinner) spinner.classList.remove('hidden');
 
   try {
-    const video = document.getElementById('wz-cam-video');
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const maxDim = 800; // Optimal for fast real-time inference
+    let cw = vw, ch = vh;
+    if (cw > maxDim || ch > maxDim) {
+      if (cw > ch) { ch = Math.round((ch * maxDim) / cw); cw = maxDim; }
+      else { cw = Math.round((cw * maxDim) / ch); ch = maxDim; }
+    }
+
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = cw;
+    tmpCanvas.height = ch;
+    const tmpCtx = tmpCanvas.getContext('2d');
+    tmpCtx.drawImage(video, 0, 0, cw, ch);
+    const b64 = tmpCanvas.toDataURL('image/jpeg', 0.70);
+
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
     const formData = new FormData();
     formData.append('vehicle_type', p.bikeType || 'bike_cruiser');
     formData.append('custom_length', p.length || 2.14);
     formData.append('custom_width', p.width || 0.84);
     formData.append('bike_model', p.bikeModel || 'Vehicle');
-
-    if (wz.cam.isSimulated || !wz.cam.stream) {
-      const lot = wz.selectedLot;
-      const scenarioKey = (lot && lot.scenario_key) ? lot.scenario_key : 'scenario_2_driver';
-      formData.append('scenario_key', scenarioKey);
-    } else {
-      const tmpCanvas = document.createElement('canvas');
-      tmpCanvas.width = video.videoWidth || 1280;
-      tmpCanvas.height = video.videoHeight || 720;
-      tmpCanvas.getContext('2d').drawImage(video, 0, 0, tmpCanvas.width, tmpCanvas.height);
-      formData.append('image_base64', tmpCanvas.toDataURL('image/jpeg', 0.8));
-    }
+    formData.append('image_base64', b64);
 
     const res = await fetch(`${API_BASE}/api/cv/analyze-live-frame`, { method: 'POST', body: formData });
     if (!res.ok) throw new Error(`CV API error: ${res.statusText}`);
@@ -3852,35 +3853,28 @@ function wzRenderScanResults(data) {
     if (clearEl) clearEl.textContent = `+${margin}m clearance`;
     if (msgEl) msgEl.textContent = `${rec.vehicle_fit?.message || ''} Free public bay — pull straight in.`;
 
-    // Voice
+    // Voice announcement (throttled)
     const now = Date.now();
     if (wz.cam.speechEnabled && (wz.cam.lastSpokenSlotId !== rec.id || now - wz.cam.lastSpokenTime > 12000)) {
       wz.cam.lastSpokenSlotId = rec.id;
       wz.cam.lastSpokenTime = now;
-      speakGuidance(data.speech_text || `Free space found! Park your bike in ${rec.label}.`);
+      speakGuidance(data.speech_text || `Free space found! Park your vehicle in ${rec.label}.`);
     }
   } else {
-    if (titleEl) titleEl.textContent = 'Scanning...';
-    if (statusEl) { statusEl.textContent = '🟡 No fitting spot detected'; statusEl.style.color = '#d97706'; }
+    if (titleEl) titleEl.textContent = 'Scanning Camera View...';
+    if (statusEl) { statusEl.textContent = '🟡 Evaluating Clearance'; statusEl.style.color = '#d97706'; }
     if (dimsEl) dimsEl.textContent = '—';
     if (clearEl) clearEl.textContent = '—';
-    if (msgEl) msgEl.textContent = `All visible spaces are occupied or too small. Move your camera angle forward.`;
+    if (msgEl) msgEl.textContent = `Point camera directly at parking bays or empty ground. AI is actively scanning.`;
   }
 
-  // Display YOLO Annotated Frame in Wizard Camera Viewport
-  if (data.annotated_frame) {
-    const wzImg = document.getElementById('wz-cam-frame-img');
-    if (wzImg) {
-      wzImg.src = data.annotated_frame;
-      wzImg.classList.remove('hidden');
-    }
-  }
+  // Update Status HUD
   const wzStatus = document.getElementById('wz-cam-status');
   if (wzStatus) {
-    wzStatus.innerHTML = `🟢 YOLOv8 Neural Active &bull; ${data.vehicles_count || 0} Vehicles &bull; ${data.obstacles_count || 0} Hazards`;
+    wzStatus.innerHTML = `🟢 Live Camera Active &bull; ${data.vehicles_count || 0} Vehicles &bull; ${data.obstacles_count || 0} Hazards`;
   }
 
-  // Draw AR overlay with YOLO bounding boxes and slot polygons
+  // Draw AR overlay with live YOLO bounding boxes and slot polygons directly on top of video
   wzDrawAROverlay(data.ar_slots, rec, data.detections, data);
 
   // Populate bays list

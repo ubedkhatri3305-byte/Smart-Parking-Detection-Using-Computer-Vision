@@ -8770,3 +8770,5 @@ select.custom-select:focus {
   z-index: 1;
   pointer-events: none;
 }
+
+.geo-debug-dock { display: none !important; }

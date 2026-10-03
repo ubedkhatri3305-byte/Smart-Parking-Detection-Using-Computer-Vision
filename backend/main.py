@@ -2301,16 +2301,17 @@ async def analyze_live_frame(
             image = cv2.imread(img_path)
 
     if image is None:
-        scenarios = load_scenarios()
-        s_data = scenarios.get(scenario_key or "scenario_2_driver") or scenarios.get("scenario_1_aerial")
-        if s_data:
-            img_path = s_data["image_path"]
-            if not os.path.isabs(img_path):
-                img_path = os.path.join(BASE_DIR, "..", img_path)
-            image = cv2.imread(img_path)
+        if scenario_key and not image_base64 and not image_file:
+            scenarios = load_scenarios()
+            s_data = scenarios.get(scenario_key)
+            if s_data:
+                img_path = s_data["image_path"]
+                if not os.path.isabs(img_path):
+                    img_path = os.path.join(BASE_DIR, "..", img_path)
+                image = cv2.imread(img_path)
 
     if image is None:
-        raise HTTPException(status_code=400, detail="Unable to decode camera frame")
+        raise HTTPException(status_code=400, detail="Live camera frame could not be decoded. Please keep camera pointed at the scene.")
 
     h, w = image.shape[:2]
 
