@@ -2735,37 +2735,7 @@ async def analyze_live_frame(
             )
         else:
             geom = ParkingGeometry()
-    else:
-        # Dynamic perspective ground bays for mobile camera angle
-        geom = ParkingGeometry(
-            src_points=[[w * 0.10, h * 0.38], [w * 0.90, h * 0.38], [w * 0.98, h * 0.92], [w * 0.02, h * 0.92]],
-            ground_size_meters=(10.0, 6.0)
-        )
-        slot_definitions = [
-            {
-                "id": "B1",
-                "label": "Bike Bay 1",
-                "polygon": [[int(w * 0.05), int(h * 0.40)], [int(w * 0.33), int(h * 0.40)], [int(w * 0.28), int(h * 0.88)], [int(w * 0.02), int(h * 0.88)]],
-                "rule_zone": "registered"
-            },
-            {
-                "id": "B2",
-                "label": "Bike Bay 2",
-                "polygon": [[int(w * 0.35), int(h * 0.40)], [int(w * 0.63), int(h * 0.40)], [int(w * 0.62), int(h * 0.88)], [int(w * 0.30), int(h * 0.88)]],
-                "rule_zone": "registered"
-            },
-            {
-                "id": "B3",
-                "label": "Bike Bay 3",
-                "polygon": [[int(w * 0.65), int(h * 0.40)], [int(w * 0.94), int(h * 0.40)], [int(w * 0.96), int(h * 0.88)], [int(w * 0.64), int(h * 0.88)]],
-                "rule_zone": "registered"
-            }
-        ]
-
-    # 3. Analyze occupancy
-    analyzed_slots = analyzer.evaluate_slots(slot_definitions, detections)
-
-    # 4. Vehicle Specs & Suitability
+    # 2. Vehicle Specs & Suitability
     veh_specs = matcher.get_vehicle_specs(
         vehicle_type=vehicle_type,
         custom_length=custom_length,
@@ -2773,11 +2743,122 @@ async def analyze_live_frame(
         custom_name=bike_model
     )
 
+    # 3. Dynamic Perspective Ground Bays (No hardcoded fixed grid!)
+    if scenario_data and "slots" in scenario_data:
+        slot_definitions = scenario_data["slots"]
+        if "homography" in scenario_data:
+            h_cfg = scenario_data["homography"]
+            geom = ParkingGeometry(
+                src_points=h_cfg["src_points"],
+                ground_size_meters=tuple(h_cfg["ground_size_meters"]),
+                bev_resolution=tuple(h_cfg["bev_resolution"])
+            )
+        else:
+            geom = ParkingGeometry()
+    else:
+        # Perspective ground plane for mobile camera view
+        geom = ParkingGeometry(
+            src_points=[[w * 0.10, h * 0.38], [w * 0.90, h * 0.38], [w * 0.98, h * 0.94], [w * 0.02, h * 0.94]],
+            ground_size_meters=(10.0, 6.0)
+        )
+        # Dynamically build slots based on ground plane and detected obstacles/vehicles
+        y_top = int(h * 0.40)
+        y_bot = int(h * 0.94)
+
+        ground_objects = [d for d in detections if d["bbox"][3] >= y_top]
+        is_car = veh_specs.get("category") == "car" or veh_specs.get("wheels", 2) == 4
+
+        if not ground_objects:
+            if is_car:
+                bays = [
+                    {"id": "Bay 1 (Optimal)", "span": (0.15, 0.85), "status": "AVAILABLE", "blocked_by": None}
+                ]
+            else:
+                bays = [
+                    {"id": "Bay 1 (Left)", "span": (0.05, 0.33), "status": "AVAILABLE", "blocked_by": None},
+                    {"id": "Bay 2 (Center)", "span": (0.35, 0.65), "status": "AVAILABLE", "blocked_by": None},
+                    {"id": "Bay 3 (Right)", "span": (0.67, 0.95), "status": "AVAILABLE", "blocked_by": None},
+                ]
+        else:
+            bays = []
+            ground_objects.sort(key=lambda o: (o["bbox"][0] + o["bbox"][2]) / 2.0)
+            last_x_norm = 0.04
+            bay_idx = 1
+
+            for obj in ground_objects:
+                x1, y1, x2, y2 = obj["bbox"]
+                x1_norm = max(0.04, min(0.96, x1 / w))
+                x2_norm = max(0.04, min(0.96, x2 / w))
+                obj_name = obj.get("class_name", "Obstacle").capitalize()
+                is_obs = obj.get("is_obstacle", False)
+
+                # Open clear corridor before this object
+                if (x1_norm - last_x_norm) >= 0.14:
+                    bays.append({
+                        "id": f"Bay {bay_idx} (Clear Space)",
+                        "span": (round(last_x_norm, 2), round(x1_norm, 2)),
+                        "status": "AVAILABLE",
+                        "blocked_by": None
+                    })
+                    bay_idx += 1
+
+                # Space occupied by obstacle or vehicle
+                bays.append({
+                    "id": f"Zone {bay_idx} ({'Obstacle' if is_obs else 'Vehicle'})",
+                    "span": (round(x1_norm, 2), round(x2_norm, 2)),
+                    "status": "BLOCKED" if is_obs else "OCCUPIED",
+                    "blocked_by": f"{obj_name} ({int(obj.get('confidence', 0.85)*100)}%)"
+                })
+                bay_idx += 1
+                last_x_norm = x2_norm
+
+            # Open clear corridor after last object
+            if (0.96 - last_x_norm) >= 0.14:
+                bays.append({
+                    "id": f"Bay {bay_idx} (Clear Space)",
+                    "span": (round(last_x_norm, 2), 0.96),
+                    "status": "AVAILABLE",
+                    "blocked_by": None
+                })
+
+        slot_definitions = []
+        for b in bays:
+            x_start, x_end = b["span"]
+            center_x = (x_start + x_end) / 2.0
+            width = x_end - x_start
+            top_w = width * 0.84
+            top_x1 = max(0.02, center_x - top_w / 2.0)
+            top_x2 = min(0.98, center_x + top_w / 2.0)
+
+            poly = [
+                [int(top_x1 * w), y_top],
+                [int(top_x2 * w), y_top],
+                [int(x_end * w), y_bot],
+                [int(x_start * w), y_bot]
+            ]
+            slot_definitions.append({
+                "id": b["id"],
+                "label": b["id"],
+                "polygon": poly,
+                "status": b["status"],
+                "blocked_reason": b["blocked_by"],
+                "rule_zone": "registered"
+            })
+
+    # 4. Analyze occupancy and calculate metric + imperial feet dimensions
+    analyzed_slots = analyzer.evaluate_slots(slot_definitions, detections)
+
     for s in analyzed_slots:
         s["metrics"] = geom.compute_slot_metric_dimensions(s["polygon"])
         s["vehicle_fit"] = matcher.evaluate_fit(s["metrics"], veh_specs)
         rule_zone = s.get("rule_zone", "registered")
         s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
+
+        if s.get("blocked_reason"):
+            s["status"] = "BLOCKED"
+            s["vehicle_fit"]["is_suitable"] = False
+            s["vehicle_fit"]["fit_badge"] = "⚠️ Blocked by Obstacle"
+            s["vehicle_fit"]["message"] = f"Blocked by {s['blocked_reason']}. Clear obstacle before parking."
 
     # 5. Determine recommended slot
     recommended_slot = None
@@ -2809,7 +2890,14 @@ async def analyze_live_frame(
             "fit_badge": s["vehicle_fit"]["fit_badge"],
             "width_m": s["metrics"]["width_m"],
             "length_m": s["metrics"]["length_m"],
+            "width_ft": s["metrics"]["width_ft"],
+            "length_ft": s["metrics"]["length_ft"],
             "margin_m": s["vehicle_fit"]["width_margin_m"],
+            "margin_ft": s["vehicle_fit"]["width_margin_ft"],
+            "dims_ft": s["metrics"]["dims_ft"],
+            "dims_m": s["metrics"]["dims_m"],
+            "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
+            "blocked_reason": s.get("blocked_reason"),
             "message": s["vehicle_fit"]["message"]
         })
 
@@ -2819,26 +2907,30 @@ async def analyze_live_frame(
         rec_label = recommended_slot["label"]
         rec_fit = recommended_slot["vehicle_fit"]
         speech_text = (
-            f"Parking spot identified! {rec_label} is available and fits your {bike_display_name}. "
-            f"You have {rec_fit['width_margin_m']} meters clearance. Free parking, pull in safely."
+            f"Parking spot identified! {rec_label} is free. "
+            f"Space is {rec_fit['slot_length_ft']} feet long by {rec_fit['slot_width_ft']} feet wide. "
+            f"It fits your {bike_display_name} with {rec_fit['clearance_ft_str']} clearance."
         )
-        guidance_banner = f"⭐ PARK IN {rec_label.upper()} • Space ({rec_fit['slot_length_m']}m × {rec_fit['slot_width_m']}m) fits your {bike_display_name} • Free Bay"
+        guidance_banner = (
+            f"⭐ PARK IN {rec_label.upper()} • Space {rec_fit['dims_ft_str']} ({rec_fit['slot_length_m']}m × {rec_fit['slot_width_m']}m) "
+            f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
+        )
     else:
-        speech_text = f"Searching for free bike bays. No suitable vacant spot detected in view for {bike_display_name}. Please move forward."
-        guidance_banner = f"Scanning Camera View... No vacant bay found fitting {bike_display_name}"
+        speech_text = f"Scanning ground area for {bike_display_name}. Evaluating real space dimensions."
+        guidance_banner = f"Scanning Camera View... Evaluating space dimensions for {bike_display_name}"
 
     avail_count = sum(1 for s in analyzed_slots if s["status"] == "AVAILABLE")
     occ_count = sum(1 for s in analyzed_slots if s["status"] == "OCCUPIED")
     block_count = sum(1 for s in analyzed_slots if s["status"] == "BLOCKED")
 
-    # 8. Normalized YOLO detections and obstacle classification
+    # 8. Normalized YOLO detections and obstacle classification (Fixed coordinate unpacking!)
     norm_detections = []
     vehicles_count = 0
     obstacles_count = 0
     for d in detections:
-        ymin, xmin, ymax, xmax = d["bbox"]
+        xmin, ymin, xmax, ymax = d["bbox"]
         cname = d.get("class_name", "vehicle").lower()
-        is_obs = cname in ("person", "pedestrian", "bicycle", "traffic cone", "barrier", "dog") or d.get("is_obstacle", False)
+        is_obs = d.get("is_obstacle", False) or (d.get("category") == "obstacle") or (cname not in ("car", "motorcycle", "bus", "truck", "train"))
         if is_obs:
             obstacles_count += 1
         else:
@@ -2855,7 +2947,7 @@ async def analyze_live_frame(
                 round((xmax - xmin) / w, 4),
                 round((ymax - ymin) / h, 4)
             ],
-            "raw_bbox": [round(float(v), 1) for v in d["bbox"]]
+            "raw_bbox": [round(float(v), 1) for v in [xmin, ymin, xmax, ymax]]
         })
 
     # 9. Generate high-contrast Computer Vision annotated image

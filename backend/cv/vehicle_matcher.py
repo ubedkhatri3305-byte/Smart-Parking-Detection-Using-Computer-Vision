@@ -154,32 +154,41 @@ class VehicleMatcher:
         width_margin = round(slot_w - veh_w, 2)
         length_margin = round(slot_l - veh_l, 2)
 
+        # Real-world imperial measurements in FEET
+        slot_w_ft = round(slot_w * 3.28084, 1)
+        slot_l_ft = round(slot_l * 3.28084, 1)
+        veh_w_ft = round(veh_w * 3.28084, 1)
+        veh_l_ft = round(veh_l * 3.28084, 1)
+        width_margin_ft = round(width_margin * 3.28084, 1)
+        length_margin_ft = round(length_margin * 3.28084, 1)
+
         # Clearance needed on both sides (left + right)
         ideal_width_margin = round(clearance * 2.0, 2)
+        veh_name = vehicle_specs.get("name", "Vehicle")
 
         if width_margin >= ideal_width_margin and length_margin >= clearance:
             fit_status = "OPTIMAL"
             fit_badge = "🟢 Optimal Fit"
             is_suitable = True
             if is_bike:
-                message = f"Space ({slot_w}m × {slot_l}m) fits your {vehicle_specs['name']} with {width_margin}m handlebar & side-stand clearance."
+                message = f"Space ({slot_l_ft} ft × {slot_w_ft} ft / {slot_l}m × {slot_w}m) fits your {veh_name} with +{width_margin_ft} ft (+{width_margin}m) clearance."
             else:
-                message = f"Space ({slot_w}m × {slot_l}m) comfortably fits your {vehicle_specs['name']} with {width_margin}m width clearance."
-        elif width_margin >= 0.10 and length_margin >= 0.10:
+                message = f"Space ({slot_l_ft} ft × {slot_w_ft} ft / {slot_l}m × {slot_w}m) comfortably fits your {veh_name} with +{width_margin_ft} ft (+{width_margin}m) width clearance."
+        elif width_margin >= 0.08 and length_margin >= 0.08:
             fit_status = "TIGHT"
             fit_badge = "🟡 Tight Fit"
             is_suitable = True
-            message = f"Space fits, but door opening will be tight ({width_margin}m total width clearance)."
+            message = f"Space fits your {veh_name}, but side clearance is tight (+{width_margin_ft} ft / +{width_margin}m)."
         else:
             fit_status = "TOO_SMALL"
-            fit_badge = "❌ Too Small"
+            fit_badge = "❌ Too Small / Narrow"
             is_suitable = False
             missing = []
             if width_margin < 0:
-                missing.append(f"width is {-width_margin:.2f}m short")
+                missing.append(f"width is {abs(width_margin_ft):.1f} ft ({abs(width_margin):.2f}m) short")
             if length_margin < 0:
-                missing.append(f"length is {-length_margin:.2f}m short")
-            message = f"Space is too small for your {vehicle_specs['name']} ({', '.join(missing)})."
+                missing.append(f"length is {abs(length_margin_ft):.1f} ft ({abs(length_margin):.2f}m) short")
+            message = f"Space ({slot_l_ft} ft × {slot_w_ft} ft) is too small for {veh_name} ({', '.join(missing)})."
 
         return {
             "is_suitable": is_suitable,
@@ -187,10 +196,19 @@ class VehicleMatcher:
             "fit_badge": fit_badge,
             "slot_width_m": slot_w,
             "slot_length_m": slot_l,
+            "slot_width_ft": slot_w_ft,
+            "slot_length_ft": slot_l_ft,
             "vehicle_width_m": veh_w,
             "vehicle_length_m": veh_l,
+            "vehicle_width_ft": veh_w_ft,
+            "vehicle_length_ft": veh_l_ft,
             "width_margin_m": width_margin,
             "length_margin_m": length_margin,
+            "width_margin_ft": width_margin_ft,
+            "length_margin_ft": length_margin_ft,
             "ideal_width_margin_m": ideal_width_margin,
+            "dims_ft_str": f"{slot_l_ft} ft (L) × {slot_w_ft} ft (W)",
+            "vehicle_ft_str": f"{veh_l_ft} ft (L) × {veh_w_ft} ft (W)",
+            "clearance_ft_str": f"{width_margin_ft:+.1f} ft",
             "message": message
         }

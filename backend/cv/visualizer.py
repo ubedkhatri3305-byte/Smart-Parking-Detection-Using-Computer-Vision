@@ -56,10 +56,12 @@ class ParkingVisualizer:
             # Status subtext
             status_text = slot["status"]
             if slot.get("blocked_reason"):
-                status_text = "BLOCKED"
+                status_text = f"BLOCKED: {slot['blocked_reason']}"[:24]
             elif slot["status"] == "AVAILABLE" and "metrics" in slot:
                 m = slot["metrics"]
-                status_text = f"FREE ({m['width_m']}x{m['length_m']}m)"
+                w_ft = m.get("width_ft", round(m["width_m"] * 3.28084, 1))
+                l_ft = m.get("length_ft", round(m["length_m"] * 3.28084, 1))
+                status_text = f"FREE ({l_ft}ft x {w_ft}ft)"
 
             (sw, sh), _ = cv2.getTextSize(status_text, font, 0.45, 1)
             cv2.rectangle(annotated, (cx - sw // 2 - 4, cy + 12), (cx + sw // 2 + 4, cy + 28), color, -1)
@@ -69,20 +71,22 @@ class ParkingVisualizer:
         # Blend semi-transparent polygons
         cv2.addWeighted(overlay, 0.35, annotated, 0.65, 0, annotated)
 
-        # 2. Draw YOLO Bounding Boxes for detected objects
+        # 2. Draw YOLO Bounding Boxes for detected objects & obstacles
         for det in detections:
             x1, y1, x2, y2 = [int(v) for v in det["bbox"]]
             cls_name = det["class_name"]
             conf = det["confidence"]
-            cat = det["category"]
+            cat = det.get("category", "other")
+            is_obs = det.get("is_obstacle", False) or cat == "obstacle"
 
-            box_color = (0, 140, 255) if cat == "vehicle" else ((0, 215, 255) if cat == "obstacle" else (180, 180, 180))
+            # High-visibility red for obstacles, cyan/orange for vehicles
+            box_color = (0, 0, 235) if is_obs else (0, 140, 255)
             cv2.rectangle(annotated, (x1, y1), (x2, y2), box_color, 2)
 
-            tag = f"{cls_name} {int(conf*100)}%"
+            tag = f"HAZARD: {cls_name} {int(conf*100)}%" if is_obs else f"{cls_name} {int(conf*100)}%"
             (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
             cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 6, y1), box_color, -1)
-            cv2.putText(annotated, tag, (x1 + 3, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 1, cv2.LINE_AA)
+            cv2.putText(annotated, tag, (x1 + 3, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
         # 3. Draw Top HUD Dashboard Banner
         hud_h = 55

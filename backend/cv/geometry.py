@@ -110,8 +110,22 @@ class ParkingGeometry:
             width = float(min(w, l) * scale)
             length = float(max(w, l) * scale)
 
+        final_w = round(max(width, 0.40), 2)
+        final_l = round(max(length, 0.80), 2)
+        final_area = round(final_w * final_l, 2)
+        
+        # Real-world imperial dimensions in FEET
+        width_ft = round(final_w * 3.28084, 1)
+        length_ft = round(final_l * 3.28084, 1)
+        area_sq_ft = round(final_area * 10.7639, 1)
+
         return {
-            "width_m": round(max(width, 1.2), 2),
-            "length_m": round(max(length, 2.5), 2),
-            "area_sq_m": round(width * length, 2)
+            "width_m": final_w,
+            "length_m": final_l,
+            "width_ft": width_ft,
+            "length_ft": length_ft,
+            "area_sq_m": final_area,
+            "area_sq_ft": area_sq_ft,
+            "dims_ft": f"{length_ft} ft (L) × {width_ft} ft (W)",
+            "dims_m": f"{final_l}m (L) × {final_w}m (W)"
         }
