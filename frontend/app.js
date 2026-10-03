@@ -873,30 +873,23 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================================================
 // 1. USER & BIKE REGISTRATION & AUTH MODULE
 // ==========================================================================
+// ==========================================================================
+// 1. USER & BIKE REGISTRATION & AUTHENTICATION MODULE
+// ==========================================================================
 function loadUserProfile() {
   try {
     const saved = localStorage.getItem('PARKVISION_USER_PROFILE');
     if (saved) {
       const p = JSON.parse(saved);
-      if (p && (p.bikeModel || p.vehicleModel)) {
+      if (p && (p.bikeModel || p.vehicleModel) && p.email) {
         return p;
       }
     }
   } catch (e) {
     console.warn('Could not parse local user profile:', e);
   }
-  // Default to Mahindra Thar (SUV)
-  return {
-    name: "Driver",
-    bikeModel: "Mahindra Thar",
-    vehicleModel: "Mahindra Thar",
-    category: "suv",
-    length: 4.60,
-    width: 1.90,
-    clearance: 0.35,
-    plate: "MH-02-TH-4490",
-    wheels: 4
-  };
+  // REQUIRE LOGIN: No default hardcoded profile. When website opens, login is required!
+  return null;
 }
 
 function saveUserProfile(profile) {
@@ -915,7 +908,7 @@ function saveUserProfile(profile) {
   }).catch(err => console.warn('Could not sync profile to backend:', err));
 
   initProfileUI();
-  // Trigger CV re-analysis with new bike dimensions
+  // Trigger CV re-analysis with new vehicle dimensions if on lab tab
   if (state.currentTab === 'cv-lab') {
     runCVAnalysis();
   }
@@ -926,26 +919,39 @@ function initProfileUI() {
   const pill = document.getElementById('nav-profile-pill');
   const authOpenBtn = document.getElementById('btn-nav-auth-open');
   const logoutBtn = document.getElementById('btn-nav-logout');
+  const wzUserPill = document.getElementById('wz-user-pill');
+  const wzLogoutBtn = document.getElementById('btn-wz-logout');
 
-  if (p && p.name && p.bikeModel) {
+  if (p && p.name && (p.bikeModel || p.vehicleModel)) {
     if (pill) pill.classList.remove('hidden');
     if (logoutBtn) logoutBtn.classList.remove('hidden');
     if (authOpenBtn) authOpenBtn.classList.add('hidden');
+    if (wzUserPill) wzUserPill.classList.remove('hidden');
+    if (wzLogoutBtn) wzLogoutBtn.classList.remove('hidden');
+
+    const vIcon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
+    const vModel = p.bikeModel || p.vehicleModel || 'Vehicle';
 
     const riderNameEl = document.getElementById('nav-rider-name');
     const vehNameEl = document.getElementById('nav-veh-name');
     const vehDimsEl = document.getElementById('nav-veh-dims');
     const vehPlateEl = document.getElementById('nav-veh-plate');
 
-    const vIcon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
     if (riderNameEl) riderNameEl.textContent = p.name;
-    if (vehNameEl) vehNameEl.textContent = `${vIcon} ${p.bikeModel}`;
+    if (vehNameEl) vehNameEl.textContent = `${vIcon} ${vModel}`;
     if (vehDimsEl) vehDimsEl.textContent = `(${p.length}m × ${p.width}m)`;
-    if (vehPlateEl) vehPlateEl.textContent = p.licensePlate || 'NO-PLATE';
+    if (vehPlateEl) vehPlateEl.textContent = p.licensePlate || p.plate || 'MH-01-BK';
+
+    const wzUserName = document.getElementById('wz-user-name');
+    const wzUserVeh = document.getElementById('wz-user-veh');
+    const wzUserIcon = document.getElementById('wz-user-icon');
+    if (wzUserName) wzUserName.textContent = p.name;
+    if (wzUserVeh) wzUserVeh.textContent = `${vIcon} ${vModel}`;
+    if (wzUserIcon) wzUserIcon.textContent = vIcon;
 
     const camBikeTag = document.getElementById('cam-active-bike-tag');
     if (camBikeTag) {
-      camBikeTag.textContent = `${vIcon} ${p.bikeModel} (${p.length}m × ${p.width}m)`;
+      camBikeTag.textContent = `${vIcon} ${vModel} (${p.length}m × ${p.width}m)`;
     }
 
     const recBikeLen = document.getElementById('cam-rec-bike-len');
@@ -956,6 +962,8 @@ function initProfileUI() {
     if (pill) pill.classList.add('hidden');
     if (logoutBtn) logoutBtn.classList.add('hidden');
     if (authOpenBtn) authOpenBtn.classList.remove('hidden');
+    if (wzUserPill) wzUserPill.classList.add('hidden');
+    if (wzLogoutBtn) wzLogoutBtn.classList.add('hidden');
 
     const camBikeTag = document.getElementById('cam-active-bike-tag');
     if (camBikeTag) {
@@ -969,20 +977,145 @@ function initProfileUI() {
   }
 }
 
+// Global Auth Portal Controller
+let authPortalActive = false;
+
+function openAuthPortal(mode = 'login', asModal = false) {
+  authPortalActive = true;
+  const authScreen = document.getElementById('auth-page-screen');
+  const closeBtn = document.getElementById('btn-close-reg-modal');
+  if (!authScreen) return;
+
+  if (asModal && state.userProfile) {
+    if (closeBtn) closeBtn.classList.remove('hidden');
+  } else {
+    if (closeBtn) closeBtn.classList.add('hidden');
+    // Hide main wizard overlay while unauthenticated
+    const wzOverlay = document.getElementById('wizard-overlay');
+    if (wzOverlay) wzOverlay.classList.add('hidden');
+  }
+
+  authScreen.classList.remove('hidden');
+  switchAuthMode(mode);
+
+  // Prepopulate registration fields if user exists
+  if (state.userProfile) {
+    const p = state.userProfile;
+    const nameInput = document.getElementById('reg-person-name');
+    const emailInput = document.getElementById('reg-person-email');
+    const phoneInput = document.getElementById('reg-person-phone');
+    const plateInput = document.getElementById('reg-bike-plate');
+    const modelInput = document.getElementById('reg-bike-model');
+    const lengthInput = document.getElementById('reg-bike-length');
+    const widthInput = document.getElementById('reg-bike-width');
+    const clearanceInput = document.getElementById('reg-bike-clearance');
+
+    if (nameInput) nameInput.value = p.name || '';
+    if (emailInput) emailInput.value = p.email || '';
+    if (phoneInput) phoneInput.value = p.phone || '';
+    if (plateInput) plateInput.value = p.licensePlate || p.plate || '';
+    if (modelInput) modelInput.value = p.bikeModel || p.vehicleModel || '';
+    if (lengthInput) lengthInput.value = p.length || '';
+    if (widthInput) widthInput.value = p.width || '';
+    if (clearanceInput) clearanceInput.value = p.clearance || 0.20;
+  }
+}
+
+function closeAuthPortal() {
+  const authScreen = document.getElementById('auth-page-screen');
+  if (authScreen) authScreen.classList.add('hidden');
+  authPortalActive = false;
+
+  const suggestionsList = document.getElementById('bike-suggestions-list');
+  if (suggestionsList) suggestionsList.classList.add('hidden');
+
+  // If user is authenticated, ensure wizard is displayed
+  if (state.userProfile && state.userProfile.name) {
+    const wzOverlay = document.getElementById('wizard-overlay');
+    if (wzOverlay) wzOverlay.classList.remove('hidden');
+    if (typeof wzShowRegisteredBanner === 'function') {
+      wzShowRegisteredBanner(state.userProfile);
+    }
+  }
+}
+
+function switchAuthMode(mode) {
+  const tabLogin = document.getElementById('tab-btn-login');
+  const tabRegister = document.getElementById('tab-btn-register');
+  const formLogin = document.getElementById('form-login');
+  const formRegister = document.getElementById('form-registration');
+  const authTitle = document.getElementById('auth-card-title');
+  const authDesc = document.getElementById('auth-card-desc');
+  const alertBox = document.getElementById('auth-alert-box');
+
+  if (alertBox) alertBox.classList.add('hidden');
+
+  if (mode === 'login') {
+    if (tabLogin) tabLogin.classList.add('active');
+    if (tabRegister) tabRegister.classList.remove('active');
+    if (formLogin) formLogin.classList.remove('hidden');
+    if (formRegister) formRegister.classList.add('hidden');
+    if (authTitle) authTitle.textContent = 'Welcome Back to ParkVision AI';
+    if (authDesc) authDesc.textContent = 'Sign in with your registered rider account to access live GPS telemetry, mobile camera CV scanning, and free parking spot recommendations.';
+  } else {
+    if (tabRegister) tabRegister.classList.add('active');
+    if (tabLogin) tabLogin.classList.remove('active');
+    if (formRegister) formRegister.classList.remove('hidden');
+    if (formLogin) formLogin.classList.add('hidden');
+    if (authTitle) authTitle.textContent = 'Create Your Rider Account';
+    if (authDesc) authDesc.textContent = 'Enter your vehicle name — length and width are automatically fetched from our real vehicle dataset.';
+  }
+}
+
+function showAuthAlert(msg, type = 'error') {
+  const alertBox = document.getElementById('auth-alert-box');
+  const alertIcon = document.getElementById('auth-alert-icon');
+  const alertMsg = document.getElementById('auth-alert-msg');
+  if (!alertBox || !alertMsg) return;
+
+  alertBox.className = `auth-alert-box ${type}`;
+  if (alertIcon) alertIcon.textContent = type === 'success' ? '✅' : '⚠️';
+  alertMsg.textContent = msg;
+  alertBox.classList.remove('hidden');
+}
+
+function hideAuthAlert() {
+  const alertBox = document.getElementById('auth-alert-box');
+  if (alertBox) alertBox.classList.add('hidden');
+}
+
+// User Logout handler (used by navbar and wizard header)
+async function handleUserLogout() {
+  try {
+    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
+  } catch (e) {
+    console.warn('Backend logout notice:', e);
+  }
+  state.userProfile = null;
+  localStorage.removeItem('PARKVISION_USER_PROFILE');
+  initProfileUI();
+  showToast('👋 You have been signed out. Please log in to continue.');
+  openAuthPortal('login', false);
+}
+
 function initRegistrationModal() {
-  const modal = document.getElementById('modal-registration');
+  const authScreen = document.getElementById('auth-page-screen');
   const openPill = document.getElementById('nav-profile-pill');
   const navAuthOpenBtn = document.getElementById('btn-nav-auth-open');
   const navLogoutBtn = document.getElementById('btn-nav-logout');
+  const wzLogoutBtn = document.getElementById('btn-wz-logout');
   const closeBtn = document.getElementById('btn-close-reg-modal');
-  const cancelRegBtn = document.getElementById('btn-cancel-reg');
-  const cancelLoginBtn = document.getElementById('btn-cancel-login');
   const jumpRegBtn = document.getElementById('btn-jump-reg');
+  const wzEditBtn = document.getElementById('wz-edit-profile');
 
   const tabRegister = document.getElementById('tab-btn-register');
   const tabLogin = document.getElementById('tab-btn-login');
   const formRegister = document.getElementById('form-registration');
   const formLogin = document.getElementById('form-login');
+
+  const btnSwitchToReg = document.getElementById('btn-auth-switch-to-register');
+  const btnSwitchToLog = document.getElementById('btn-auth-switch-to-login');
+  const btnGuestLogin = document.getElementById('btn-guest-login');
 
   const nameInput = document.getElementById('reg-person-name');
   const emailInput = document.getElementById('reg-person-email');
@@ -995,71 +1128,129 @@ function initRegistrationModal() {
   const plateInput = document.getElementById('reg-bike-plate');
   const suggestionsList = document.getElementById('bike-suggestions-list');
   const autofillIndicator = document.getElementById('autofill-indicator');
-  const autofillText = document.getElementById('autofill-text');
 
   const loginEmail = document.getElementById('login-email');
   const loginPass = document.getElementById('login-password');
+  const loginSpinner = document.getElementById('login-spinner');
+  const regSpinner = document.getElementById('reg-spinner');
 
-  function openModal(mode = 'register') {
-    switchAuthMode(mode);
-    if (state.userProfile) {
-      const p = state.userProfile;
-      if (nameInput) nameInput.value = p.name || '';
-      if (emailInput) emailInput.value = p.email || '';
-      if (phoneInput) phoneInput.value = p.phone || '';
-      if (plateInput) plateInput.value = p.licensePlate || '';
-      if (modelInput) modelInput.value = p.bikeModel || '';
-      if (lengthInput) lengthInput.value = p.length || '';
-      if (widthInput) widthInput.value = p.width || '';
-      if (clearanceInput) clearanceInput.value = p.clearance || 0.20;
-    }
-    modal.classList.remove('hidden');
-  }
+  const btnToggleLoginPass = document.getElementById('btn-toggle-login-pass');
+  const btnToggleRegPass = document.getElementById('btn-toggle-reg-pass');
 
-  function closeModal() {
-    modal.classList.add('hidden');
-    if (suggestionsList) suggestionsList.classList.add('hidden');
-  }
-
-  function switchAuthMode(mode) {
-    if (mode === 'login') {
-      if (tabLogin) tabLogin.classList.add('active');
-      if (tabRegister) tabRegister.classList.remove('active');
-      if (formLogin) formLogin.classList.remove('hidden');
-      if (formRegister) formRegister.classList.add('hidden');
-    } else {
-      if (tabRegister) tabRegister.classList.add('active');
-      if (tabLogin) tabLogin.classList.remove('active');
-      if (formRegister) formRegister.classList.remove('hidden');
-      if (formLogin) formLogin.classList.add('hidden');
-    }
-  }
-
+  // Mode switching tabs
   if (tabRegister) tabRegister.addEventListener('click', () => switchAuthMode('register'));
   if (tabLogin) tabLogin.addEventListener('click', () => switchAuthMode('login'));
+  if (btnSwitchToReg) btnSwitchToReg.addEventListener('click', () => switchAuthMode('register'));
+  if (btnSwitchToLog) btnSwitchToLog.addEventListener('click', () => switchAuthMode('login'));
 
-  if (openPill) openPill.addEventListener('click', () => openModal('register'));
-  if (navAuthOpenBtn) navAuthOpenBtn.addEventListener('click', () => openModal('register'));
-  if (jumpRegBtn) jumpRegBtn.addEventListener('click', () => openModal('register'));
-  if (closeBtn) closeBtn.addEventListener('click', closeModal);
-  if (cancelRegBtn) cancelRegBtn.addEventListener('click', closeModal);
-  if (cancelLoginBtn) cancelLoginBtn.addEventListener('click', closeModal);
+  // Open modal/portal triggers
+  if (openPill) openPill.addEventListener('click', () => openAuthPortal('register', true));
+  if (navAuthOpenBtn) navAuthOpenBtn.addEventListener('click', () => openAuthPortal('login', false));
+  if (jumpRegBtn) jumpRegBtn.addEventListener('click', () => openAuthPortal('register', true));
+  if (wzEditBtn) wzEditBtn.addEventListener('click', () => openAuthPortal('register', true));
+  if (closeBtn) closeBtn.addEventListener('click', closeAuthPortal);
 
-  if (navLogoutBtn) {
-    navLogoutBtn.addEventListener('click', async () => {
-      try {
-        await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
-      } catch (e) {}
-      state.userProfile = null;
-      localStorage.removeItem('PARKVISION_USER_PROFILE');
-      initProfileUI();
-      showToast('👋 You have been logged out.');
+  // Logout triggers
+  if (navLogoutBtn) navLogoutBtn.addEventListener('click', handleUserLogout);
+  if (wzLogoutBtn) wzLogoutBtn.addEventListener('click', handleUserLogout);
+
+  // Password visibility toggle buttons
+  if (btnToggleLoginPass && loginPass) {
+    btnToggleLoginPass.addEventListener('click', () => {
+      const isPass = loginPass.type === 'password';
+      loginPass.type = isPass ? 'text' : 'password';
+      btnToggleLoginPass.textContent = isPass ? '🙈 Hide' : '👁️ Show';
     });
   }
 
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) closeModal();
+  if (btnToggleRegPass && passInput) {
+    btnToggleRegPass.addEventListener('click', () => {
+      const isPass = passInput.type === 'password';
+      passInput.type = isPass ? 'text' : 'password';
+      btnToggleRegPass.textContent = isPass ? '🙈 Hide' : '👁️ Show';
+    });
+  }
+
+  // 1-Click Demo Accounts
+  document.querySelectorAll('.demo-acc-chip[data-email]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const email = chip.getAttribute('data-email');
+      const pass = chip.getAttribute('data-pass') || '123456';
+      switchAuthMode('login');
+      if (loginEmail) loginEmail.value = email;
+      if (loginPass) loginPass.value = pass;
+      hideAuthAlert();
+      showAuthAlert(`⚡ Fast-filled credentials for ${email}. Signing in...`, 'success');
+      setTimeout(() => {
+        if (formLogin) {
+          formLogin.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+      }, 350);
+    });
   });
+
+  // 1-Click Instant Guest Pass
+  if (btnGuestLogin) {
+    btnGuestLogin.addEventListener('click', async () => {
+      hideAuthAlert();
+      if (loginSpinner) loginSpinner.classList.remove('hidden');
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_guest: true })
+        });
+        const result = await res.json();
+        if (result && result.user) {
+          const user = result.user;
+          const profile = {
+            name: user.name,
+            email: user.email,
+            phone: user.phone || '',
+            licensePlate: user.license_plate || 'MH-02-GT-2026',
+            bikeModel: user.bike_model || 'Honda Activa 6G',
+            bikeType: user.bike_type || 'bike_scooter',
+            wheels: user.wheels || 2,
+            category: user.category || 'Scooter',
+            icon: user.icon || '🛵',
+            length: user.length_m || 1.83,
+            width: user.width_m || 0.69,
+            clearance: user.clearance_m || 0.15
+          };
+          saveUserProfile(profile);
+          showAuthAlert('🚀 Guest Pass Activated! Launching ParkVision...', 'success');
+          setTimeout(() => {
+            closeAuthPortal();
+            showToast(`👋 Welcome, Guest Rider!`);
+            refreshUserGPS();
+            if (state.currentTab === 'cv-lab') runCVAnalysis();
+          }, 400);
+        }
+      } catch (err) {
+        console.error('Guest login error:', err);
+        // Offline guest fallback
+        const guestProfile = {
+          name: 'Guest Rider',
+          email: 'guest@parkvision.local',
+          phone: '+91 98765 43210',
+          licensePlate: 'MH-02-GT-2026',
+          bikeModel: 'Honda Activa 6G',
+          bikeType: 'bike_scooter',
+          wheels: 2,
+          category: 'Scooter',
+          icon: '🛵',
+          length: 1.83,
+          width: 0.69,
+          clearance: 0.15
+        };
+        saveUserProfile(guestProfile);
+        closeAuthPortal();
+        showToast('🚀 Offline Demo Pass Activated.');
+      } finally {
+        if (loginSpinner) loginSpinner.classList.add('hidden');
+      }
+    });
+  }
 
   // --- VEHICLE AUTOCOMPLETE & AUTO-FETCH FROM REAL DATASET (2W, 3W, 4W) ---
   let modalWheelsFilter = null;
@@ -1225,14 +1416,15 @@ function initRegistrationModal() {
     });
   }
 
-  // Submit Registration
+  // --- Submit Registration ---
   if (formRegister) {
     formRegister.addEventListener('submit', async (e) => {
       e.preventDefault();
+      hideAuthAlert();
 
       const nameVal = (nameInput && nameInput.value.trim()) || 'Registered User';
       const modelVal = (modelInput && modelInput.value.trim()) || 'Standard Vehicle';
-      let emailVal = (emailInput && emailInput.value.trim()) || '';
+      let emailVal = (emailInput && emailInput.value.trim().toLowerCase()) || '';
       if (!emailVal) {
         const cleanName = nameVal.toLowerCase().replace(/[^a-z0-9]/g, '');
         emailVal = `${cleanName || 'rider'}@parkvision.local`;
@@ -1273,7 +1465,9 @@ function initRegistrationModal() {
         bikeTypeVal = 'bike_commuter';
       }
 
-      // 1. Instantly save to state and localStorage so the user data is NEVER lost!
+      if (regSpinner) regSpinner.classList.remove('hidden');
+
+      // 1. Instantly save profile object
       const profile = {
         name: nameVal,
         email: emailVal,
@@ -1288,12 +1482,6 @@ function initRegistrationModal() {
         width: widVal,
         clearance: clearVal
       };
-
-      saveUserProfile(profile);
-      closeModal();
-      showToast(`✅ Profile registered & saved: ${iconVal} ${modelVal} (${lenVal}m × ${widVal}m)`);
-      refreshUserGPS();
-      if (state.currentTab === 'cv-lab') runCVAnalysis();
 
       // 2. Persist to backend users.json
       const payload = {
@@ -1318,40 +1506,50 @@ function initRegistrationModal() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (res.ok) {
-          const result = await res.json();
-          if (result.user) {
-            const u = result.user;
-            saveUserProfile({
-              name: u.name,
-              email: u.email,
-              phone: u.phone,
-              licensePlate: u.license_plate,
-              bikeModel: u.bike_model,
-              bikeType: u.bike_type || 'bike_cruiser',
-              length: u.length_m,
-              width: u.width_m,
-              clearance: u.clearance_m
-            });
-          }
+        const result = await res.json();
+        if (res.ok && result.success) {
+          saveUserProfile(profile);
+          showAuthAlert(`✅ Registration complete! Welcome ${nameVal}.`, 'success');
+          setTimeout(() => {
+            closeAuthPortal();
+            showToast(`✅ Profile registered: ${iconVal} ${modelVal} (${lenVal}m × ${widVal}m)`);
+            refreshUserGPS();
+            if (state.currentTab === 'cv-lab') runCVAnalysis();
+          }, 350);
+        } else {
+          showAuthAlert(result.message || 'Registration failed. Please check inputs.');
         }
       } catch (err) {
         console.warn('Backend sync notice:', err);
+        // Fallback local registration
+        saveUserProfile(profile);
+        showAuthAlert(`✅ Saved locally. Welcome ${nameVal}!`, 'success');
+        setTimeout(() => {
+          closeAuthPortal();
+          showToast(`✅ Profile saved: ${iconVal} ${modelVal}`);
+          refreshUserGPS();
+        }, 350);
+      } finally {
+        if (regSpinner) regSpinner.classList.add('hidden');
       }
     });
   }
 
-  // Submit Login
+  // --- Submit Login ---
   if (formLogin) {
     formLogin.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const emailVal = loginEmail.value.trim();
-      const passVal = loginPass.value;
+      hideAuthAlert();
+
+      const emailVal = loginEmail ? loginEmail.value.trim().toLowerCase() : '';
+      const passVal = loginPass ? loginPass.value : '';
 
       if (!emailVal) {
-        alert('Please enter your registered email address.');
+        showAuthAlert('Please enter your registered email address.');
         return;
       }
+
+      if (loginSpinner) loginSpinner.classList.remove('hidden');
 
       const payload = {
         email: emailVal,
@@ -1365,40 +1563,97 @@ function initRegistrationModal() {
           body: JSON.stringify(payload)
         });
         const result = await res.json();
-        if (result && result.user) {
+
+        if (res.ok && result.success && result.user) {
           const user = result.user;
           const profile = {
             name: user.name,
             email: user.email,
-            phone: user.phone,
-            licensePlate: user.license_plate,
-            bikeModel: user.bike_model,
+            phone: user.phone || '',
+            licensePlate: user.license_plate || 'MH-01-BK',
+            bikeModel: user.bike_model || 'Standard Motorcycle',
             bikeType: user.bike_type || 'bike_cruiser',
-            length: user.length_m,
-            width: user.width_m,
-            clearance: user.clearance_m
+            wheels: user.wheels || 2,
+            category: user.category || 'Vehicle',
+            icon: user.icon || (user.wheels === 4 ? '🚗' : (user.wheels === 3 ? '🛺' : '🏍️')),
+            length: user.length_m || 2.05,
+            width: user.width_m || 0.75,
+            clearance: user.clearance_m || 0.20
           };
 
           saveUserProfile(profile);
-          closeModal();
-          showToast(`👋 Welcome, ${profile.name}!`);
-          refreshUserGPS();
-          if (state.currentTab === 'cv-lab') runCVAnalysis();
+          showAuthAlert(`👋 Welcome back, ${profile.name}!`, 'success');
+
+          setTimeout(() => {
+            closeAuthPortal();
+            showToast(`👋 Welcome back, ${profile.name}!`);
+            refreshUserGPS();
+            if (state.currentTab === 'cv-lab') runCVAnalysis();
+          }, 350);
         } else {
-          alert('Login failed. Please check your credentials.');
+          showAuthAlert(result.message || 'Login failed. Please check credentials or register.');
         }
       } catch (err) {
         console.error('Login error:', err);
-        // Fallback local login
+        // Fallback local login if user exists in local storage
         const saved = localStorage.getItem('PARKVISION_USER_PROFILE');
         if (saved) {
-          state.userProfile = JSON.parse(saved);
-          initProfileUI();
-          closeModal();
-          showToast('👋 Session restored from local storage.');
+          try {
+            const p = JSON.parse(saved);
+            if (p.email && p.email.toLowerCase() === emailVal) {
+              state.userProfile = p;
+              initProfileUI();
+              closeAuthPortal();
+              showToast(`👋 Welcome back, ${p.name}!`);
+              return;
+            }
+          } catch (e) {}
         }
+        showAuthAlert('Unable to reach auth server. Please check connection.');
+      } finally {
+        if (loginSpinner) loginSpinner.classList.add('hidden');
       }
     });
+  }
+
+  // --- Auth Top Bar Language Selector ---
+  const authLangBtn = document.getElementById('auth-lang-btn');
+  const authLangMenu = document.getElementById('auth-lang-menu');
+  if (authLangBtn && authLangMenu) {
+    authLangBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      authLangMenu.classList.toggle('active');
+    });
+
+    authLangMenu.querySelectorAll('.lang-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        const lang = opt.getAttribute('data-lang');
+        if (window.i18n && window.i18n.setLanguage) {
+          window.i18n.setLanguage(lang);
+        }
+        authLangMenu.classList.remove('active');
+        const flag = opt.querySelector('.lang-flag') ? opt.querySelector('.lang-flag').textContent : '🌐';
+        const label = opt.textContent.replace(flag, '').trim();
+        const curEl = document.getElementById('auth-lang-current');
+        if (curEl) curEl.innerHTML = `<span class="lang-flag">${flag}</span> ${label}`;
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!authLangBtn.contains(e.target) && !authLangMenu.contains(e.target)) {
+        authLangMenu.classList.remove('active');
+      }
+    });
+  }
+
+  // --- INITIAL CHECK ON PAGE LOAD: REQUIRE LOGIN IF NO ACTIVE USER ---
+  if (!state.userProfile) {
+    // REQUIRE LOGIN: Website opens with Auth Page
+    openAuthPortal('login', false);
+  } else {
+    // Already authenticated: ensure portal is closed and app is ready
+    closeAuthPortal();
+    initProfileUI();
   }
 }
 
@@ -2832,12 +3087,12 @@ const wz = {
 
 function initWizard() {
   const overlay = document.getElementById('wizard-overlay');
-  // Show wizard as the main dedicated app interface
-  showWizardOverlay(true);
-
-  // If user already has a profile, pre-fill Step 1 and show banner
-  if (state.userProfile && state.userProfile.name && state.userProfile.bikeModel) {
+  // Only display the wizard overlay if the user is authenticated
+  if (state.userProfile && state.userProfile.name && (state.userProfile.bikeModel || state.userProfile.vehicleModel)) {
+    showWizardOverlay(true);
     wzShowRegisteredBanner(state.userProfile);
+  } else {
+    showWizardOverlay(false);
   }
 
   wzInitStep1();
@@ -2871,12 +3126,20 @@ function showWizardOverlay(show) {
   const appHeader = document.querySelector('.navbar');
   const appMain = document.querySelector('.app-main');
 
+  // If user is unauthenticated, keep underlying app elements hidden behind auth screen
+  if (!state.userProfile) {
+    if (overlay) overlay.classList.add('wz-hidden');
+    if (appHeader) appHeader.style.display = 'none';
+    if (appMain) appMain.style.display = 'none';
+    return;
+  }
+
   if (show) {
-    overlay.classList.remove('wz-hidden');
+    if (overlay) overlay.classList.remove('wz-hidden');
     if (appHeader) appHeader.style.display = 'none';
     if (appMain) appMain.style.display = 'none';
   } else {
-    overlay.classList.add('wz-hidden');
+    if (overlay) overlay.classList.add('wz-hidden');
     if (appHeader) appHeader.style.display = '';
     if (appMain) appMain.style.display = '';
   }

@@ -1793,38 +1793,78 @@ async def register_user(payload: Dict[str, Any]):
 
 @app.post("/api/auth/login")
 async def login_user(payload: Dict[str, Any]):
-    """Authenticate existing user or initialize profile so login never fails."""
+    """Authenticate existing user, verify credentials or initialize demo session."""
+    is_guest = payload.get("is_guest", False)
     email = payload.get("email", "").strip().lower()
-    password = payload.get("password", "") or "123456"
+    password = payload.get("password", "")
+
+    # Fast-pass demo guest user
+    if is_guest or email == "guest@parkvision.local":
+        guest_user = {
+            "name": "Guest Rider",
+            "email": "guest@parkvision.local",
+            "phone": "+91 98765 43210",
+            "license_plate": "MH-02-GT-2026",
+            "bike_model": "Honda Activa 6G",
+            "bike_type": "bike_scooter",
+            "wheels": 2,
+            "category": "Scooter",
+            "icon": "🛵",
+            "length_m": 1.83,
+            "width_m": 0.69,
+            "clearance_m": 0.15,
+            "registered_at": "2026-10-03"
+        }
+        CURRENT_SESSION["user"] = guest_user
+        return {"success": True, "user": guest_user, "message": "Demo pass activated! Welcome, Guest Rider."}
 
     if not email:
-        email = "rider@parkvision.local"
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": "Email address is required to sign in."}
+        )
 
     users = load_users()
     if email not in users:
-        # Create user profile automatically
-        name_guess = email.split("@")[0].replace(".", " ").title() or "Rider"
-        user_record = {
-            "name": name_guess,
-            "email": email,
-            "password": password,
-            "phone": "",
-            "license_plate": "MH-01-BK-1234",
-            "bike_model": "Standard Motorcycle",
-            "bike_type": "bike_cruiser",
-            "length_m": 2.05,
-            "width_m": 0.75,
-            "clearance_m": 0.20,
-            "registered_at": "2026-09-22"
-        }
-        users[email] = user_record
-        save_users(users)
-    else:
-        user_record = users[email]
+        return JSONResponse(
+            status_code=404,
+            content={
+                "success": False,
+                "message": f"No account found for '{email}'. Please switch to the 'Create Account' tab to register."
+            }
+        )
+
+    user_record = users[email]
+    expected_password = user_record.get("password")
+    if expected_password and password and expected_password != password:
+        return JSONResponse(
+            status_code=401,
+            content={"success": False, "message": "Incorrect password. Please verify and try again."}
+        )
 
     user_safe = {k: v for k, v in user_record.items() if k != "password"}
     CURRENT_SESSION["user"] = user_safe
-    return {"success": True, "user": user_safe, "message": f"Welcome back, {user_safe['name']}!"}
+    return {"success": True, "user": user_safe, "message": f"Welcome back, {user_safe.get('name', 'Rider')}!"}
+
+
+@app.get("/api/auth/demo-users")
+def get_demo_users():
+    """Return quick demo user accounts for fast 1-click evaluation."""
+    users = load_users()
+    demo_list = []
+    for em, u in list(users.items())[:4]:
+        demo_list.append({
+            "name": u.get("name", "Rider"),
+            "email": em,
+            "bike_model": u.get("bike_model", "Vehicle"),
+            "icon": u.get("icon") or ("🚗" if u.get("wheels") == 4 else ("🛺" if u.get("wheels") == 3 else "🏍️"))
+        })
+    if not demo_list:
+        demo_list = [
+            {"name": "Kavita Patel", "email": "kavita@test.com", "bike_model": "Hero Splendor", "icon": "🏍️"},
+            {"name": "Alex Johnson", "email": "alexjohnson@parkvision.local", "bike_model": "Honda Activa 6G", "icon": "🛵"}
+        ]
+    return {"success": True, "demo_users": demo_list}
 
 
 @app.get("/api/auth/me")

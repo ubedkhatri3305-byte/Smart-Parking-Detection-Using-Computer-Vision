@@ -20,168 +20,290 @@
 <body class="classic-theme">
 
   <!-- ============================================================= -->
-  <!-- USER AUTHENTICATION & VEHICLE REGISTRATION MODAL             -->
+  <!-- USER AUTHENTICATION & LOGIN GATEWAY PAGE                      -->
+  <!-- Displayed when users open the website and require login       -->
   <!-- ============================================================= -->
-  <div class="modal-backdrop hidden" id="modal-registration">
-    <div class="modal-card glass-panel">
-      <!-- Modal Navigation (Register / Login Tabs) -->
-      <div class="modal-auth-tabs">
-        <button type="button" class="auth-tab-btn active" id="tab-btn-register" data-auth-mode="register">
-          <span>📝 Register Rider & Vehicle</span>
-        </button>
-        <button type="button" class="auth-tab-btn" id="tab-btn-login" data-auth-mode="login">
-          <span data-i18n="tab_login">🔑 Existing User Login</span>
-        </button>
-        <button class="modal-close-btn" id="btn-close-reg-modal" aria-label="Close">✕</button>
+  <div class="auth-page-screen" id="auth-page-screen">
+    <!-- Top Bar with Branding & Language Switcher -->
+    <header class="auth-top-bar">
+      <div class="auth-top-brand">
+        <span class="auth-top-logo">🏍️</span>
+        <div>
+          <div class="auth-top-title">PARKVISION <span class="gradient-text">AI</span></div>
+          <div class="auth-top-tagline">Computer Vision · Homography BEV · Free Parking Bays</div>
+        </div>
       </div>
+      <div class="auth-top-actions">
+        <div class="lang-selector-dropdown" id="auth-lang-selector">
+          <button type="button" class="lang-btn" id="auth-lang-btn" aria-haspopup="true" aria-expanded="false" title="Switch Language">
+            <span class="lang-icon">🌐</span>
+            <span class="lang-current" id="auth-lang-current"><span class="lang-flag">🇬🇧</span> English</span>
+            <span class="lang-arrow">▼</span>
+          </button>
+          <div class="lang-menu" id="auth-lang-menu">
+            <button type="button" class="lang-option active" data-lang="en"><span class="lang-flag">🇬🇧</span> English</button>
+            <button type="button" class="lang-option" data-lang="hi"><span class="lang-flag">🇮🇳</span> हिन्दी (Hindi)</button>
+            <button type="button" class="lang-option" data-lang="gu"><span class="lang-flag">🇮🇳</span> ગુજરાતી (Gujarati)</button>
+            <button type="button" class="lang-option" data-lang="mr"><span class="lang-flag">🇮🇳</span> मराठी (Marathi)</button>
+            <button type="button" class="lang-option" data-lang="es"><span class="lang-flag">🇪🇸</span> Español (Spanish)</button>
+            <button type="button" class="lang-option" data-lang="fr"><span class="lang-flag">🇫🇷</span> Français (French)</button>
+          </div>
+        </div>
+        <!-- Close button (ONLY visible when opened as an edit modal by logged-in users) -->
+        <button class="modal-close-btn hidden" id="btn-close-reg-modal" aria-label="Close" title="Close Profile Editor">✕</button>
+      </div>
+    </header>
 
-      <!-- 1. REGISTRATION FORM (Auto-fetches Length & Width from Vehicle Name) -->
-      <form id="form-registration" class="reg-form">
-        <div class="auth-intro">
-          <h3 data-i18n="auth_create_title">Create Your Rider Account</h3>
-          <p>Enter your vehicle name — length and width are <strong>automatically fetched</strong> from our real vehicle dataset.</p>
+    <!-- Central Interactive Auth Card -->
+    <div class="auth-card-wrapper">
+      <div class="auth-card glass-panel">
+        
+        <!-- Hero Badge & Title inside Card -->
+        <div class="auth-card-header">
+          <div class="auth-system-badge">
+            <span class="badge-dot"></span>
+            <span>SECURE DRIVER AUTHENTICATION REQUIRED</span>
+          </div>
+          <h2 class="auth-card-title" id="auth-card-title">Welcome to ParkVision AI</h2>
+          <p class="auth-card-desc" id="auth-card-desc">
+            Sign in with your registered rider account to access live GPS telemetry, mobile camera CV scanning, and free parking spot recommendations.
+          </p>
+          <div class="auth-feature-tags">
+            <span class="auth-ftag">🎯 Real-Time YOLOv8</span>
+            <span class="auth-ftag">📐 BEV Homography Fit</span>
+            <span class="auth-ftag">🆓 Zero Parking Fees</span>
+          </div>
         </div>
 
-        <div class="form-grid">
-          <div class="form-group">
-            <label for="reg-person-name">Rider Full Name <span class="required-star">*</span></label>
-            <input type="text" id="reg-person-name" required placeholder="Enter your full name">
-          </div>
-          <div class="form-group">
-            <label for="reg-person-email">Email Address</label>
-            <input type="email" id="reg-person-email" placeholder="you@example.com (or auto-generated)">
-          </div>
-          <div class="form-group">
-            <label for="reg-person-password">Password</label>
-            <input type="password" id="reg-person-password" placeholder="Create password (default: 123456)">
-          </div>
-          <div class="form-group">
-            <label for="reg-person-phone">Mobile Number</label>
-            <input type="tel" id="reg-person-phone" placeholder="+91 XXXXX XXXXX">
-          </div>
+        <!-- Mode Navigation Tabs: Login vs Register -->
+        <div class="auth-mode-tabs">
+          <button type="button" class="auth-mode-tab-btn active" id="tab-btn-login" data-auth-mode="login">
+            <span class="auth-tab-icon">🔑</span>
+            <span data-i18n="tab_login">Existing User Login</span>
+          </button>
+          <button type="button" class="auth-mode-tab-btn" id="tab-btn-register" data-auth-mode="register">
+            <span class="auth-tab-icon">📝</span>
+            <span data-i18n="tab_register">Create Rider Account</span>
+          </button>
+        </div>
 
-          <!-- Vehicle Category Filter Buttons -->
-          <div class="form-group full-width">
-            <label>Vehicle Type</label>
-            <div class="modal-cat-tabs" id="modal-cat-tabs">
-              <button type="button" class="modal-cat-btn active" data-wheels="all">🌟 All</button>
-              <button type="button" class="modal-cat-btn" data-wheels="2">🏍️ 2-Wheeler</button>
-              <button type="button" class="modal-cat-btn" data-wheels="3">🛺 3-Wheeler Auto</button>
-              <button type="button" class="modal-cat-btn" data-wheels="4">🚗 4-Wheeler Car</button>
+        <!-- Error / Status Notification Banner -->
+        <div class="auth-alert-box hidden" id="auth-alert-box" role="alert">
+          <span class="auth-alert-icon" id="auth-alert-icon">⚠️</span>
+          <span class="auth-alert-msg" id="auth-alert-msg">Notification message</span>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- 1. LOGIN FORM                                 -->
+        <!-- ============================================== -->
+        <form id="form-login" class="reg-form auth-form-panel">
+          <div class="form-grid login-grid">
+            <div class="form-group full-width">
+              <label for="login-email">
+                <span>Registered Email Address</span> <span class="required-star">*</span>
+              </label>
+              <div class="input-icon-wrap">
+                <span class="field-icon">✉️</span>
+                <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+              </div>
+            </div>
+
+            <div class="form-group full-width">
+              <div class="label-with-action">
+                <label for="login-password">
+                  <span>Password</span> <span class="required-star">*</span>
+                </label>
+                <button type="button" class="text-toggle-btn" id="btn-toggle-login-pass">👁️ Show</button>
+              </div>
+              <div class="input-icon-wrap">
+                <span class="field-icon">🔒</span>
+                <input type="password" id="login-password" required placeholder="Enter your password" autocomplete="current-password">
+              </div>
+            </div>
+
+            <div class="form-group full-width auth-options-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="login-remember-me" checked>
+                <span>Remember me on this browser</span>
+              </label>
+              <button type="button" class="text-link-btn" id="btn-auth-switch-to-register">New Rider? Create Account →</button>
             </div>
           </div>
 
-          <!-- Vehicle Model with Autocomplete & Auto-fetch -->
-          <div class="form-group full-width autocomplete-container">
-            <label for="reg-bike-model">
-              Vehicle Name / Model <span class="required-star">*</span>
-              <span class="label-hint">(Enter name only e.g. Swift, Activa, Auto Rickshaw, Thar, Creta...)</span>
-            </label>
-            <div class="input-icon-wrap">
-              <span class="field-icon" id="reg-bike-icon">🚗</span>
-              <input type="text" id="reg-bike-model" required placeholder="Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Treo..." autocomplete="off">
-            </div>
-            <!-- Dynamic Autocomplete Suggestions List -->
-            <div class="autocomplete-dropdown hidden" id="bike-suggestions-list"></div>
-
-            <!-- Modal Quick Pick Chips -->
-            <div class="wz-quick-chips modal-chips" id="modal-quick-chips">
-              <span class="wz-quick-label" data-i18n="lbl_quick_pick">⚡ Quick Pick:</span>
-              <button type="button" class="wz-chip" data-vname="Honda Activa 6G">🛵 Activa 6G</button>
-              <button type="button" class="wz-chip" data-vname="Hero Splendor Plus">🏍️ Splendor+</button>
-              <button type="button" class="wz-chip" data-vname="Bajaj RE Auto Rickshaw">🛺 Bajaj RE Auto</button>
-              <button type="button" class="wz-chip" data-vname="Mahindra Treo">🛺 Treo E-Auto</button>
-              <button type="button" class="wz-chip" data-vname="Maruti Suzuki Swift">🚗 Swift</button>
-              <button type="button" class="wz-chip" data-vname="Hyundai Creta">🚙 Creta</button>
-              <button type="button" class="wz-chip" data-vname="Mahindra Thar">🚙 Thar</button>
-            </div>
+          <div class="auth-actions-group">
+            <button type="submit" class="action-btn glow-btn auth-main-btn" id="btn-submit-login">
+              <span class="btn-spinner hidden" id="login-spinner"></span>
+              <span id="login-btn-text" data-i18n="btn_signin">🔑 Sign In &amp; Enter ParkVision</span>
+            </button>
           </div>
 
-          <!-- Auto-fetched notification status banner -->
-          <div class="form-group full-width autofill-indicator hidden" id="autofill-indicator">
-            <div class="wz-detected-banner" id="modal-detected-banner">
-              <div class="wz-detected-icon" id="modal-detected-icon">🚗</div>
-              <div class="wz-detected-details">
-                <div class="wz-detected-title">
-                  <span id="modal-detected-name">Maruti Suzuki Swift</span>
-                  <span class="wz-detected-tag" id="modal-detected-category">Hatchback (4-Wheeler)</span>
+          <!-- Quick 1-Click Demo Accounts -->
+          <div class="auth-quick-accounts">
+            <div class="quick-accounts-header">
+              <span class="quick-sparkle">⚡</span>
+              <span>1-Click Test Accounts:</span>
+            </div>
+            <div class="quick-accounts-chips" id="quick-demo-chips">
+              <button type="button" class="demo-acc-chip" data-email="kavita@test.com" data-pass="123456" title="Kavita (Hero Splendor)">
+                <span>🏍️ Kavita (Splendor)</span>
+              </button>
+              <button type="button" class="demo-acc-chip" data-email="suresh.kumar@example.com" data-pass="123456" title="Suresh (Activa 6G)">
+                <span>🛵 Suresh (Activa)</span>
+              </button>
+              <button type="button" class="demo-acc-chip" data-email="alexjohnson@parkvision.local" data-pass="123456" title="Alex (Activa 6G)">
+                <span>🛵 Alex (Activa)</span>
+              </button>
+              <button type="button" class="demo-acc-chip guest-chip" id="btn-guest-login" title="Instant Guest Demo Pass">
+                <span>🚀 Guest Pass (Instant)</span>
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- ============================================== -->
+        <!-- 2. REGISTRATION FORM                          -->
+        <!-- ============================================== -->
+        <form id="form-registration" class="reg-form auth-form-panel hidden">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="reg-person-name">Rider Full Name <span class="required-star">*</span></label>
+              <div class="input-icon-wrap">
+                <span class="field-icon">👤</span>
+                <input type="text" id="reg-person-name" required placeholder="e.g. Rahul Sharma" autocomplete="name">
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="reg-person-email">Email Address <span class="required-star">*</span></label>
+              <div class="input-icon-wrap">
+                <span class="field-icon">✉️</span>
+                <input type="email" id="reg-person-email" required placeholder="you@example.com" autocomplete="email">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="label-with-action">
+                <label for="reg-person-password">Password <span class="required-star">*</span></label>
+                <button type="button" class="text-toggle-btn" id="btn-toggle-reg-pass">👁️ Show</button>
+              </div>
+              <div class="input-icon-wrap">
+                <span class="field-icon">🔒</span>
+                <input type="password" id="reg-person-password" required placeholder="Create password (min 4 chars)" autocomplete="new-password">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-person-phone">Mobile Number</label>
+              <div class="input-icon-wrap">
+                <span class="field-icon">📱</span>
+                <input type="tel" id="reg-person-phone" placeholder="+91 XXXXX XXXXX" autocomplete="tel">
+              </div>
+            </div>
+
+            <!-- Vehicle Category Filter Buttons -->
+            <div class="form-group full-width">
+              <label>Vehicle Type Category</label>
+              <div class="modal-cat-tabs" id="modal-cat-tabs">
+                <button type="button" class="modal-cat-btn active" data-wheels="all">🌟 All</button>
+                <button type="button" class="modal-cat-btn" data-wheels="2">🏍️ 2-Wheeler</button>
+                <button type="button" class="modal-cat-btn" data-wheels="3">🛺 3-Wheeler Auto</button>
+                <button type="button" class="modal-cat-btn" data-wheels="4">🚗 4-Wheeler Car</button>
+              </div>
+            </div>
+
+            <!-- Vehicle Model with Autocomplete & Auto-fetch -->
+            <div class="form-group full-width autocomplete-container">
+              <label for="reg-bike-model">
+                Vehicle Name / Model <span class="required-star">*</span>
+                <span class="label-hint">(Length &amp; width auto-detect from dataset)</span>
+              </label>
+              <div class="input-icon-wrap">
+                <span class="field-icon" id="reg-bike-icon">🚗</span>
+                <input type="text" id="reg-bike-model" required placeholder="Type vehicle name e.g. Swift, Activa, Auto Rickshaw, Thar, Creta..." autocomplete="off">
+              </div>
+              <!-- Dynamic Autocomplete Suggestions List -->
+              <div class="autocomplete-dropdown hidden" id="bike-suggestions-list"></div>
+
+              <!-- Modal Quick Pick Chips -->
+              <div class="wz-quick-chips modal-chips" id="modal-quick-chips">
+                <span class="wz-quick-label" data-i18n="lbl_quick_pick">⚡ Quick Pick:</span>
+                <button type="button" class="wz-chip" data-vname="Honda Activa 6G">🛵 Activa 6G</button>
+                <button type="button" class="wz-chip" data-vname="Hero Splendor Plus">🏍️ Splendor+</button>
+                <button type="button" class="wz-chip" data-vname="Bajaj RE Auto Rickshaw">🛺 Bajaj RE Auto</button>
+                <button type="button" class="wz-chip" data-vname="Mahindra Treo">🛺 Treo E-Auto</button>
+                <button type="button" class="wz-chip" data-vname="Maruti Suzuki Swift">🚗 Swift</button>
+                <button type="button" class="wz-chip" data-vname="Hyundai Creta">🚙 Creta</button>
+                <button type="button" class="wz-chip" data-vname="Mahindra Thar">🚙 Thar</button>
+              </div>
+            </div>
+
+            <!-- Auto-fetched notification status banner -->
+            <div class="form-group full-width autofill-indicator hidden" id="autofill-indicator">
+              <div class="wz-detected-banner" id="modal-detected-banner">
+                <div class="wz-detected-icon" id="modal-detected-icon">🚗</div>
+                <div class="wz-detected-details">
+                  <div class="wz-detected-title">
+                    <span id="modal-detected-name">Maruti Suzuki Swift</span>
+                    <span class="wz-detected-tag" id="modal-detected-category">Hatchback (4-Wheeler)</span>
+                  </div>
+                  <div class="wz-detected-specs">
+                    <span class="wz-spec-badge">📏 Length: <strong id="modal-spec-length">3.86m</strong></span>
+                    <span class="wz-spec-badge">↔️ Width: <strong id="modal-spec-width">1.73m</strong></span>
+                    <span class="wz-spec-badge auto-ok">✨ Auto-Detected</span>
+                  </div>
                 </div>
-                <div class="wz-detected-specs">
-                  <span class="wz-spec-badge">📏 Length: <strong id="modal-spec-length">3.86m</strong></span>
-                  <span class="wz-spec-badge">↔️ Width: <strong id="modal-spec-width">1.73m</strong></span>
-                  <span class="wz-spec-badge auto-ok">✨ Auto-Detected</span>
-                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-bike-length">
+                Length (meters) <span class="auto-tag">Auto-Loaded</span>
+              </label>
+              <div class="input-unit-wrap">
+                <input type="number" id="reg-bike-length" step="0.01" min="0.5" max="6.0" placeholder="Auto-fetched (e.g. 1.83)">
+                <span class="unit-tag">m</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-bike-width">
+                Width (meters) <span class="auto-tag">Auto-Loaded</span>
+              </label>
+              <div class="input-unit-wrap">
+                <input type="number" id="reg-bike-width" step="0.01" min="0.3" max="3.0" placeholder="Auto-fetched (e.g. 0.69)">
+                <span class="unit-tag">m</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-bike-clearance">Required Dismount Margin</label>
+              <div class="input-unit-wrap">
+                <input type="number" id="reg-bike-clearance" step="0.05" min="0.10" max="0.60" value="0.20">
+                <span class="unit-tag">m</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-bike-plate">Registration Number / Plate</label>
+              <div class="input-icon-wrap">
+                <span class="field-icon">🏷️</span>
+                <input type="text" id="reg-bike-plate" placeholder="e.g. MH-02-AB-1234 (or auto-assigned)">
               </div>
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="reg-bike-length">
-              Length (meters) <span class="auto-tag">Auto-Loaded</span>
-            </label>
-            <div class="input-unit-wrap">
-              <input type="number" id="reg-bike-length" step="0.01" min="0.5" max="6.0" placeholder="Auto-fetched (e.g. 1.83)">
-              <span class="unit-tag">m</span>
+          <div class="auth-actions-group">
+            <button type="submit" class="action-btn glow-btn auth-main-btn" id="btn-save-reg">
+              <span class="btn-spinner hidden" id="reg-spinner"></span>
+              <span id="reg-btn-text" data-i18n="btn_complete_reg">🚀 Complete Registration &amp; Find Free Bays</span>
+            </button>
+            <div style="text-align: center; margin-top: 0.75rem;">
+              <button type="button" class="text-link-btn" id="btn-auth-switch-to-login">Already have an account? Sign In here →</button>
             </div>
           </div>
+        </form>
 
-          <div class="form-group">
-            <label for="reg-bike-width">
-              Width (meters) <span class="auto-tag">Auto-Loaded</span>
-            </label>
-            <div class="input-unit-wrap">
-              <input type="number" id="reg-bike-width" step="0.01" min="0.3" max="3.0" placeholder="Auto-fetched (e.g. 0.69)">
-              <span class="unit-tag">m</span>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="reg-bike-clearance">Required Dismount Margin</label>
-            <div class="input-unit-wrap">
-              <input type="number" id="reg-bike-clearance" step="0.05" min="0.10" max="0.60" value="0.20">
-              <span class="unit-tag">m</span>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="reg-bike-plate">Registration Number / Plate</label>
-            <input type="text" id="reg-bike-plate" placeholder="e.g. MH-02-AB-1234 (or auto-assigned)">
-          </div>
-        </div>
-
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="btn-cancel-reg">Close</button>
-          <button type="submit" class="action-btn glow-btn" id="btn-save-reg">
-            <span>🚀 Complete Registration & Find Free Bays</span>
-          </button>
-        </div>
-      </form>
-
-      <!-- 2. LOGIN FORM -->
-      <form id="form-login" class="reg-form hidden">
-        <div class="auth-intro">
-          <h3 data-i18n="auth_login_title">Welcome Back</h3>
-          <p>Sign in to access your registered vehicle profile and find free parking.</p>
-        </div>
-
-        <div class="form-grid login-grid">
-          <div class="form-group full-width">
-            <label for="login-email">Registered Email Address <span class="required-star">*</span></label>
-            <input type="email" id="login-email" required placeholder="you@example.com">
-          </div>
-          <div class="form-group full-width">
-            <label for="login-password">Password <span class="required-star">*</span></label>
-            <input type="password" id="login-password" required placeholder="Enter password">
-          </div>
-        </div>
-
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="btn-cancel-login">Close</button>
-          <button type="submit" class="action-btn glow-btn" id="btn-submit-login">
-            <span data-i18n="btn_signin">🔑 Sign In</span>
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   </div>
 
@@ -200,6 +322,19 @@
         </div>
       </div>
       <div class="wizard-header-actions">
+        <!-- Active Rider Profile Badge -->
+        <div class="wz-user-pill" id="wz-user-pill" title="Active Logged-In Rider Profile">
+          <span class="wz-user-icon" id="wz-user-icon">👤</span>
+          <span class="wz-user-name" id="wz-user-name">Rider</span>
+          <span class="wz-user-divider">•</span>
+          <span class="wz-user-veh" id="wz-user-veh">Vehicle</span>
+        </div>
+
+        <!-- Logout Button in Wizard -->
+        <button type="button" class="wz-logout-btn" id="btn-wz-logout" title="Sign out and lock website">
+          <span>🚪 Sign Out</span>
+        </button>
+
         <!-- Multi-Language Selector Dropdown (Wizard Header) -->
         <div class="lang-selector-dropdown" id="wz-lang-selector">
           <button type="button" class="lang-btn" id="wz-lang-btn" aria-haspopup="true" aria-expanded="false" title="Switch Language">
