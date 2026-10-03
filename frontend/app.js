@@ -1458,8 +1458,6 @@ function switchTab(tabId) {
     }
   } else if (tabId === 'driver-flow') {
     renderFlowStage(state.flowStep);
-  } else if (tabId === 'architecture-dataset') {
-    initArchitectureLab();
   }
 }
 
@@ -2834,35 +2832,8 @@ const wz = {
 
 function initWizard() {
   const overlay = document.getElementById('wizard-overlay');
-  const advancedBtn = document.getElementById('btn-open-advanced');
-  const backWizardBtn = document.getElementById('btn-back-wizard');
-
-  // Show wizard by default; hide main app tabs
+  // Show wizard as the main dedicated app interface
   showWizardOverlay(true);
-
-  // Advanced View button — hides wizard, shows main tabbed app
-  if (advancedBtn) {
-    advancedBtn.addEventListener('click', () => {
-      showWizardOverlay(false);
-      switchTab(state.currentTab || 'camera-scan');
-    });
-  }
-
-  // Architecture & Research Lab button in wizard header
-  const archBtn = document.getElementById('btn-open-architecture');
-  if (archBtn) {
-    archBtn.addEventListener('click', () => {
-      showWizardOverlay(false);
-      switchTab('architecture-dataset');
-    });
-  }
-
-  // Back-to-wizard button in main nav
-  if (backWizardBtn) {
-    backWizardBtn.addEventListener('click', () => {
-      showWizardOverlay(true);
-    });
-  }
 
   // If user already has a profile, pre-fill Step 1 and show banner
   if (state.userProfile && state.userProfile.name && state.userProfile.bikeModel) {
@@ -5221,155 +5192,7 @@ const SCENARIO_GALLERY = {
 };
 
 let activeScenarioKey = 'scenario_1_aerial';
-let activeViewMode = 'annotated';
-let activeStageNum = 1;
-let pipelineAnimationTimer = null;
-
-function initArchitectureLab() {
-  bindFlowchartInteractions();
-  bindScenarioGallery();
-  renderActiveScenario();
-}
-
-function bindFlowchartInteractions() {
-  const nodes = document.querySelectorAll('.flow-node');
-  nodes.forEach(node => {
-    node.addEventListener('click', () => {
-      const stageNum = parseInt(node.getAttribute('data-stage'), 10);
-      selectStage(stageNum);
-    });
-  });
-
-  const animateBtn = document.getElementById('btn-animate-pipeline');
-  if (animateBtn) {
-    animateBtn.addEventListener('click', () => {
-      runPipelineAnimation();
-    });
-  }
-
-  // Pre-select stage 1
-  selectStage(1);
-}
-
-function selectStage(stageNum) {
-  activeStageNum = stageNum;
-  const stageData = PIPELINE_STAGES.find(s => s.step === stageNum) || PIPELINE_STAGES[0];
-
-  document.querySelectorAll('.flow-node').forEach(n => {
-    const s = parseInt(n.getAttribute('data-stage'), 10);
-    n.classList.toggle('active', s === stageNum);
-  });
-
-  const inspIcon = document.getElementById('insp-icon');
-  const inspTitle = document.getElementById('insp-title');
-  const inspTag = document.getElementById('insp-tag');
-  const inspDesc = document.getElementById('insp-desc');
-  const inspFormula = document.getElementById('insp-formula');
-  const inspInput = document.getElementById('insp-input');
-  const inspOutput = document.getElementById('insp-output');
-
-  if (inspIcon) inspIcon.textContent = stageData.icon;
-  if (inspTitle) inspTitle.textContent = stageData.title;
-  if (inspTag) inspTag.textContent = stageData.tag;
-  if (inspDesc) inspDesc.textContent = stageData.desc;
-  if (inspFormula) inspFormula.textContent = stageData.formula;
-  if (inspInput) inspInput.textContent = stageData.input;
-  if (inspOutput) inspOutput.textContent = stageData.output;
-}
-
-function runPipelineAnimation() {
-  if (pipelineAnimationTimer) {
-    clearInterval(pipelineAnimationTimer);
-    pipelineAnimationTimer = null;
-  }
-
-  let step = 1;
-  selectStage(step);
-
-  pipelineAnimationTimer = setInterval(() => {
-    step++;
-    if (step > 13) {
-      clearInterval(pipelineAnimationTimer);
-      pipelineAnimationTimer = null;
-      return;
-    }
-    selectStage(step);
-    // Smooth scroll the node into view if needed
-    const nodeEl = document.getElementById(`fnode-${step}`);
-    if (nodeEl) {
-      nodeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, 650);
-}
-
-function bindScenarioGallery() {
-  // Scenario Selection Tabs
-  const scenBtns = document.querySelectorAll('.arch-scen-btn');
-  scenBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      scenBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeScenarioKey = btn.getAttribute('data-scen');
-      renderActiveScenario();
-    });
-  });
-
-  // View Mode Chips
-  const viewChips = document.querySelectorAll('.view-chip');
-  viewChips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      viewChips.forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      activeViewMode = chip.getAttribute('data-vmode');
-      updateScenarioImage();
-    });
-  });
-}
-
-function renderActiveScenario() {
-  const scen = SCENARIO_GALLERY[activeScenarioKey] || SCENARIO_GALLERY.scenario_1_aerial;
-
-  const titleEl = document.getElementById('arch-scen-title');
-  const descEl = document.getElementById('arch-scen-desc');
-  const badgeEl = document.getElementById('arch-scen-overlay-badge');
-  const recEl = document.getElementById('arch-scen-rec-text');
-  const tableBody = document.getElementById('arch-slots-table-body');
-
-  if (titleEl) titleEl.textContent = scen.title;
-  if (descEl) descEl.textContent = scen.desc;
-  if (badgeEl) badgeEl.textContent = scen.badge;
-  if (recEl) recEl.textContent = scen.recommendation;
-
-  updateScenarioImage();
-
-  // Populate table
-  if (tableBody) {
-    tableBody.innerHTML = scen.slots.map(s => `
-      <tr>
-        <td><strong>${s.id}</strong></td>
-        <td><span style="font-weight:700;">${s.status}</span></td>
-        <td>${s.dims}</td>
-        <td>${s.fit}</td>
-      </tr>
-    `).join('');
-  }
-}
-
-function updateScenarioImage() {
-  const scen = SCENARIO_GALLERY[activeScenarioKey] || SCENARIO_GALLERY.scenario_1_aerial;
-  const imgEl = document.getElementById('arch-scen-img');
-  if (!imgEl) return;
-
-  const base = API_BASE ? API_BASE : '';
-
-  if (activeViewMode === 'annotated') {
-    imgEl.src = `${base}${scen.annotated_url}`;
-  } else if (activeViewMode === 'input') {
-    imgEl.src = `${base}${scen.input_url}`;
-  } else if (activeViewMode === 'bev') {
-    imgEl.src = `${base}${scen.bev_url}`;
-  }
-}
+// ==========================================================================
 
 // Listen for UI language changes to refresh dynamic text
 window.addEventListener('languageChanged', (e) => {
