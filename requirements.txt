@@ -1,10 +1,7 @@
-# Core API and Web Server
+--extra-index-url https://download.pytorch.org/whl/cpu
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.12
-
-# Computer Vision & Deep Learning
---extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.2.0
 torchvision>=0.17.0
 ultralytics>=8.2.0

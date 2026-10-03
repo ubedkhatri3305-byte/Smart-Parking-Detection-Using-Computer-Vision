@@ -13,14 +13,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Pre-download YOLOv8n weights so container starts instantly
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
-
 # Copy project files
 COPY . .
 
-# Set default port
-ENV PORT=8000
-EXPOSE 8000
+# Set default port (Render uses 10000 by default)
+ENV PORT=10000
+EXPOSE 10000 8000
 
-CMD ["python", "main.py"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]

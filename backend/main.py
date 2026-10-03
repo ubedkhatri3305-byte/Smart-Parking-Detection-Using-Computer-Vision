@@ -56,8 +56,27 @@ SCENARIOS_DIR = os.path.join(BASE_DIR, "data", "scenarios")
 CONFIG_PATH = os.path.join(SCENARIOS_DIR, "scenarios_config.json")
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), "frontend")
 
-# Initialize global CV modules
-detector = ParkingYOLODetector(conf_threshold=0.25)
+# Initialize global CV modules (lazy-load YOLO for instant port binding on Render / cloud)
+_detector_instance = None
+
+def get_yolo_detector():
+    global _detector_instance
+    if _detector_instance is None:
+        try:
+            _detector_instance = ParkingYOLODetector(conf_threshold=0.25)
+        except Exception as e:
+            print(f"[!] Warning: YOLO detector initialization deferred: {e}")
+            return None
+    return _detector_instance
+
+class LazyDetectorProxy:
+    def detect(self, *args, **kwargs):
+        d = get_yolo_detector()
+        if d:
+            return d.detect(*args, **kwargs)
+        return []
+
+detector = LazyDetectorProxy()
 analyzer = ParkingOccupancyAnalyzer()
 matcher = VehicleMatcher()
 
@@ -2872,9 +2891,26 @@ async def analyze_live_frame(
     }
 
 
+@app.get("/health")
+@app.get("/ping")
+@app.get("/api/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "service": "Smart Parking Detection API",
+        "port": os.environ.get("PORT", "unknown"),
+        "timestamp": time.time()
+    }
+
 # Mount frontend static files at root (after API routes so API takes precedence)
 if os.path.exists(FRONTEND_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    print(f"[*] Starting Smart Parking Detection server on 0.0.0.0:{port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
 
 
 
