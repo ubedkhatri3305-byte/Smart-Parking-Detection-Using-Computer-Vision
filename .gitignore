@@ -39,3 +39,6 @@ Thumbs.db
 
 # Node dependencies
 node_modules/
+
+# Scratch & temporary scripts
+scratch/
