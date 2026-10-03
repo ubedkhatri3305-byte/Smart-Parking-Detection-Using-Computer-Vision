@@ -2318,18 +2318,29 @@ select.custom-select:focus {
   display: none;
 }
 
+/* Unified Wizard Top Sticky Container (Header + Stepper together, never overlaps or slides under) */
+.wizard-top-container {
+  position: sticky;
+  top: 0;
+  z-index: 500;
+  background: var(--bg-surface, #ffffff);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+  width: 100%;
+}
+
 /* Wizard Header */
 .wizard-header {
-  background: var(--bg-surface);
-  border-bottom: 2px solid var(--border-subtle);
-  padding: 1rem 1.5rem;
+  background: var(--bg-surface, #ffffff);
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+  padding: 0.85rem 1.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: var(--shadow-sm);
-  position: sticky;
-  top: 0;
-  z-index: 100;
+  position: relative;
+  top: auto;
+  box-shadow: none;
+  z-index: 2;
   gap: 1rem;
 }
 
@@ -9599,40 +9610,115 @@ AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
     grid-column: span 1 !important;
   }
 
-  /* WIZARD PROGRESS STEPPER ADJUSTMENTS (NO OVERFLOW ON MOBILE) */
-  .wizard-progress {
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    padding: 0.6rem 0.25rem !important;
-    overflow-x: hidden !important;
+  /* Wizard Top Container & Header on Mobile: NEVER WRAP OR OVERLAP */
+  .wizard-top-container {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 500 !important;
     width: 100% !important;
   }
 
+  .wizard-header {
+    padding: 0.45rem 0.75rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: nowrap !important; /* Keep on a single line! */
+    height: 48px !important;
+    min-height: 48px !important;
+    box-sizing: border-box !important;
+    gap: 0.4rem !important;
+  }
+
+  .wizard-brand {
+    gap: 0.35rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .wizard-brand-icon {
+    font-size: 1.3rem !important;
+  }
+
+  .wizard-brand-title {
+    font-size: 0.92rem !important;
+    white-space: nowrap !important;
+  }
+
+  .wizard-brand-sub {
+    display: none !important;
+  }
+
+  .wizard-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.3rem !important;
+    flex-wrap: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .wz-user-pill {
+    padding: 0.22rem 0.5rem !important;
+    font-size: 0.72rem !important;
+    max-width: 105px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .wz-user-divider,
+  .wz-user-veh {
+    display: none !important; /* Keep pill compact so it never wraps */
+  }
+
+  .wz-logout-btn {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.72rem !important;
+    white-space: nowrap !important;
+  }
+
+  /* WIZARD PROGRESS STEPPER ON MOBILE: ALL 5 STEPS FIT NEATLY WITHOUT OVERFLOW */
+  .wizard-progress {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    padding: 0.45rem 0.35rem 0.5rem !important;
+    overflow-x: hidden !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
   .wz-step-bubble {
-    width: 30px !important;
-    height: 30px !important;
-    font-size: 0.82rem !important;
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 0.78rem !important;
   }
 
   .wz-step-label {
-    font-size: 0.65rem !important;
-    max-width: 52px !important;
-    line-height: 1.1 !important;
+    font-size: 0.62rem !important;
+    max-width: 48px !important;
+    line-height: 1.15 !important;
   }
 
   .wz-connector {
-    width: 12px !important;
-    margin: 0 2px 18px 2px !important;
+    margin-top: 13px !important; /* center of 28px bubble */
+    min-width: 6px !important;
+    max-width: 20px !important;
+    margin-left: 2px !important;
+    margin-right: 2px !important;
+    height: 2px !important;
   }
 
-  /* Wizard Panels & Headings */
+  /* Wizard Panels & Headings with Full Clearance */
   .wizard-body {
-    padding: 0 0.5rem 1.5rem !important;
+    padding: 0.85rem 0.75rem 2rem !important;
+  }
+
+  .wz-panel {
+    scroll-margin-top: 120px !important;
   }
 
   .wz-panel-inner {
-    padding-top: 0.85rem !important;
+    padding-top: 0.5rem !important;
   }
 
   .wz-title {
@@ -9641,31 +9727,6 @@ AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
 
   .wz-subtitle {
     font-size: 0.82rem !important;
-  }
-
-  /* Wizard Header on Mobile */
-  .wizard-header {
-    padding: 0.6rem 0.75rem !important;
-    flex-wrap: wrap !important;
-    gap: 0.5rem !important;
-  }
-
-  .wizard-brand-sub {
-    display: none !important;
-  }
-
-  .wizard-header-actions {
-    gap: 0.4rem !important;
-  }
-
-  .wz-user-pill {
-    padding: 0.3rem 0.6rem !important;
-    font-size: 0.74rem !important;
-  }
-
-  .wz-logout-btn {
-    padding: 0.3rem 0.6rem !important;
-    font-size: 0.74rem !important;
   }
 
   /* STEP 1: VEHICLE SELECTION MOBILE ADJUSTMENT */
@@ -9860,8 +9921,11 @@ AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
   }
 
   .wz-connector {
-    width: 7px !important;
-    margin: 0 1px 16px 1px !important;
+    margin-top: 12px !important;
+    min-width: 4px !important;
+    max-width: 14px !important;
+    margin-left: 1px !important;
+    margin-right: 1px !important;
   }
 
   .auth-card {

@@ -312,75 +312,79 @@
   <!-- ============================================================= -->
   <div class="wizard-overlay" id="wizard-overlay">
     
-    <!-- Wizard Header -->
-    <div class="wizard-header">
-      <div class="wizard-brand">
-        <span class="wizard-brand-icon">🏍️</span>
-        <div>
-          <div class="wizard-brand-title">PARKVISION <span>AI</span></div>
-          <div class="wizard-brand-sub" data-i18n="brand_sub">Smart Parking Detection · Zero Fees · Free Public Bays</div>
+    <!-- Unified Sticky Top Bar (Header + Stepper together, never overlaps or slides under) -->
+    <header class="wizard-top-container" id="wizard-top-container">
+      <!-- Wizard Header -->
+      <div class="wizard-header">
+        <div class="wizard-brand">
+          <span class="wizard-brand-icon">🏍️</span>
+          <div>
+            <div class="wizard-brand-title">PARKVISION <span>AI</span></div>
+            <div class="wizard-brand-sub" data-i18n="brand_sub">Smart Parking Detection · Zero Fees · Free Public Bays</div>
+          </div>
         </div>
-      </div>
-      <div class="wizard-header-actions">
-        <!-- Active Rider Profile Badge -->
-        <div class="wz-user-pill" id="wz-user-pill" title="Active Logged-In Rider Profile">
-          <span class="wz-user-icon" id="wz-user-icon">👤</span>
-          <span class="wz-user-name" id="wz-user-name">Rider</span>
-          <span class="wz-user-divider">•</span>
-          <span class="wz-user-veh" id="wz-user-veh">Vehicle</span>
-        </div>
+        <div class="wizard-header-actions">
+          <!-- Active Rider Profile Badge -->
+          <div class="wz-user-pill" id="wz-user-pill" title="Active Logged-In Rider Profile">
+            <span class="wz-user-icon" id="wz-user-icon">👤</span>
+            <span class="wz-user-name" id="wz-user-name">Rider</span>
+            <span class="wz-user-divider">•</span>
+            <span class="wz-user-veh" id="wz-user-veh">Vehicle</span>
+          </div>
 
-        <!-- Logout Button in Wizard -->
-        <button type="button" class="wz-logout-btn" id="btn-wz-logout" title="Sign out and lock website">
-          <span>🚪 Sign Out</span>
-        </button>
-
-        <!-- Multi-Language Selector Dropdown (Wizard Header) -->
-        <div class="lang-selector-dropdown" id="wz-lang-selector">
-          <button type="button" class="lang-btn" id="wz-lang-btn" aria-haspopup="true" aria-expanded="false" title="Switch Language">
-            <span class="lang-icon">🌐</span>
-            <span class="lang-current" id="wz-lang-current"><span class="lang-flag">🇬🇧</span> English</span>
-            <span class="lang-arrow">▼</span>
+          <!-- Logout Button in Wizard -->
+          <button type="button" class="wz-logout-btn" id="btn-wz-logout" title="Sign out and lock website">
+            <span>🚪 Sign Out</span>
           </button>
-          <div class="lang-menu" id="wz-lang-menu">
-            <button type="button" class="lang-option active" data-lang="en"><span class="lang-flag">🇬🇧</span> English</button>
-            <button type="button" class="lang-option" data-lang="hi"><span class="lang-flag">🇮🇳</span> हिन्दी (Hindi)</button>
-            <button type="button" class="lang-option" data-lang="gu"><span class="lang-flag">🇮🇳</span> ગુજરાતી (Gujarati)</button>
-            <button type="button" class="lang-option" data-lang="mr"><span class="lang-flag">🇮🇳</span> मराठी (Marathi)</button>
-            <button type="button" class="lang-option" data-lang="es"><span class="lang-flag">🇪🇸</span> Español (Spanish)</button>
-            <button type="button" class="lang-option" data-lang="fr"><span class="lang-flag">🇫🇷</span> Français (French)</button>
+
+          <!-- Multi-Language Selector Dropdown (Wizard Header) -->
+          <div class="lang-selector-dropdown" id="wz-lang-selector">
+            <button type="button" class="lang-btn" id="wz-lang-btn" aria-haspopup="true" aria-expanded="false" title="Switch Language">
+              <span class="lang-icon">🌐</span>
+              <span class="lang-current" id="wz-lang-current"><span class="lang-flag">🇬🇧</span> English</span>
+              <span class="lang-arrow">▼</span>
+            </button>
+            <div class="lang-menu" id="wz-lang-menu">
+              <button type="button" class="lang-option active" data-lang="en"><span class="lang-flag">🇬🇧</span> English</button>
+              <button type="button" class="lang-option" data-lang="hi"><span class="lang-flag">🇮🇳</span> हिन्दी (Hindi)</button>
+              <button type="button" class="lang-option" data-lang="gu"><span class="lang-flag">🇮🇳</span> ગુજરાતી (Gujarati)</button>
+              <button type="button" class="lang-option" data-lang="mr"><span class="lang-flag">🇮🇳</span> मराठी (Marathi)</button>
+              <button type="button" class="lang-option" data-lang="es"><span class="lang-flag">🇪🇸</span> Español (Spanish)</button>
+              <button type="button" class="lang-option" data-lang="fr"><span class="lang-flag">🇫🇷</span> Français (French)</button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Progress Stepper -->
-    <div class="wizard-progress" id="wizard-progress">
-      <div class="wz-step-wrap active" data-wstep="1">
-        <div class="wz-step-bubble">1</div>
-        <div class="wz-step-label" data-i18n="step_vehicle">Vehicle</div>
+      <!-- Progress Stepper -->
+      <div class="wizard-progress" id="wizard-progress">
+        <div class="wz-step-wrap active" data-wstep="1">
+          <div class="wz-step-bubble">1</div>
+          <div class="wz-step-label" data-i18n="step_vehicle">Vehicle</div>
+        </div>
+        <div class="wz-connector"></div>
+        <div class="wz-step-wrap" data-wstep="2">
+          <div class="wz-step-bubble">2</div>
+          <div class="wz-step-label" data-i18n="step_location">Location</div>
+        </div>
+        <div class="wz-connector"></div>
+        <div class="wz-step-wrap" data-wstep="3">
+          <div class="wz-step-bubble">3</div>
+          <div class="wz-step-label" data-i18n="step_parking">Find Parking</div>
+        </div>
+        <div class="wz-connector"></div>
+        <div class="wz-step-wrap" data-wstep="4">
+          <div class="wz-step-bubble">4</div>
+          <div class="wz-step-label" data-i18n="step_navigate">Navigate</div>
+        </div>
+        <div class="wz-connector"></div>
+        <div class="wz-step-wrap" data-wstep="5">
+          <div class="wz-step-bubble">5</div>
+          <div class="wz-step-label" data-i18n="step_ar">AR Scan</div>
+        </div>
       </div>
-      <div class="wz-connector"></div>
-      <div class="wz-step-wrap" data-wstep="2">
-        <div class="wz-step-bubble">2</div>
-        <div class="wz-step-label" data-i18n="step_location">Location</div>
-      </div>
-      <div class="wz-connector"></div>
-      <div class="wz-step-wrap" data-wstep="3">
-        <div class="wz-step-bubble">3</div>
-        <div class="wz-step-label" data-i18n="step_parking">Find Parking</div>
-      </div>
-      <div class="wz-connector"></div>
-      <div class="wz-step-wrap" data-wstep="4">
-        <div class="wz-step-bubble">4</div>
-        <div class="wz-step-label" data-i18n="step_navigate">Navigate</div>
-      </div>
-      <div class="wz-connector"></div>
-      <div class="wz-step-wrap" data-wstep="5">
-        <div class="wz-step-bubble">5</div>
-        <div class="wz-step-label" data-i18n="step_ar">AR Scan</div>
-      </div>
-    </div>
+    </header>
+
 
     <!-- Wizard Steps Container -->
     <div class="wizard-body">
