@@ -25,6 +25,11 @@ from backend.cv.geometry import ParkingGeometry
 from backend.cv.occupancy import ParkingOccupancyAnalyzer
 from backend.cv.vehicle_matcher import VehicleMatcher, VehicleProfiles
 from backend.cv.visualizer import ParkingVisualizer
+from backend.cv.zone_validator import ParkingZoneValidator, ZoneClass, ZoneStatus
+from backend.cv.space_analyzer import ParkingSpaceAnalyzer
+from backend.cv.confidence_scorer import ParkingConfidenceScorer, DecisionState
+from backend.cv.temporal_tracker import TemporalParkingTracker
+from backend.cv.test_core_pipeline import CoreScenarioRunner
 from backend.rules.rule_engine import RuleEngine
 
 app = FastAPI(
@@ -99,6 +104,10 @@ class LazyDetectorProxy:
 detector = LazyDetectorProxy()
 analyzer = ParkingOccupancyAnalyzer()
 matcher = VehicleMatcher()
+zone_validator = ParkingZoneValidator()
+space_analyzer = ParkingSpaceAnalyzer(occupancy_analyzer=analyzer, vehicle_matcher=matcher)
+confidence_scorer = ParkingConfidenceScorer()
+temporal_tracker = TemporalParkingTracker(window_size=5)
 
 # Mount scenario images and generated output visualizations
 app.mount("/static/scenarios", StaticFiles(directory=SCENARIOS_DIR), name="scenarios")
@@ -2599,6 +2608,127 @@ async def analyze_parking(
     detections = detector.detect(image)
 
     # 2. Setup Geometry & Homography
+    # 2. Setup Database / Map Context & Zone Validation
+    map_context = {}
+    if scenario_data:
+        map_context = {
+            "is_known_parking": True,
+            "type": "public",
+            "name": scenario_data.get("name", "Public Parking Facility")
+        }
+
+    zone_result = zone_validator.validate_zone(
+        image=image,
+        detections=detections,
+        map_context=map_context
+    )
+
+    veh_specs = matcher.get_vehicle_specs(vehicle_type, custom_length, custom_width)
+
+    # 3. Handle INVALID Zones (Home floor, driveway, garden, field, footpath, road)
+    if zone_result["status"] == ZoneStatus.INVALID:
+        mean_det_conf = float(np.mean([d["confidence"] for d in detections])) if detections else 0.85
+        conf_eval = confidence_scorer.evaluate(
+            zone_result=zone_result,
+            occupancy_status="BLOCKED",
+            obstacle_detected=True,
+            vehicle_fit={"is_suitable": False, "width_margin_m": -1.0, "message": "Not an authorized parking zone."},
+            permission_info={"can_park_legally": False, "is_unknown": False, "is_prohibited": True},
+            detection_confidence=mean_det_conf,
+            blocked_reason=zone_result["headline"]
+        )
+        annotated_img = ParkingVisualizer.annotate_frame(
+            image=image,
+            analyzed_slots=[],
+            detections=detections,
+            vehicle_name=veh_specs["name"]
+        )
+        _, buffer_ann = cv2.imencode('.jpg', annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        annotated_base64 = base64.b64encode(buffer_ann).decode('utf-8')
+
+        return {
+            "success": True,
+            "is_suitable_space_found": False,
+            "final_decision": DecisionState.NOT_SUITABLE,
+            "decision_color": "red",
+            "decision_icon": "🔴",
+            "headline": zone_result["headline"],
+            "reason": zone_result["reason"],
+            "checklist": conf_eval["checklist"],
+            "confidence_score": conf_eval["confidence_score"],
+            "confidence_percent": conf_eval["confidence_percent"],
+            "breakdown": conf_eval["breakdown"],
+            "can_recommend": False,
+            "result_status": "NOT_SUITABLE",
+            "result_message": f"🔴 NOT SUITABLE FOR PARKING • {zone_result['headline']} ({zone_result['reason']})",
+            "legal_disclaimer": "This is an AI-assisted estimate. Parking is not verified or permitted on this surface.",
+            "architectural_note": "EMPTY SPACE ≠ PARKING SPACE. Zone validation rejected invalid ground.",
+            "safety_warning": "Stop safely before scanning. Do not operate the phone while driving.",
+            "estimation_label": "Rejected (Invalid Zone)",
+            "summary": {"total_slots": 0, "available": 0, "occupied": 0, "blocked": len(detections)},
+            "vehicle": veh_specs,
+            "recommended_slot": None,
+            "alternatives": [],
+            "slots": [],
+            "detections_count": len(detections),
+            "detections": detections,
+            "homography_matrix": None,
+            "annotated_image": f"data:image/jpeg;base64,{annotated_base64}",
+            "bev_image": None
+        }
+
+    # 4. Handle UNKNOWN / UNVERIFIED Surfaces
+    if zone_result["status"] == ZoneStatus.UNKNOWN and not scenario_data and not custom_slots_json:
+        mean_det_conf = float(np.mean([d["confidence"] for d in detections])) if detections else 0.70
+        conf_eval = confidence_scorer.evaluate(
+            zone_result=zone_result,
+            occupancy_status="AVAILABLE",
+            obstacle_detected=False,
+            vehicle_fit={"is_suitable": True, "width_margin_m": 0.0, "clearance_ft_str": "Unverified"},
+            permission_info={"can_park_legally": False, "is_unknown": True},
+            detection_confidence=mean_det_conf
+        )
+        annotated_img = ParkingVisualizer.annotate_frame(
+            image=image,
+            analyzed_slots=[],
+            detections=detections,
+            vehicle_name=veh_specs["name"]
+        )
+        _, buffer_ann = cv2.imencode('.jpg', annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        annotated_base64 = base64.b64encode(buffer_ann).decode('utf-8')
+
+        return {
+            "success": True,
+            "is_suitable_space_found": False,
+            "final_decision": DecisionState.UNCERTAIN,
+            "decision_color": "yellow",
+            "decision_icon": "🟡",
+            "headline": "PARKING STATUS UNCERTAIN",
+            "reason": zone_result["reason"],
+            "checklist": conf_eval["checklist"],
+            "confidence_score": conf_eval["confidence_score"],
+            "confidence_percent": conf_eval["confidence_percent"],
+            "breakdown": conf_eval["breakdown"],
+            "can_recommend": False,
+            "result_status": "UNCERTAIN",
+            "result_message": "🟡 PARKING STATUS UNCERTAIN • Valid parking zone or permission could not be verified.",
+            "legal_disclaimer": "This is an AI-assisted estimate. Parking status or permission is unverified.",
+            "architectural_note": "EMPTY SPACE ≠ PARKING SPACE. Open area lacks verified markings or municipal database registration.",
+            "safety_warning": "Stop safely before scanning. Do not operate the phone while driving.",
+            "estimation_label": "Uncertain (Unverified Surface)",
+            "summary": {"total_slots": 0, "available": 0, "occupied": 0, "blocked": 0},
+            "vehicle": veh_specs,
+            "recommended_slot": None,
+            "alternatives": [],
+            "slots": [],
+            "detections_count": len(detections),
+            "detections": detections,
+            "homography_matrix": None,
+            "annotated_image": f"data:image/jpeg;base64,{annotated_base64}",
+            "bev_image": None
+        }
+
+    # 5. Setup Geometry & Homography for Valid Parking Zone
     if scenario_data and "homography" in scenario_data:
         h_cfg = scenario_data["homography"]
         geom = ParkingGeometry(
@@ -2609,7 +2739,7 @@ async def analyze_parking(
     else:
         geom = ParkingGeometry()
 
-    # 3. Setup Slot Polygons
+    # 6. Setup Slot Polygons
     if custom_slots_json:
         try:
             slot_definitions = json.loads(custom_slots_json)
@@ -2618,63 +2748,88 @@ async def analyze_parking(
     elif scenario_data and "slots" in scenario_data:
         slot_definitions = scenario_data["slots"]
     else:
-        # Auto generate 3 default slots if no coordinates given
-        slot_definitions = [
-            {"id": "A1", "label": "Bay A1", "polygon": [[int(w*0.1), int(h*0.35)], [int(w*0.35), int(h*0.35)], [int(w*0.35), int(h*0.75)], [int(w*0.1), int(h*0.75)]], "rule_zone": "registered"},
-            {"id": "A2", "label": "Bay A2", "polygon": [[int(w*0.38), int(h*0.35)], [int(w*0.63), int(h*0.35)], [int(w*0.63), int(h*0.75)], [int(w*0.38), int(h*0.75)]], "rule_zone": "registered"},
-            {"id": "A3", "label": "Bay A3", "polygon": [[int(w*0.66), int(h*0.35)], [int(w*0.9), int(h*0.35)], [int(w*0.9), int(h*0.75)], [int(w*0.66), int(h*0.75)]], "rule_zone": "registered"}
-        ]
+        # Delineate candidate spaces using ParkingSpaceAnalyzer (Mode A marked slots or Mode B roadside corridor)
+        slot_definitions = space_analyzer.analyze_spaces(
+            image_shape=(h, w),
+            detections=detections,
+            zone_info=zone_result,
+            vehicle_specs=veh_specs
+        )
 
-    # 4. Occupancy Analysis
-    analyzed_slots = analyzer.evaluate_slots(slot_definitions, detections)
+    # 7. Occupancy & Dimensions Analysis
+    if slot_definitions and isinstance(slot_definitions[0], dict) and "vehicle_fit" in slot_definitions[0]:
+        analyzed_slots = slot_definitions
+    else:
+        analyzed_slots = analyzer.evaluate_slots(slot_definitions, detections)
+        for s in analyzed_slots:
+            s["metrics"] = geom.compute_slot_metric_dimensions(s["polygon"])
+            s["vehicle_fit"] = matcher.evaluate_fit(s["metrics"], veh_specs)
+            rule_zone = s.get("custom_metadata", {}).get("rule_zone") or s.get("rule_zone", "registered")
+            s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
 
-    # 5. Vehicle Fit & Metric Calculation
-    veh_specs = matcher.get_vehicle_specs(vehicle_type, custom_length, custom_width)
-
-    for s in analyzed_slots:
-        # Calculate metric dimensions
-        s["metrics"] = geom.compute_slot_metric_dimensions(s["polygon"])
-        # Evaluate vehicle fit
-        s["vehicle_fit"] = matcher.evaluate_fit(s["metrics"], veh_specs)
-        # Verify parking rules
-        rule_zone = s.get("custom_metadata", {}).get("rule_zone") or s.get("rule_zone", "registered")
-        s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
-
-    # 6. Recommendation Selection (Only recommend if space is genuinely suitable and legal)
+    # 8. Recommendation Selection (Only recommend if space is genuinely suitable and legal)
     recommended_slot = None
     for s in analyzed_slots:
-        if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
+        if s["status"] == "AVAILABLE" and s.get("vehicle_fit", {}).get("is_suitable") and s.get("rules", {}).get("can_park_legally"):
             recommended_slot = s
             break
 
-    # 7. Render Visual Annotations
+    # 9. Compute Confidence & Checklist
+    if recommended_slot:
+        occ_status = "AVAILABLE"
+        has_obs = False
+        fit_data = recommended_slot["vehicle_fit"]
+        perm_data = {"can_park_legally": True, "is_unknown": False}
+        blocked_msg = None
+    elif analyzed_slots:
+        any_blocked = any(s["status"] == "BLOCKED" for s in analyzed_slots)
+        any_occupied = any(s["status"] == "OCCUPIED" for s in analyzed_slots)
+        occ_status = "BLOCKED" if any_blocked else ("OCCUPIED" if any_occupied else "AVAILABLE")
+        has_obs = any_blocked
+        fit_data = analyzed_slots[0].get("vehicle_fit", {"is_suitable": False, "message": "No suitable fit."})
+        perm_data = {"can_park_legally": analyzed_slots[0].get("rules", {}).get("can_park_legally", True), "is_unknown": False}
+        blocked_msg = analyzed_slots[0].get("blocked_reason") or "Space is occupied or obstructed."
+    else:
+        occ_status = "AVAILABLE"
+        has_obs = False
+        fit_data = {"is_suitable": False, "message": "No designated parking slots found."}
+        perm_data = {"can_park_legally": True, "is_unknown": False}
+        blocked_msg = None
+
+    mean_det_conf = float(np.mean([d["confidence"] for d in detections])) if detections else 0.85
+    conf_eval = confidence_scorer.evaluate(
+        zone_result=zone_result,
+        occupancy_status=occ_status,
+        obstacle_detected=has_obs,
+        vehicle_fit=fit_data,
+        permission_info=perm_data,
+        detection_confidence=mean_det_conf,
+        blocked_reason=blocked_msg
+    )
+
+    # 10. Render Visual Annotations
     annotated_img = ParkingVisualizer.annotate_frame(
         image=image,
         analyzed_slots=analyzed_slots,
         detections=detections,
-        vehicle_name=veh_specs["name"]
+        vehicle_name=veh_specs["name"],
+        selected_slot_id=recommended_slot["id"] if recommended_slot else None
     )
 
-    # Encode annotated frame to Base64 JPEG
     _, buffer_ann = cv2.imencode('.jpg', annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 88])
     annotated_base64 = base64.b64encode(buffer_ann).decode('utf-8')
 
-    # Warp and encode BEV
     bev_base64 = None
     bev_img = geom.warp_to_bird_eye_view(image)
     if bev_img is not None:
         _, buffer_bev = cv2.imencode('.jpg', bev_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
         bev_base64 = base64.b64encode(buffer_bev).decode('utf-8')
 
-    # Summary
     avail_count = sum(1 for s in analyzed_slots if s["status"] == "AVAILABLE")
     occ_count = sum(1 for s in analyzed_slots if s["status"] == "OCCUPIED")
     block_count = sum(1 for s in analyzed_slots if s["status"] == "BLOCKED")
-
-    # Serialize homography matrix
     h_matrix_list = geom.H.tolist() if geom.H is not None else None
 
-    # If no suitable space found or lot is full, generate alternative recommendations
     alternatives = []
     if avail_count == 0 or recommended_slot is None:
         alt_res = generate_nearby_parking(
@@ -2688,15 +2843,25 @@ async def analyze_parking(
 
     return {
         "success": True,
-        "is_suitable_space_found": (recommended_slot is not None),
-        "result_status": "POTENTIALLY_SUITABLE" if recommended_slot else "NO_SUITABLE_SPACE",
+        "is_suitable_space_found": (recommended_slot is not None and conf_eval["decision"] == DecisionState.SUITABLE),
+        "final_decision": conf_eval["decision"],
+        "decision_color": conf_eval["decision_color"],
+        "decision_icon": conf_eval["decision_icon"],
+        "headline": conf_eval["headline"],
+        "reason": conf_eval["reason"],
+        "checklist": conf_eval["checklist"],
+        "confidence_score": conf_eval["confidence_score"],
+        "confidence_percent": conf_eval["confidence_percent"],
+        "breakdown": conf_eval["breakdown"],
+        "can_recommend": (conf_eval["decision"] == DecisionState.SUITABLE),
+        "result_status": "POTENTIALLY_SUITABLE" if (recommended_slot and conf_eval["decision"] == DecisionState.SUITABLE) else conf_eval["decision"],
         "result_message": (
-            f"Potentially Suitable Space Found: {recommended_slot['label']} fits your {veh_specs['name']}"
-            if recommended_slot else
-            f"No suitable vacant space detected for your {veh_specs['name']}. Nearby alternatives provided below."
+            f"🟢 POTENTIALLY SUITABLE • {recommended_slot['label']} fits your {veh_specs['name']} with safe clearance."
+            if (recommended_slot and conf_eval["decision"] == DecisionState.SUITABLE) else
+            f"{conf_eval['decision_icon']} {conf_eval['headline']} • {conf_eval['reason']}"
         ),
         "legal_disclaimer": "This is an AI-assisted estimate and not a guarantee of legal parking permission.",
-        "architectural_note": "YOLO detects objects; the parking analysis module evaluates usable space.",
+        "architectural_note": "EMPTY SPACE ≠ PARKING SPACE. Multi-factor validation required for suitability.",
         "safety_warning": "Stop safely before scanning. Do not operate the phone while driving.",
         "estimation_label": "Estimated suitable space",
         "summary": {
@@ -2706,7 +2871,7 @@ async def analyze_parking(
             "blocked": block_count
         },
         "vehicle": veh_specs,
-        "recommended_slot": recommended_slot,
+        "recommended_slot": recommended_slot if conf_eval["decision"] == DecisionState.SUITABLE else None,
         "alternatives": alternatives,
         "slots": analyzed_slots,
         "detections_count": len(detections),
@@ -2725,15 +2890,21 @@ async def analyze_live_frame(
     custom_length: Optional[float] = Form(2.15),
     custom_width: Optional[float] = Form(0.85),
     bike_model: Optional[str] = Form("Royal Enfield Classic 350"),
-    scenario_key: Optional[str] = Form(None)
+    scenario_key: Optional[str] = Form(None),
+    map_lot_id: Optional[str] = Form(None),
+    map_is_known: Optional[bool] = Form(False),
+    parking_mode: Optional[str] = Form("auto")
 ):
     """
-    Real-time mobile camera frame inference endpoint for live AR guidance.
-    Receives camera frame (blob or base64 data URL), runs YOLOv8, perspective evaluation,
-    and returns:
-    - Recommended slot with bike clearance
-    - Normalized AR coordinates for canvas overlay [0, 1]
-    - Natural voice guidance text (Text-to-Speech)
+    Real-time mobile camera frame inference endpoint implementing the new CV pipeline:
+    1. Preprocessing & Decoding
+    2. YOLO Object Detection (Vehicles, obstacles, pedestrians, infrastructure, domestic items)
+    3. ParkingZoneValidator (Distinguishes authentic parking from home floor, driveway, garden, footpath, road)
+    4. ParkingSpaceAnalyzer (Evaluates boundaries, occupancy, obstacle clearance, perspective metrics)
+    5. Vehicle Matcher (Physical fit check with category clearance margins)
+    6. ParkingConfidenceScorer (Documented weighted multi-factor confidence)
+    7. TemporalParkingTracker (Multi-frame temporal stability)
+    8. Three Final States: 🟢 SUITABLE, 🟡 UNCERTAIN, 🔴 NOT SUITABLE
     """
     image = None
     if image_file:
@@ -2770,9 +2941,8 @@ async def analyze_live_frame(
 
     h, w = image.shape[:2]
 
-    # 1. Run YOLO detection & Scene Environment Analysis
+    # 1. Run YOLO detection
     detections = detector.detect(image, conf_threshold=0.20)
-    scene_env = detector.analyze_scene_environment(image, detections)
 
     # Build normalized YOLO detections for AR HUD overlay
     norm_detections = []
@@ -2812,205 +2982,195 @@ async def analyze_live_frame(
     )
     bike_display_name = bike_model or veh_specs["name"]
 
-    # 2. INDOOR DOMESTIC SCENE FILTER: If camera is pointed indoors (couch, bed, tv, room, wall), reject immediately!
-    if not scenario_key and scene_env.get("is_indoor", False):
-        indoor_names = scene_env.get("indoor_objects", [])
-        indoor_str = ", ".join(indoor_names[:3]) if indoor_names else "Home interior"
+    # 2. Database / Map Context
+    map_context = {}
+    if map_is_known or scenario_key or map_lot_id:
+        map_context = {
+            "is_known_parking": True,
+            "type": "public",
+            "name": map_lot_id or "Public Parking Facility"
+        }
+
+    # 3. ParkingZoneValidator: Determine if the area is a plausible parking zone
+    zone_result = zone_validator.validate_zone(
+        image=image,
+        detections=detections,
+        map_context=map_context,
+        parking_mode=parking_mode
+    )
+
+    # 4. HANDLE INVALID ZONES (Home floor, private house driveway, garden, field, footpath, active road lane)
+    if zone_result["status"] == ZoneStatus.INVALID:
+        confidence_res = confidence_scorer.evaluate(
+            zone_result=zone_result,
+            occupancy_status="BLOCKED",
+            obstacle_detected=True,
+            vehicle_fit={"is_suitable": False, "width_margin_m": -1.0, "message": "Not an authorized parking zone."},
+            permission_info={"can_park_legally": False, "is_unknown": False, "is_prohibited": True},
+            detection_confidence=float(np.mean([d["confidence"] for d in detections])) if detections else 0.85,
+            blocked_reason=zone_result["headline"]
+        )
+        temporal_tracker.add_frame_result(confidence_res)
+
         annotated_frame = ParkingVisualizer.annotate_frame(
-            image,
-            [],
-            detections,
-            vehicle_name=veh_specs.get("name", "Vehicle"),
-            selected_slot_id=None
+            image, [], detections, vehicle_name=veh_specs.get("name", "Vehicle"), selected_slot_id=None
         )
         _, buf = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         annotated_b64 = base64.b64encode(buf).decode("utf-8")
 
         return {
             "success": True,
-            "status_code": "INDOOR_DETECTED",
-            "is_indoor": True,
+            "status_code": "NOT_SUITABLE",
+            "final_decision": DecisionState.NOT_SUITABLE,
+            "decision_color": "red",
+            "decision_icon": "🔴",
+            "headline": zone_result["headline"],
+            "reason": zone_result["reason"],
+            "checklist": confidence_res["checklist"],
+            "confidence_score": confidence_res["confidence_score"],
+            "confidence_percent": confidence_res["confidence_percent"],
+            "breakdown": confidence_res["breakdown"],
+            "can_recommend": False,
             "is_parking_scene": False,
-            "scene_type": scene_env.get("scene_type", "indoor_home"),
-            "scene_reason": scene_env.get("reason", "Indoor domestic environment detected."),
-            "indoor_objects": indoor_names,
+            "is_indoor": (zone_result["zone_class"] == ZoneClass.HOUSE_FLOOR),
+            "zone_class": zone_result["zone_class"],
             "recommended_slot": None,
             "ar_slots": [],
-            "vehicles_count": 0,
+            "vehicles_count": vehicles_count,
             "obstacles_count": obstacles_count,
             "detections": norm_detections,
             "detections_count": len(detections),
             "annotated_frame": f"data:image/jpeg;base64,{annotated_b64}",
-            "speech_text": "Indoor area detected. Please point camera outside at a road or parking lot.",
-            "guidance_banner": f"🏠 INDOOR DETECTED ({indoor_str}) • Point camera outside at a parking space",
+            "speech_text": f"{zone_result['headline']}. {zone_result['reason']}",
+            "guidance_banner": f"🔴 NOT SUITABLE FOR PARKING • {zone_result['headline']} ({zone_result['reason']})",
             "summary": {"total_slots": 0, "available": 0, "occupied": 0, "blocked": obstacles_count},
             "vehicle": veh_specs,
             "frame_resolution": {"width": w, "height": h}
         }
 
-    # 3. UNCONFIRMED SURFACE FILTER: If camera is pointed at blank wall/floor without road markings or vehicles
-    if not scenario_key and not scene_env.get("is_parking_scene", False):
+    # 5. HANDLE UNKNOWN / UNVERIFIED SURFACES (Open ground with no parking markings, signs, or database records)
+    if zone_result["status"] == ZoneStatus.UNKNOWN:
+        confidence_res = confidence_scorer.evaluate(
+            zone_result=zone_result,
+            occupancy_status="AVAILABLE",
+            obstacle_detected=False,
+            vehicle_fit={"is_suitable": True, "width_margin_m": 0.0, "clearance_ft_str": "Unverified"},
+            permission_info={"can_park_legally": False, "is_unknown": True},
+            detection_confidence=float(np.mean([d["confidence"] for d in detections])) if detections else 0.70
+        )
+        temporal_tracker.add_frame_result(confidence_res)
+
         annotated_frame = ParkingVisualizer.annotate_frame(
-            image,
-            [],
-            detections,
-            vehicle_name=veh_specs.get("name", "Vehicle"),
-            selected_slot_id=None
+            image, [], detections, vehicle_name=veh_specs.get("name", "Vehicle"), selected_slot_id=None
         )
         _, buf = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         annotated_b64 = base64.b64encode(buf).decode("utf-8")
 
         return {
             "success": True,
-            "status_code": "SCANNING_FOR_ROAD",
+            "status_code": "UNCERTAIN",
+            "final_decision": DecisionState.UNCERTAIN,
+            "decision_color": "yellow",
+            "decision_icon": "🟡",
+            "headline": "PARKING STATUS UNCERTAIN",
+            "reason": zone_result["reason"],
+            "checklist": confidence_res["checklist"],
+            "confidence_score": confidence_res["confidence_score"],
+            "confidence_percent": confidence_res["confidence_percent"],
+            "breakdown": confidence_res["breakdown"],
+            "can_recommend": False,
+            "is_parking_scene": False,
             "is_indoor": False,
-            "is_parking_scene": False,
-            "scene_type": scene_env.get("scene_type", "unconfirmed_surface"),
-            "scene_reason": scene_env.get("reason", "Searching for road markings or parking bays."),
-            "indoor_objects": [],
+            "zone_class": zone_result["zone_class"],
             "recommended_slot": None,
             "ar_slots": [],
-            "vehicles_count": 0,
+            "vehicles_count": vehicles_count,
             "obstacles_count": obstacles_count,
             "detections": norm_detections,
             "detections_count": len(detections),
             "annotated_frame": f"data:image/jpeg;base64,{annotated_b64}",
-            "speech_text": "Searching for parking area. Align camera with parking bays or road markings.",
-            "guidance_banner": "🔍 SCANNING GROUND • Align camera with parking bays, road markings, or parked vehicles",
+            "speech_text": "An empty area was detected, but a valid parking zone or permission could not be verified. Please use a designated public parking facility.",
+            "guidance_banner": "🟡 PARKING STATUS UNCERTAIN • Valid parking zone or permission could not be verified",
             "summary": {"total_slots": 0, "available": 0, "occupied": 0, "blocked": obstacles_count},
             "vehicle": veh_specs,
             "frame_resolution": {"width": w, "height": h}
         }
 
-    # 4. Define or load slot geometry for authentic parking scene
+    # 6. AUTHENTIC PARKING ZONE (Marked bay, parking lot, or verified facility)
     scenarios = load_scenarios()
     scenario_data = scenarios.get(scenario_key) if scenario_key in scenarios else None
+    predefined_slots = scenario_data.get("slots") if scenario_data else None
 
-    if scenario_data and "slots" in scenario_data:
-        slot_definitions = scenario_data["slots"]
-        if "homography" in scenario_data:
-            h_cfg = scenario_data["homography"]
-            geom = ParkingGeometry(
-                src_points=h_cfg["src_points"],
-                ground_size_meters=tuple(h_cfg["ground_size_meters"]),
-                bev_resolution=tuple(h_cfg["bev_resolution"])
-            )
-        else:
-            geom = ParkingGeometry()
-    else:
-        # Perspective ground plane for mobile camera view
-        geom = ParkingGeometry(
-            src_points=[[w * 0.10, h * 0.38], [w * 0.90, h * 0.38], [w * 0.98, h * 0.94], [w * 0.02, h * 0.94]],
-            ground_size_meters=(10.0, 6.0)
-        )
-        # Dynamically build slots based on ground plane and detected obstacles/vehicles
-        y_top = int(h * 0.40)
-        y_bot = int(h * 0.94)
+    # Analyze parking spaces
+    analyzed_slots = space_analyzer.analyze_spaces(
+        image_shape=(h, w),
+        detections=detections,
+        zone_info=zone_result,
+        predefined_slots=predefined_slots,
+        vehicle_specs=veh_specs,
+        parking_mode=parking_mode
+    )
 
-        # Exclude indoor furniture from being treated as road obstacles
-        ground_objects = [d for d in detections if d["bbox"][3] >= y_top and not d.get("is_indoor", False)]
-        is_car = veh_specs.get("category") == "car" or veh_specs.get("wheels", 2) == 4
-
-        if not ground_objects:
-            if is_car:
-                bays = [
-                    {"id": "Bay 1 (Optimal)", "span": (0.15, 0.85), "status": "AVAILABLE", "blocked_by": None}
-                ]
-            else:
-                bays = [
-                    {"id": "Bay 1 (Left)", "span": (0.05, 0.33), "status": "AVAILABLE", "blocked_by": None},
-                    {"id": "Bay 2 (Center)", "span": (0.35, 0.65), "status": "AVAILABLE", "blocked_by": None},
-                    {"id": "Bay 3 (Right)", "span": (0.67, 0.95), "status": "AVAILABLE", "blocked_by": None},
-                ]
-        else:
-            bays = []
-            ground_objects.sort(key=lambda o: (o["bbox"][0] + o["bbox"][2]) / 2.0)
-            last_x_norm = 0.04
-            bay_idx = 1
-
-            for obj in ground_objects:
-                x1, y1, x2, y2 = obj["bbox"]
-                x1_norm = max(0.04, min(0.96, x1 / w))
-                x2_norm = max(0.04, min(0.96, x2 / w))
-                obj_name = obj.get("class_name", "Obstacle").capitalize()
-                is_obs = obj.get("is_obstacle", False)
-
-                # Open clear corridor before this object
-                if (x1_norm - last_x_norm) >= 0.14:
-                    bays.append({
-                        "id": f"Bay {bay_idx} (Clear Space)",
-                        "span": (round(last_x_norm, 2), round(x1_norm, 2)),
-                        "status": "AVAILABLE",
-                        "blocked_by": None
-                    })
-                    bay_idx += 1
-
-                # Space occupied by obstacle or vehicle
-                bays.append({
-                    "id": f"Zone {bay_idx} ({'Obstacle' if is_obs else 'Vehicle'})",
-                    "span": (round(x1_norm, 2), round(x2_norm, 2)),
-                    "status": "BLOCKED" if is_obs else "OCCUPIED",
-                    "blocked_by": f"{obj_name} ({int(obj.get('confidence', 0.85)*100)}%)"
-                })
-                bay_idx += 1
-                last_x_norm = x2_norm
-
-            # Open clear corridor after last object
-            if (0.96 - last_x_norm) >= 0.14:
-                bays.append({
-                    "id": f"Bay {bay_idx} (Clear Space)",
-                    "span": (round(last_x_norm, 2), 0.96),
-                    "status": "AVAILABLE",
-                    "blocked_by": None
-                })
-
-        slot_definitions = []
-        for b in bays:
-            x_start, x_end = b["span"]
-            center_x = (x_start + x_end) / 2.0
-            width = x_end - x_start
-            top_w = width * 0.84
-            top_x1 = max(0.02, center_x - top_w / 2.0)
-            top_x2 = min(0.98, center_x + top_w / 2.0)
-
-            poly = [
-                [int(top_x1 * w), y_top],
-                [int(top_x2 * w), y_top],
-                [int(x_end * w), y_bot],
-                [int(x_start * w), y_bot]
-            ]
-            slot_definitions.append({
-                "id": b["id"],
-                "label": b["id"],
-                "polygon": poly,
-                "status": b["status"],
-                "blocked_reason": b["blocked_by"],
-                "rule_zone": "registered"
-            })
-
-    # 4. Analyze occupancy and calculate metric + imperial feet dimensions
-    analyzed_slots = analyzer.evaluate_slots(slot_definitions, detections)
-
+    # Verify legal rules for each candidate space
     for s in analyzed_slots:
-        s["metrics"] = geom.compute_slot_metric_dimensions(s["polygon"])
-        s["vehicle_fit"] = matcher.evaluate_fit(s["metrics"], veh_specs)
         rule_zone = s.get("rule_zone", "registered")
         s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
 
-        if s.get("blocked_reason"):
-            s["status"] = "BLOCKED"
-            s["vehicle_fit"]["is_suitable"] = False
-            s["vehicle_fit"]["fit_badge"] = "⚠️ Blocked by Obstacle"
-            s["vehicle_fit"]["message"] = f"Blocked by {s['blocked_reason']}. Clear obstacle before parking."
-
-    # 5. Determine recommended slot (Strict vehicle fitting: ONLY recommend if physically suitable and legal)
+    # Find the best suitable and legal candidate slot
     recommended_slot = None
     for s in analyzed_slots:
         if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
             recommended_slot = s
             break
 
-    # 6. Build normalized AR overlay coordinates (0.0 to 1.0)
+    # 7. Evaluate Holistic Multi-Factor Confidence Score
+    best_slot = recommended_slot or (analyzed_slots[0] if analyzed_slots else None)
+    if recommended_slot:
+        occ_status = "AVAILABLE"
+        has_obs = False
+        fit_data = recommended_slot["vehicle_fit"]
+        perm_data = {"can_park_legally": True, "is_unknown": False}
+        blocked_msg = None
+    elif analyzed_slots:
+        any_blocked = any(s["status"] == "BLOCKED" for s in analyzed_slots)
+        any_occupied = any(s["status"] == "OCCUPIED" for s in analyzed_slots)
+        occ_status = "BLOCKED" if any_blocked else ("OCCUPIED" if any_occupied else "AVAILABLE")
+        has_obs = any_blocked
+        fit_data = analyzed_slots[0]["vehicle_fit"]
+        perm_data = {"can_park_legally": analyzed_slots[0]["rules"]["can_park_legally"], "is_unknown": False}
+        blocked_msg = analyzed_slots[0].get("blocked_reason") or "Space is occupied or obstructed."
+    else:
+        occ_status = "AVAILABLE"
+        has_obs = False
+        fit_data = {"is_suitable": False, "message": "No delineated slots found."}
+        perm_data = {"can_park_legally": True, "is_unknown": False}
+        blocked_msg = None
+
+    mean_det_conf = float(np.mean([d["confidence"] for d in detections])) if detections else 0.85
+    confidence_res = confidence_scorer.evaluate(
+        zone_result=zone_result,
+        occupancy_status=occ_status,
+        obstacle_detected=has_obs,
+        vehicle_fit=fit_data,
+        permission_info=perm_data,
+        detection_confidence=mean_det_conf,
+        blocked_reason=blocked_msg
+    )
+
+    # 8. Temporal Stability Filter across buffered frames
+    temporal_res = temporal_tracker.add_frame_result(confidence_res)
+
+    final_decision = temporal_res.get("decision", confidence_res["decision"])
+    decision_color = temporal_res.get("decision_color", confidence_res["decision_color"])
+    decision_icon = temporal_res.get("decision_icon", confidence_res["decision_icon"])
+    headline = temporal_res.get("headline", confidence_res["headline"])
+    reason = temporal_res.get("reason", confidence_res["reason"])
+
+    # If temporal tracker detected instability or space is occupied/blocked, do not recommend
+    if final_decision != DecisionState.SUITABLE:
+        recommended_slot = None
+
+    # Build normalized AR overlay coordinates (0.0 to 1.0)
     ar_slots = []
     for s in analyzed_slots:
         norm_poly = [[round(pt[0] / w, 4), round(pt[1] / h, 4)] for pt in s["polygon"]]
@@ -3041,33 +3201,36 @@ async def analyze_live_frame(
             "message": s["vehicle_fit"]["message"]
         })
 
-    # 7. Natural Guidance & Voice Synthesis Speech String
-    if recommended_slot:
+    # Guidance speech & banners
+    if final_decision == DecisionState.SUITABLE and recommended_slot:
         rec_label = recommended_slot["label"]
         rec_fit = recommended_slot["vehicle_fit"]
         speech_text = (
-            f"Parking spot identified! {rec_label} is free. "
+            f"Parking spot potentially suitable! {rec_label} is verified and free. "
             f"Space is {rec_fit['slot_length_ft']} feet long by {rec_fit['slot_width_ft']} feet wide. "
             f"It fits your {bike_display_name} with {rec_fit['clearance_ft_str']} clearance."
         )
         guidance_banner = (
-            f"⭐ PARK IN {rec_label.upper()} • Space {rec_fit['dims_ft_str']} ({rec_fit['slot_length_m']}m × {rec_fit['slot_width_m']}m) "
+            f"🟢 POTENTIALLY SUITABLE • {rec_label.upper()} ({rec_fit['dims_ft_str']}) "
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
+    elif final_decision == DecisionState.UNCERTAIN:
+        speech_text = "Parking status uncertain. The area appears physically open, but parking status or permission could not be verified."
+        guidance_banner = f"🟡 PARKING STATUS UNCERTAIN • {reason}"
     else:
         any_avail = any(s["status"] == "AVAILABLE" for s in analyzed_slots)
         if any_avail:
-            speech_text = f"Spaces detected are too narrow for your {bike_display_name}. Do not park here."
-            guidance_banner = f"❌ SPACES TOO NARROW • Detected bays do not fit {bike_display_name} safely"
+            speech_text = f"Spaces in view are too narrow for your {bike_display_name}. Do not park here."
+            guidance_banner = f"🔴 NOT SUITABLE • Bays do not fit {bike_display_name} safely"
         else:
-            speech_text = f"Scanning ground area for {bike_display_name}. Evaluating space dimensions."
-            guidance_banner = f"Scanning Camera View... Evaluating space dimensions for {bike_display_name}"
+            speech_text = "Not suitable for parking. All spaces are currently occupied or obstructed."
+            guidance_banner = f"🔴 NOT SUITABLE FOR PARKING • {reason}"
 
     avail_count = sum(1 for s in analyzed_slots if s["status"] == "AVAILABLE")
     occ_count = sum(1 for s in analyzed_slots if s["status"] == "OCCUPIED")
     block_count = sum(1 for s in analyzed_slots if s["status"] == "BLOCKED")
 
-    # 8. Generate high-contrast Computer Vision annotated image
+    # Generate high-contrast Computer Vision annotated image
     annotated_frame = ParkingVisualizer.annotate_frame(
         image,
         analyzed_slots,
@@ -3080,6 +3243,20 @@ async def analyze_live_frame(
 
     return {
         "success": True,
+        "status_code": final_decision,
+        "final_decision": final_decision,
+        "decision_color": decision_color,
+        "decision_icon": decision_icon,
+        "headline": headline,
+        "reason": reason,
+        "checklist": confidence_res["checklist"],
+        "confidence_score": temporal_res.get("confidence_score", confidence_res["confidence_score"]),
+        "confidence_percent": temporal_res.get("confidence_percent", confidence_res["confidence_percent"]),
+        "breakdown": confidence_res["breakdown"],
+        "can_recommend": (final_decision == DecisionState.SUITABLE),
+        "is_parking_scene": True,
+        "is_indoor": False,
+        "zone_class": zone_result["zone_class"],
         "recommended_slot": recommended_slot,
         "guidance_banner": guidance_banner,
         "speech_text": speech_text,
@@ -3098,6 +3275,353 @@ async def analyze_live_frame(
         "vehicle": veh_specs,
         "frame_resolution": {"width": w, "height": h}
     }
+
+
+@app.post("/api/cv/scan-multiframe")
+async def scan_multiframe_endpoint(
+    frames_json: Optional[str] = Form(None),
+    image_base64: Optional[str] = Form(None),
+    vehicle_type: str = Form("bike_cruiser"),
+    custom_length: Optional[float] = Form(2.15),
+    custom_width: Optional[float] = Form(0.85),
+    bike_model: Optional[str] = Form("Royal Enfield Classic 350"),
+    scenario_key: Optional[str] = Form(None),
+    map_lot_id: Optional[str] = Form(None),
+    map_is_known: Optional[bool] = Form(False),
+    parking_mode: Optional[str] = Form("auto")
+):
+    """
+    Multi-Frame Burst Inference Endpoint (Sections 13, 14, 15).
+    Captures a sequence of consecutive frames (e.g. 3-5 frames) after the user
+    safely stops the vehicle, analyzes consistency across all frames, and produces
+    a temporally-stabilized decision:
+      🟢 SUITABLE
+      🟡 UNCERTAIN
+      🔴 NOT SUITABLE
+
+    Enforces the Core Principle: EMPTY SPACE != PARKING SPACE.
+    """
+    raw_frames = []
+    if frames_json:
+        try:
+            raw_frames = json.loads(frames_json)
+        except Exception:
+            raw_frames = []
+    elif image_base64:
+        raw_frames = [image_base64]
+
+    if not raw_frames:
+        raise HTTPException(status_code=400, detail="No camera frames provided for multi-frame scan.")
+
+    # Decode all image frames
+    decoded_images = []
+    for b64 in raw_frames:
+        clean_b64 = b64.split(",", 1)[1] if "," in b64 else b64
+        try:
+            raw_bytes = base64.b64decode(clean_b64)
+            nparr = np.frombuffer(raw_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is not None:
+                decoded_images.append(img)
+        except Exception:
+            continue
+
+    if not decoded_images:
+        raise HTTPException(status_code=400, detail="Failed to decode any valid camera frames.")
+
+    veh_specs = matcher.get_vehicle_specs(
+        vehicle_type=vehicle_type,
+        custom_length=custom_length,
+        custom_width=custom_width,
+        custom_name=bike_model
+    )
+    bike_display_name = bike_model or veh_specs["name"]
+
+    map_context = {}
+    if map_is_known or scenario_key or map_lot_id:
+        map_context = {
+            "is_known_parking": True,
+            "type": "public",
+            "name": map_lot_id or "Public Parking Facility"
+        }
+
+    # Burst Temporal Tracker for this specific scan
+    burst_tracker = TemporalParkingTracker(window_size=max(len(decoded_images), 4), min_consistent_ratio=0.70)
+    frame_evals = []
+    latest_slots = []
+    latest_detections = []
+    latest_norm_detections = []
+    best_img = decoded_images[-1]
+    last_zone_result = None
+
+    for idx, img in enumerate(decoded_images):
+        h, w = img.shape[:2]
+        detections = detector.detect(img, conf_threshold=0.20)
+        zone_result = zone_validator.validate_zone(
+            image=img,
+            detections=detections,
+            map_context=map_context,
+            parking_mode=parking_mode
+        )
+        last_zone_result = zone_result
+
+        # Norm detections for HUD
+        norm_dets = []
+        v_count = 0
+        o_count = 0
+        for d in detections:
+            xmin, ymin, xmax, ymax = d["bbox"]
+            cname = d.get("class_name", "object").lower()
+            is_indoor = d.get("is_indoor", False)
+            is_obs = d.get("is_obstacle", False) or (d.get("category") == "obstacle") or is_indoor or (cname not in ("car", "motorcycle", "bus", "truck", "train", "bicycle"))
+            if not is_obs:
+                v_count += 1
+            else:
+                o_count += 1
+            norm_dets.append({
+                "class_name": cname.upper(),
+                "confidence": round(float(d.get("confidence", 0.85)), 2),
+                "is_vehicle": not is_obs,
+                "is_obstacle": is_obs,
+                "is_indoor": is_indoor,
+                "normalized_bbox": [
+                    round(xmin / w, 4),
+                    round(ymin / h, 4),
+                    round((xmax - xmin) / w, 4),
+                    round((ymax - ymin) / h, 4)
+                ]
+            })
+
+        latest_detections = detections
+        latest_norm_detections = norm_dets
+
+        # Evaluate individual frame
+        if zone_result["status"] == ZoneStatus.INVALID:
+            conf_res = confidence_scorer.evaluate(
+                zone_result=zone_result,
+                occupancy_status="BLOCKED",
+                obstacle_detected=True,
+                vehicle_fit={"is_suitable": False, "width_margin_m": -1.0, "message": "Not an authorized parking zone."},
+                permission_info={"can_park_legally": False, "is_unknown": False, "is_prohibited": True},
+                detection_confidence=float(np.mean([d["confidence"] for d in detections])) if detections else 0.85,
+                blocked_reason=zone_result["headline"]
+            )
+            analyzed_slots = []
+        elif zone_result["status"] == ZoneStatus.UNKNOWN:
+            conf_res = confidence_scorer.evaluate(
+                zone_result=zone_result,
+                occupancy_status="AVAILABLE",
+                obstacle_detected=False,
+                vehicle_fit={"is_suitable": True, "width_margin_m": 0.0, "clearance_ft_str": "Unverified"},
+                permission_info={"can_park_legally": False, "is_unknown": True},
+                detection_confidence=float(np.mean([d["confidence"] for d in detections])) if detections else 0.70
+            )
+            analyzed_slots = []
+        else:
+            # VALID ZONE
+            scenarios = load_scenarios()
+            scenario_data = scenarios.get(scenario_key) if scenario_key in scenarios else None
+            predefined_slots = scenario_data.get("slots") if scenario_data else None
+
+            analyzed_slots = space_analyzer.analyze_spaces(
+                image_shape=(h, w),
+                detections=detections,
+                zone_info=zone_result,
+                predefined_slots=predefined_slots,
+                vehicle_specs=veh_specs,
+                parking_mode=parking_mode
+            )
+            for s in analyzed_slots:
+                rule_zone = s.get("rule_zone", "registered")
+                s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
+
+            rec_slot = None
+            for s in analyzed_slots:
+                if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
+                    rec_slot = s
+                    break
+
+            if rec_slot:
+                occ_s = "AVAILABLE"
+                obs_d = False
+                f_data = rec_slot["vehicle_fit"]
+                p_data = {"can_park_legally": True, "is_unknown": False}
+                b_reason = None
+            elif analyzed_slots:
+                any_b = any(s["status"] == "BLOCKED" for s in analyzed_slots)
+                any_o = any(s["status"] == "OCCUPIED" for s in analyzed_slots)
+                occ_s = "BLOCKED" if any_b else ("OCCUPIED" if any_o else "AVAILABLE")
+                obs_d = any_b
+                f_data = analyzed_slots[0]["vehicle_fit"]
+                p_data = {"can_park_legally": analyzed_slots[0]["rules"]["can_park_legally"], "is_unknown": False}
+                b_reason = analyzed_slots[0].get("blocked_reason") or "Space is occupied or obstructed."
+            else:
+                occ_s = "AVAILABLE"
+                obs_d = False
+                f_data = {"is_suitable": False, "message": "No delineated slots found."}
+                p_data = {"can_park_legally": True, "is_unknown": False}
+                b_reason = None
+
+            conf_res = confidence_scorer.evaluate(
+                zone_result=zone_result,
+                occupancy_status=occ_s,
+                obstacle_detected=obs_d,
+                vehicle_fit=f_data,
+                permission_info=p_data,
+                detection_confidence=float(np.mean([d["confidence"] for d in detections])) if detections else 0.85,
+                blocked_reason=b_reason
+            )
+
+        latest_slots = analyzed_slots
+        burst_tracker.add_frame_result(conf_res)
+        frame_evals.append({
+            "frame_index": idx + 1,
+            "decision": conf_res["decision"],
+            "zone_class": zone_result["zone_class"],
+            "confidence_percent": conf_res["confidence_percent"],
+            "headline": conf_res["headline"]
+        })
+
+    # Evaluate multi-frame consistency from burst tracker
+    stabilized = burst_tracker.evaluate_stability(conf_res)
+    final_decision = stabilized.get("decision", conf_res["decision"])
+    decision_color = stabilized.get("decision_color", conf_res["decision_color"])
+    decision_icon = stabilized.get("decision_icon", conf_res["decision_icon"])
+    headline = stabilized.get("headline", conf_res["headline"])
+    reason = stabilized.get("reason", conf_res["reason"])
+    temporal_stable = stabilized.get("temporal_stable", True)
+
+    # Any invalid zone across frames takes safety precedence
+    any_invalid = any(fe["decision"] == DecisionState.NOT_SUITABLE and "INVALID" in str(fe.get("zone_class", "")) for fe in frame_evals)
+    if any_invalid and final_decision == DecisionState.SUITABLE:
+        final_decision = DecisionState.NOT_SUITABLE
+        decision_color = "red"
+        decision_icon = "🔴"
+        headline = "NOT SUITABLE FOR PARKING"
+        reason = "A non-parking surface (indoor floor, traffic lane, or private boundary) was detected during multi-frame scan."
+
+    # If not SUITABLE, do not recommend slot
+    recommended_slot = None
+    if final_decision == DecisionState.SUITABLE and latest_slots:
+        for s in latest_slots:
+            if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s.get("rules", {}).get("can_park_legally", True):
+                recommended_slot = s
+                break
+
+    h_best, w_best = best_img.shape[:2]
+    ar_slots = []
+    for s in latest_slots:
+        norm_poly = [[round(pt[0] / w_best, 4), round(pt[1] / h_best, 4)] for pt in s["polygon"]]
+        is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
+        cx = sum(p[0] for p in norm_poly) / len(norm_poly)
+        cy = sum(p[1] for p in norm_poly) / len(norm_poly)
+        ar_slots.append({
+            "id": s["id"],
+            "label": s["label"],
+            "status": s["status"],
+            "is_recommended": is_rec,
+            "is_suitable": s["vehicle_fit"]["is_suitable"],
+            "fit_status": s["vehicle_fit"]["fit_status"],
+            "normalized_polygon": norm_poly,
+            "center": [round(cx, 4), round(cy, 4)],
+            "fit_badge": s["vehicle_fit"]["fit_badge"],
+            "width_m": s["metrics"]["width_m"],
+            "length_m": s["metrics"]["length_m"],
+            "width_ft": s["metrics"]["width_ft"],
+            "length_ft": s["metrics"]["length_ft"],
+            "margin_m": s["vehicle_fit"]["width_margin_m"],
+            "margin_ft": s["vehicle_fit"]["width_margin_ft"],
+            "dims_ft": s["metrics"]["dims_ft"],
+            "dims_m": s["metrics"]["dims_m"],
+            "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
+            "blocked_reason": s.get("blocked_reason"),
+            "message": s["vehicle_fit"]["message"]
+        })
+
+    # Guidance banner & speech
+    if final_decision == DecisionState.SUITABLE and recommended_slot:
+        rec_fit = recommended_slot["vehicle_fit"]
+        speech_text = (
+            f"Multi-frame scan verified: {recommended_slot['label']} is potentially suitable. "
+            f"Space is {rec_fit['slot_length_ft']} ft by {rec_fit['slot_width_ft']} ft, fitting your {bike_display_name}."
+        )
+        guidance_banner = (
+            f"🟢 POTENTIALLY SUITABLE • {recommended_slot['label'].upper()} ({rec_fit['dims_ft_str']}) "
+            f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
+        )
+    elif final_decision == DecisionState.UNCERTAIN:
+        speech_text = "Parking status uncertain. The area appears physically open, but parking status or permission could not be verified."
+        guidance_banner = f"🟡 PARKING STATUS UNCERTAIN • {reason}"
+    else:
+        speech_text = f"Not suitable for parking. {reason}"
+        guidance_banner = f"🔴 NOT SUITABLE FOR PARKING • {reason}"
+
+    # Annotate frame
+    annotated_frame = ParkingVisualizer.annotate_frame(
+        best_img,
+        latest_slots,
+        latest_detections,
+        vehicle_name=veh_specs.get("name", "Vehicle"),
+        selected_slot_id=recommended_slot["id"] if recommended_slot else None
+    )
+    _, buf = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+    annotated_b64 = base64.b64encode(buf).decode("utf-8")
+
+    return {
+        "success": True,
+        "status_code": final_decision,
+        "final_decision": final_decision,
+        "decision_color": decision_color,
+        "decision_icon": decision_icon,
+        "headline": headline,
+        "reason": reason,
+        "checklist": conf_res["checklist"],
+        "confidence_score": stabilized.get("confidence_score", conf_res["confidence_score"]),
+        "confidence_percent": stabilized.get("confidence_percent", conf_res["confidence_percent"]),
+        "breakdown": conf_res["breakdown"],
+        "temporal_samples": len(decoded_images),
+        "temporal_stable": temporal_stable,
+        "frame_summaries": frame_evals,
+        "can_recommend": (final_decision == DecisionState.SUITABLE),
+        "is_parking_scene": (last_zone_result.get("is_valid", False) if last_zone_result else False),
+        "zone_class": last_zone_result.get("zone_class", "unknown_area") if last_zone_result else "unknown_area",
+        "recommended_slot": recommended_slot,
+        "guidance_banner": guidance_banner,
+        "speech_text": speech_text,
+        "ar_slots": ar_slots,
+        "detections": latest_norm_detections,
+        "annotated_frame": f"data:image/jpeg;base64,{annotated_b64}",
+        "summary": {
+            "total_slots": len(latest_slots),
+            "available": sum(1 for s in latest_slots if s["status"] == "AVAILABLE"),
+            "occupied": sum(1 for s in latest_slots if s["status"] == "OCCUPIED"),
+            "blocked": sum(1 for s in latest_slots if s["status"] == "BLOCKED")
+        },
+        "vehicle": veh_specs
+    }
+
+
+@app.get("/api/cv/test-scenarios")
+@app.post("/api/cv/test-scenarios")
+async def run_cv_test_scenarios_endpoint():
+    """
+    Executes automated validation for all 11 core scenarios from Section 18:
+    1. Empty home floor -> NOT SUITABLE
+    2. Empty house driveway -> UNCERTAIN / NOT SUITABLE
+    3. Empty garden -> NOT SUITABLE
+    4. Empty field -> NOT SUITABLE
+    5. Empty footpath -> NOT SUITABLE
+    6. Empty road / traffic lane -> NOT SUITABLE / UNCERTAIN
+    7. Empty marked parking slot -> SUITABLE
+    8. Occupied parking slot -> NOT SUITABLE
+    9. Parking slot with obstacle -> NOT SUITABLE
+    10. Known public parking location with empty slot -> SUITABLE
+    11. Unknown roadside space -> UNCERTAIN
+
+    Enforces Core Principle: EMPTY SPACE != PARKING SPACE.
+    """
+    res = CoreScenarioRunner.run_all_scenarios()
+    return res
 
 
 @app.get("/health")

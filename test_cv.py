@@ -37,6 +37,8 @@ def load_scenarios_config():
 
 def main():
     parser = argparse.ArgumentParser(description="Smart Parking Computer Vision Analysis Pipeline")
+    parser.add_argument("--run-scenarios", action="store_true",
+                        help="Run automated verification of all 11 Core Parking Scenarios (Section 18)")
     parser.add_argument("--scenario", type=str, default="scenario_1_aerial",
                         choices=["scenario_1_aerial", "scenario_2_driver", "scenario_3_rooftop", "scenario_4_tight"],
                         help="Pre-configured test scenario key")
@@ -50,6 +52,26 @@ def main():
     parser.add_argument("--bev-out", type=str, default="output_bev.jpg",
                         help="Path to save bird's-eye view warped image")
     args = parser.parse_args()
+
+    if args.run_scenarios:
+        from backend.cv.test_core_pipeline import CoreScenarioRunner
+        print("\n" + "=" * 80)
+        print("    EXECUTING 11 CORE PARKING DETECTION SCENARIOS (SECTION 18)")
+        print("    Core Principle Enforcement: EMPTY SPACE != PARKING SPACE")
+        print("=" * 80)
+        res = CoreScenarioRunner.run_all_scenarios()
+        print(f"\n{'ID':<3} | {'SCENARIO NAME':<32} | {'EXPECTED':<22} | {'ACTUAL':<14} | {'PASS'}")
+        print("-" * 80)
+        for s in res["scenarios"]:
+            p_str = "PASS [✓]" if s["passed"] else "FAIL [✗]"
+            print(f"{s['id']:<3} | {s['name']:<32} | {s['expected']:<22} | {s['actual']:<14} | {p_str}")
+            print(f"    Reason: {s['reason']}")
+            print(f"    Confidence: {s['confidence_percent']}% | Status: {s['headline']}")
+            print("-" * 80)
+        print(f"\n[SUMMARY] Total: {res['total_scenarios']} | Passed: {res['passed_count']} | Failed: {res['failed_count']}")
+        print(f"Verdict: {'ALL 11 SCENARIOS PASSED SUCCESSFULLY [✓]' if res['all_passed'] else 'FAILURES DETECTED [✗]'}")
+        print("=" * 80 + "\n")
+        return
 
     print("\n" + "=" * 75)
     print("      SMART PARKING DETECTION USING COMPUTER VISION")

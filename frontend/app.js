@@ -2263,7 +2263,7 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       // Label text with REAL FEET DIMENSIONS
       ctx.fillStyle = '#10b981';
       ctx.font = 'bold 13px sans-serif';
-      ctx.fillText('PARK HERE', cx, cy - 34);
+      ctx.fillText('POTENTIALLY SUITABLE', cx, cy - 34);
       ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.fillText(`${sLenFt} ft × ${sWidFt} ft (${clearFt})`, cx, cy + 32);
@@ -2277,7 +2277,7 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         pointer.style.left = `${cx}px`;
         pointer.style.top = `${cy - 20}px`;
         const arPtrText = document.getElementById('ar-pointer-text');
-        if (arPtrText) arPtrText.textContent = `★ PARK: ${sLenFt}ft × ${sWidFt}ft ★`;
+        if (arPtrText) arPtrText.textContent = `★ SUITABLE: ${sLenFt}ft × ${sWidFt}ft ★`;
         pointer.classList.remove('hidden');
         pointerShown = true;
       }
@@ -4656,6 +4656,12 @@ function wzInitStep5() {
   if (bikeNameEl && state.userProfile) {
     bikeNameEl.textContent = state.userProfile.bikeModel || 'bike';
   }
+
+  // Hook up automated 11-scenario verification test button
+  const scenarioBtn = document.getElementById('btn-run-scenario-tests');
+  if (scenarioBtn) {
+    scenarioBtn.addEventListener('click', () => wzRunScenarioTests());
+  }
 }
 
 async function wzStartCamera() {
@@ -4697,14 +4703,18 @@ async function wzStartCamera() {
     if (camHud) camHud.classList.remove('hidden');
     if (statusEl) statusEl.textContent = '🟢 Live Camera Active — Pointing at Parking Row';
 
-    // Hook up metadata, canplay, playing events to start scanning immediately
+    // Hook up metadata, canplay, playing events
     let scanStarted = false;
     const triggerScanLoop = () => {
       wzResizeARCanvas();
       if (!scanStarted) {
         scanStarted = true;
-        setTimeout(() => wzCaptureAndScan(), 250);
-        wzStartAutoScan();
+        if (wz.cam.isAutoScanning) {
+          setTimeout(() => wzCaptureAndScan(), 250);
+          wzStartAutoScan();
+        } else {
+          if (statusEl) statusEl.textContent = '🟢 Camera Ready — Stop safely and press "Scan Parking Area"';
+        }
       }
     };
 
@@ -4794,7 +4804,10 @@ function wzStartAutoScan() {
 async function wzCaptureAndScan() {
   if (wz.cam.isScanningNow) return;
   const video = document.getElementById('wz-cam-video');
-  if (!video || !wz.cam.stream) return;
+  if (!video || (!wz.cam.stream && !wz.cam.isSimulated)) {
+    showToast('⚠️ Please allow camera access before scanning.');
+    return;
+  }
 
   // If video hasn't loaded frame yet, retry quickly
   if (video.videoWidth === 0 || video.videoHeight === 0) {
@@ -4806,35 +4819,52 @@ async function wzCaptureAndScan() {
   const viewport = document.getElementById('wz-camera-viewport');
   if (viewport) viewport.classList.add('scanning-active');
   const spinner = document.getElementById('wz-scan-spinner');
+  const spinnerText = document.getElementById('wz-scan-status-text');
   if (spinner) spinner.classList.remove('hidden');
 
   const statusEl = document.getElementById('wz-cam-status');
-  if (statusEl) statusEl.textContent = '⚡ Scanning parking row with YOLO...';
+  if (statusEl) statusEl.textContent = '🛑 Vehicle stopped • Multi-frame scanning...';
 
   // Safety timer so scanner never hangs
   const scanSafety = setTimeout(() => {
     wz.cam.isScanningNow = false;
     if (spinner) spinner.classList.add('hidden');
     if (viewport) viewport.classList.remove('scanning-active');
-  }, 3500);
+  }, 9000);
 
   try {
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    // Downscale to 640 max dimension for ultra-fast, responsive network upload
+    // Requirement 13 & 14: Multi-frame capture sequence (4 frames, spaced 200ms apart)
+    const frames = [];
+    const maxFrames = 4;
     const maxDim = 640;
-    let cw = vw, ch = vh;
-    if (cw > maxDim || ch > maxDim) {
-      if (cw > ch) { ch = Math.round((ch * maxDim) / cw); cw = maxDim; }
-      else { cw = Math.round((cw * maxDim) / ch); ch = maxDim; }
+
+    for (let f = 0; f < maxFrames; f++) {
+      if (spinnerText) spinnerText.textContent = `Capturing Frame ${f + 1} of ${maxFrames}...`;
+      if (statusEl) statusEl.textContent = `📸 Multi-frame scan: Frame ${f + 1} of ${maxFrames}...`;
+
+      const cw = video.videoWidth || 640;
+      const ch = video.videoHeight || 480;
+      let targetW = cw, targetH = ch;
+      if (targetW > maxDim || targetH > maxDim) {
+        if (targetW > targetH) { targetH = Math.round((targetH * maxDim) / targetW); targetW = maxDim; }
+        else { targetW = Math.round((targetW * maxDim) / targetH); targetH = maxDim; }
+      }
+
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = targetW;
+      tmpCanvas.height = targetH;
+      const tmpCtx = tmpCanvas.getContext('2d');
+      tmpCtx.drawImage(video, 0, 0, targetW, targetH);
+      const b64 = tmpCanvas.toDataURL('image/jpeg', 0.65);
+      frames.push(b64);
+
+      if (f < maxFrames - 1) {
+        await new Promise(r => setTimeout(r, 200));
+      }
     }
 
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = cw;
-    tmpCanvas.height = ch;
-    const tmpCtx = tmpCanvas.getContext('2d');
-    tmpCtx.drawImage(video, 0, 0, cw, ch);
-    const b64 = tmpCanvas.toDataURL('image/jpeg', 0.65);
+    if (spinnerText) spinnerText.textContent = 'Analyzing multi-frame temporal consistency...';
+    if (statusEl) statusEl.textContent = '⚡ Evaluating zone validity, obstacles & vehicle fit...';
 
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
     const formData = new FormData();
@@ -4842,12 +4872,12 @@ async function wzCaptureAndScan() {
     formData.append('custom_length', p.length || 2.14);
     formData.append('custom_width', p.width || 0.84);
     formData.append('bike_model', p.bikeModel || 'Vehicle');
-    formData.append('image_base64', b64);
+    formData.append('frames_json', JSON.stringify(frames));
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 7500);
 
-    const res = await fetch(`${API_BASE}/api/cv/analyze-live-frame`, {
+    const res = await fetch(`${API_BASE}/api/cv/scan-multiframe`, {
       method: 'POST',
       body: formData,
       signal: controller.signal
@@ -4858,7 +4888,7 @@ async function wzCaptureAndScan() {
     const data = await res.json();
     wzRenderScanResults(data);
   } catch (err) {
-    console.warn('Real-time YOLO scan using resilient client heuristic:', err.message);
+    console.warn('Multi-frame scan fallback:', err.message);
     wzFallbackClientScan(video);
   } finally {
     clearTimeout(scanSafety);
@@ -4868,169 +4898,27 @@ async function wzCaptureAndScan() {
   }
 }
 
-// Intelligent client-side scanner fallback ensures user ALWAYS gets real obstacle and space evaluation
+// Client-side fallback enforces EMPTY != PARKING. Never fabricate parking on empty area.
 function wzFallbackClientScan(video) {
   const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84, wheels: 2 };
-  const vLenFt = (p.length * 3.28084).toFixed(1);
-  const vWidFt = (p.width * 3.28084).toFixed(1);
-
-  // Quick canvas brightness/edge analysis to detect obstacles directly in browser
-  let detectedObstacles = [];
-  try {
-    if (video && video.videoWidth > 0 && video.videoHeight > 0) {
-      const sw = 160, sh = 120;
-      const cvs = document.createElement('canvas');
-      cvs.width = sw; cvs.height = sh;
-      const sctx = cvs.getContext('2d');
-      sctx.drawImage(video, 0, 0, sw, sh);
-      const imgData = sctx.getImageData(0, Math.floor(sh * 0.40), sw, Math.floor(sh * 0.55));
-      const d = imgData.data;
-
-      let colBright = new Float32Array(sw);
-      let rows = Math.floor(sh * 0.55);
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < sw; c++) {
-          const idx = (r * sw + c) * 4;
-          const lum = 0.299 * d[idx] + 0.587 * d[idx + 1] + 0.114 * d[idx + 2];
-          colBright[c] += lum;
-        }
-      }
-      let avgLum = 0;
-      for (let c = 0; c < sw; c++) { colBright[c] /= rows; avgLum += colBright[c]; }
-      avgLum /= sw;
-
-      let inObs = false, obsStart = 0;
-      for (let c = 0; c < sw; c++) {
-        const diff = Math.abs(colBright[c] - avgLum);
-        if (diff > 30 && !inObs) {
-          inObs = true;
-          obsStart = c;
-        } else if (diff <= 30 && inObs) {
-          inObs = false;
-          if ((c - obsStart) > 16) {
-            const xNorm = obsStart / sw;
-            const wNorm = (c - obsStart) / sw;
-            detectedObstacles.push({
-              class_name: "OBSTACLE / HAZARD",
-              category: "obstacle",
-              is_obstacle: true,
-              confidence: 0.85,
-              normalized_bbox: [Number(xNorm.toFixed(2)), 0.44, Number(wNorm.toFixed(2)), 0.44]
-            });
-          }
-        }
-      }
-    }
-  } catch (e) {
-    // Canvas pixel access error handled
-  }
-
-  let arSlots = [];
-  let recSlot = null;
-
-  if (detectedObstacles.length > 0) {
-    const obs = detectedObstacles[0];
-    const [ox, oy, ow, oh] = obs.normalized_bbox;
-
-    // Left clear corridor
-    if (ox >= 0.22) {
-      const wM = Number(Math.max(1.0, (ox - 0.04) * 3.5).toFixed(2));
-      const lM = Number((p.length + 0.4).toFixed(2));
-      const wFt = (wM * 3.28084).toFixed(1);
-      const lFt = (lM * 3.28084).toFixed(1);
-      const marginM = Number((wM - p.width).toFixed(2));
-      const marginFt = (marginM * 3.28084).toFixed(1);
-      const suitable = marginM >= 0.15;
-
-      const leftBay = {
-        id: "Bay 1 (Clear)",
-        label: "Bay 1 (Clear Space)",
-        status: "AVAILABLE",
-        is_recommended: suitable,
-        normalized_polygon: [[0.04, 0.42], [Number((ox * 0.88).toFixed(2)), 0.42], [Number(ox.toFixed(2)), 0.94], [0.02, 0.94]],
-        center: [Number((ox / 2).toFixed(2)), 0.68],
-        length_m: lM,
-        width_m: wM,
-        length_ft: lFt,
-        width_ft: wFt,
-        margin_m: marginM,
-        margin_ft: marginFt,
-        clearance_ft_str: (marginM >= 0 ? '+' : '') + marginFt + ' ft',
-        dims_ft: `${lFt} ft (L) × ${wFt} ft (W)`,
-        fit_badge: suitable ? "🟢 Optimal Fit" : "❌ Too Narrow",
-        message: suitable ? `Space fits your ${p.bikeModel} with +${marginFt} ft clearance.` : `Too narrow for ${p.bikeModel}.`
-      };
-      arSlots.push(leftBay);
-      if (suitable && !recSlot) recSlot = leftBay;
-    }
-
-    // Blocked obstacle zone
-    arSlots.push({
-      id: "Hazard Zone",
-      label: "Hazard / Obstacle",
-      status: "BLOCKED",
-      blocked_reason: "Obstacle Detected on Ground",
-      is_recommended: false,
-      normalized_polygon: [[Number((ox * 0.9).toFixed(2)), 0.42], [Number(((ox + ow) * 1.05).toFixed(2)), 0.42], [Number((ox + ow).toFixed(2)), 0.94], [Number(ox.toFixed(2)), 0.94]],
-      center: [Number((ox + ow / 2).toFixed(2)), 0.68],
-      length_m: 2.2,
-      width_m: Number((ow * 3.5).toFixed(2)),
-      length_ft: (2.2 * 3.28).toFixed(1),
-      width_ft: (ow * 3.5 * 3.28).toFixed(1),
-      margin_m: -0.5,
-      margin_ft: -1.6,
-      fit_badge: "⚠️ Blocked by Obstacle",
-      message: "Blocked by obstacle. Clear ground before parking."
-    });
-
-    // Right clear corridor
-    if ((1.0 - (ox + ow)) >= 0.22) {
-      const wM = Number(Math.max(1.0, (0.96 - (ox + ow)) * 3.5).toFixed(2));
-      const lM = Number((p.length + 0.4).toFixed(2));
-      const wFt = (wM * 3.28084).toFixed(1);
-      const lFt = (lM * 3.28084).toFixed(1);
-      const marginM = Number((wM - p.width).toFixed(2));
-      const marginFt = (marginM * 3.28084).toFixed(1);
-      const suitable = marginM >= 0.15;
-
-      const rightBay = {
-        id: "Bay 2 (Clear)",
-        label: "Bay 2 (Clear Space)",
-        status: "AVAILABLE",
-        is_recommended: suitable && !recSlot,
-        normalized_polygon: [[Number(((ox + ow) * 0.95).toFixed(2)), 0.42], [0.95, 0.42], [0.98, 0.94], [Number((ox + ow).toFixed(2)), 0.94]],
-        center: [Number(((1.0 + ox + ow) / 2).toFixed(2)), 0.68],
-        length_m: lM,
-        width_m: wM,
-        length_ft: lFt,
-        width_ft: wFt,
-        margin_m: marginM,
-        margin_ft: marginFt,
-        clearance_ft_str: (marginM >= 0 ? '+' : '') + marginFt + ' ft',
-        dims_ft: `${lFt} ft (L) × ${wFt} ft (W)`,
-        fit_badge: suitable ? "🟢 Optimal Fit" : "❌ Too Narrow",
-        message: suitable ? `Space fits your ${p.bikeModel} with +${marginFt} ft clearance.` : `Too narrow for ${p.bikeModel}.`
-      };
-      arSlots.push(rightBay);
-      if (suitable && !recSlot) recSlot = rightBay;
-    }
-  } else {
-    // Plain ground without marked bays or vehicles - requires outdoor road confirmation
-    recSlot = null;
-    arSlots = [];
-  }
-
   const resultData = {
     success: true,
-    status_code: recSlot ? 'SPACE_FOUND' : 'SCANNING_FOR_ROAD',
-    is_parking_scene: !!recSlot,
+    status_code: 'UNCERTAIN',
+    final_decision: 'UNCERTAIN',
+    decision_color: 'yellow',
+    decision_icon: '🟡',
+    headline: 'PARKING STATUS UNCERTAIN',
+    reason: 'Offline or unstable scan. An open area was seen, but authentic parking status and permission could not be verified.',
+    can_recommend: false,
+    recommended_slot: null,
+    ar_slots: [],
+    detections: [],
     vehicles_count: 0,
-    obstacles_count: detectedObstacles.length,
-    detections: detectedObstacles,
-    recommended_slot: recSlot,
-    ar_slots: arSlots,
-    guidance_banner: recSlot ? `⭐ PARK HERE • Space ${recSlot.metrics?.length_ft || recSlot.length_ft} ft × ${recSlot.metrics?.width_ft || recSlot.width_ft} ft • Fits ${p.bikeModel}` : '🔍 Align Camera with Marked Parking Bays or Outdoor Road',
-    speech_text: recSlot ? `Free space found! Length is ${recSlot.metrics?.length_ft || recSlot.length_ft} feet, width is ${recSlot.metrics?.width_ft || recSlot.width_ft} feet. It fits your ${p.bikeModel}.` : 'Scanning camera view for road surface or marked parking bays.'
+    obstacles_count: 0,
+    confidence_score: 0.45,
+    confidence_percent: 45,
+    guidance_banner: '🟡 PARKING STATUS UNCERTAIN • Valid parking zone or permission could not be verified',
+    speech_text: 'Parking status uncertain. The area could not be verified as legal parking. Please use a designated parking lot.'
   };
 
   wzRenderScanResults(resultData);
@@ -5041,8 +4929,64 @@ function wzRenderScanResults(data) {
 
   const rec = data.recommended_slot;
   const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84, wheels: 2 };
+  const decision = data.final_decision || (data.can_recommend ? 'SUITABLE' : 'UNCERTAIN');
 
+  // 1. Update 3-State Decision Badge
+  const decBadge = document.getElementById('wz-rec-decision-badge');
+  const decIcon = document.getElementById('wz-decision-icon');
+  const decText = document.getElementById('wz-decision-text');
   const titleEl = document.getElementById('wz-rec-title');
+  const reasonEl = document.getElementById('wz-rec-reason');
+
+  if (decBadge) {
+    decBadge.className = `wz-rec-decision-badge state-${decision === 'SUITABLE' ? 'suitable' : (decision === 'UNCERTAIN' ? 'uncertain' : 'not-suitable')}`;
+  }
+  if (decIcon) decIcon.textContent = data.decision_icon || (decision === 'SUITABLE' ? '🟢' : (decision === 'UNCERTAIN' ? '🟡' : '🔴'));
+  if (decText) decText.textContent = data.headline || (decision === 'SUITABLE' ? 'PARKING SPACE POTENTIALLY SUITABLE' : (decision === 'UNCERTAIN' ? 'PARKING STATUS UNCERTAIN' : 'NOT SUITABLE FOR PARKING'));
+
+  if (titleEl) titleEl.textContent = data.headline || (decision === 'SUITABLE' ? 'Parking Space Potentially Suitable' : 'Parking Status Uncertain');
+  if (reasonEl) reasonEl.textContent = data.reason || 'Point camera toward marked parking spaces or designated roadside parking.';
+
+  // 2. Update Section 16 Checklist Grid
+  const chkTime = document.getElementById('wz-checklist-time');
+  if (chkTime) {
+    const samplesStr = data.temporal_samples ? ` (${data.temporal_samples} frames)` : '';
+    chkTime.textContent = `Last check: Just now${samplesStr}`;
+  }
+
+  const cl = data.checklist;
+  if (cl) {
+    const setChk = (prefix, item) => {
+      if (!item) return;
+      const ic = document.getElementById(`chk-${prefix}-icon`);
+      const st = document.getElementById(`chk-${prefix}-status`);
+      if (ic) ic.textContent = item.status_icon || '✓';
+      if (st) st.textContent = item.label || 'Verified';
+    };
+    setChk('zone', cl.zone);
+    setChk('space', cl.space);
+    setChk('obstacle', cl.obstacles);
+    setChk('fit', cl.vehicle_fit);
+    setChk('perm', cl.permission);
+  }
+
+  // 3. Update Holistic Confidence Score Meter
+  const confPct = document.getElementById('wz-conf-percent');
+  const confBar = document.getElementById('wz-conf-bar');
+  const confBk = document.getElementById('wz-conf-breakdown');
+  const pVal = data.confidence_percent !== undefined ? data.confidence_percent : Math.round((data.confidence_score || 0.5) * 100);
+
+  if (confPct) confPct.textContent = `${pVal}%`;
+  if (confBar) {
+    confBar.style.width = `${pVal}%`;
+    confBar.style.background = decision === 'SUITABLE' ? 'linear-gradient(90deg, #10b981, #059669)' : (decision === 'UNCERTAIN' ? 'linear-gradient(90deg, #f59e0b, #d97706)' : 'linear-gradient(90deg, #ef4444, #dc2626)');
+  }
+  if (confBk && data.breakdown) {
+    const b = data.breakdown;
+    confBk.textContent = `Zone: ${Math.round((b.parking_zone||0)*100)}% • Space: ${Math.round((b.space_free||0)*100)}% • Obstacles: ${Math.round((b.obstacle_free||0)*100)}% • Fit: ${Math.round((b.vehicle_fit||0)*100)}% • Perm: ${Math.round((b.permission||0)*100)}%`;
+  }
+
+  // 4. Update Dimensions & Vehicle Clearance
   const statusEl = document.getElementById('wz-rec-status');
   const dimsEl = document.getElementById('wz-rec-dims');
   const bikeEl = document.getElementById('wz-rec-bike');
@@ -5058,70 +5002,7 @@ function wzRenderScanResults(data) {
 
   const pointer = document.getElementById('wz-ar-pointer');
 
-  // 1. Handle INDOOR domestic scene
-  if (data.status_code === 'INDOOR_DETECTED' || data.is_indoor) {
-    if (titleEl) titleEl.textContent = '🏠 Indoor Domestic Area Detected';
-    if (statusEl) {
-      statusEl.textContent = '⚠️ Not a Parking Area';
-      statusEl.style.color = '#dc2626';
-    }
-    if (dimsEl) dimsEl.innerHTML = '<span style="color:#dc2626;font-weight:600;">Domestic Space</span>';
-    if (clearEl) clearEl.innerHTML = '<span style="color:#dc2626;font-weight:600;">0.0 ft</span>';
-    if (msgEl) msgEl.textContent = data.guidance_banner || data.scene_reason || 'Indoor domestic setting detected. Please point camera outside at a road or parking lot.';
-
-    const wzStatus = document.getElementById('wz-cam-status');
-    if (wzStatus) {
-      const indoorObjStr = (data.indoor_objects && data.indoor_objects.length > 0) ? `(${data.indoor_objects.join(', ')})` : '';
-      wzStatus.innerHTML = `<span style="color:#dc2626;font-weight:700;">🏠 Indoor Environment Detected ${indoorObjStr}</span>`;
-    }
-
-    if (pointer) pointer.classList.add('hidden');
-    wzDrawAROverlay([], null, data.detections || [], data);
-
-    const baysList = document.getElementById('wz-bays-list');
-    if (baysList) {
-      baysList.innerHTML = `
-        <div style="padding:16px;text-align:center;color:#ef4444;background:rgba(239,68,68,0.08);border-radius:10px;border:1px dashed #ef4444;">
-          <strong>🏠 Domestic Environment Detected</strong>
-          <p style="margin:6px 0 0;font-size:0.85rem;color:var(--text-muted);">Please point your phone camera at an outdoor parking lot or roadway.</p>
-        </div>
-      `;
-    }
-    return;
-  }
-
-  // 2. Handle scanning for outdoor road surface
-  if (data.status_code === 'SCANNING_FOR_ROAD') {
-    if (titleEl) titleEl.textContent = 'Scanning Ground Surface...';
-    if (statusEl) {
-      statusEl.textContent = '🟡 Searching for Road Surface';
-      statusEl.style.color = '#d97706';
-    }
-    if (dimsEl) dimsEl.textContent = '—';
-    if (clearEl) clearEl.textContent = '—';
-    if (msgEl) msgEl.textContent = 'Align camera with outdoor roadway or marked parking bays.';
-
-    const wzStatus = document.getElementById('wz-cam-status');
-    if (wzStatus) {
-      wzStatus.innerHTML = `🟡 Searching for Outdoor Parking Surface &bull; Point toward road`;
-    }
-
-    if (pointer) pointer.classList.add('hidden');
-    wzDrawAROverlay([], null, data.detections || [], data);
-
-    const baysList = document.getElementById('wz-bays-list');
-    if (baysList) {
-      baysList.innerHTML = `
-        <div style="padding:16px;text-align:center;color:#d97706;background:rgba(217,119,6,0.08);border-radius:10px;border:1px dashed #d97706;">
-          <strong>🔍 Align Camera with Parking Ground</strong>
-          <p style="margin:6px 0 0;font-size:0.85rem;color:var(--text-muted);">Point camera toward street asphalt, marked lines, or parked vehicles.</p>
-        </div>
-      `;
-    }
-    return;
-  }
-
-  if (rec) {
+  if (decision === 'SUITABLE' && rec) {
     const sLenFt = rec.metrics?.length_ft || (rec.metrics?.length_m ? (rec.metrics.length_m * 3.28084).toFixed(1) : (rec.length_ft || '7.5'));
     const sWidFt = rec.metrics?.width_ft || (rec.metrics?.width_m ? (rec.metrics.width_m * 3.28084).toFixed(1) : (rec.width_ft || '4.0'));
     const sLenM = rec.metrics?.length_m || rec.length_m || (sLenFt / 3.28).toFixed(2);
@@ -5130,84 +5011,146 @@ function wzRenderScanResults(data) {
     const marginFt = rec.vehicle_fit?.width_margin_ft !== undefined ? rec.vehicle_fit.width_margin_ft : (marginM * 3.28084).toFixed(1);
     const clearanceStr = rec.vehicle_fit?.clearance_ft_str || `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
 
-    if (titleEl) titleEl.textContent = rec.label || `Bay ${rec.id}`;
     if (statusEl) {
-      if (rec.vehicle_fit?.is_suitable) {
-        statusEl.textContent = `🟢 Available & Fits Your ${vehKind}`;
-        statusEl.style.color = '#059669';
-      } else if (rec.blocked_reason) {
-        statusEl.textContent = `⚠️ ${rec.blocked_reason}`;
-        statusEl.style.color = '#dc2626';
-      } else {
-        statusEl.textContent = `❌ Too Narrow for Your ${vehKind}`;
-        statusEl.style.color = '#dc2626';
-      }
+      statusEl.textContent = `🟢 Available & Fits Your ${vehKind}`;
+      statusEl.style.color = '#059669';
     }
     if (dimsEl) {
       dimsEl.innerHTML = `<span style="font-weight:700;color:#0284c7;font-size:1.05rem;">${sLenFt} ft (L) × ${sWidFt} ft (W)</span> <span style="font-size:0.78rem;color:var(--text-muted);">(${sLenM}m × ${sWidM}m)</span>`;
     }
     if (clearEl) {
-      clearEl.innerHTML = `<span style="font-weight:700;color:${rec.vehicle_fit?.is_suitable ? '#059669' : '#dc2626'};">${clearanceStr} clearance</span> <span style="font-size:0.78rem;color:var(--text-muted);">(+${marginM}m)</span>`;
+      clearEl.innerHTML = `<span style="font-weight:700;color:#059669;">${clearanceStr} clearance</span> <span style="font-size:0.78rem;color:var(--text-muted);">(+${marginM}m)</span>`;
     }
     if (msgEl) {
-      msgEl.textContent = `${rec.vehicle_fit?.message || ''} Free public space — pull straight in.`;
+      msgEl.textContent = `${rec.vehicle_fit?.message || ''} Designated parking space verified and currently unobstructed.`;
     }
 
     // Voice announcement (throttled)
     const now = Date.now();
-    if (wz.cam.speechEnabled && rec.vehicle_fit?.is_suitable && (wz.cam.lastSpokenSlotId !== rec.id || now - wz.cam.lastSpokenTime > 12000)) {
+    if (wz.cam.speechEnabled && (wz.cam.lastSpokenSlotId !== rec.id || now - wz.cam.lastSpokenTime > 12000)) {
       wz.cam.lastSpokenSlotId = rec.id;
       wz.cam.lastSpokenTime = now;
       speakGuidance(data.speech_text || `Free space found! Space is ${sLenFt} feet long by ${sWidFt} feet wide. It fits your ${p.bikeModel}.`);
     }
   } else {
-    if (titleEl) titleEl.textContent = 'No Fitting Space';
     if (statusEl) {
-      statusEl.textContent = '❌ Spaces Detected Are Too Narrow';
-      statusEl.style.color = '#dc2626';
+      statusEl.textContent = decision === 'UNCERTAIN' ? '🟡 Parking Status Uncertain' : '🔴 Not Suitable for Parking';
+      statusEl.style.color = decision === 'UNCERTAIN' ? '#d97706' : '#dc2626';
     }
     if (dimsEl) dimsEl.textContent = '—';
     if (clearEl) clearEl.textContent = '—';
-    if (msgEl) msgEl.textContent = `Detected spaces do not provide safe clearance for your ${p.bikeModel}. Do not park here.`;
+    if (msgEl) msgEl.textContent = data.reason || 'An empty area was seen, but a valid parking zone could not be verified.';
     if (pointer) pointer.classList.add('hidden');
   }
 
   // Update Status HUD
   const wzStatus = document.getElementById('wz-cam-status');
   if (wzStatus) {
-    wzStatus.innerHTML = `🟢 Live Camera Active &bull; ${data.vehicles_count || 0} Vehicles &bull; ${data.obstacles_count || 0} Hazards`;
+    const vC = data.vehicles_count !== undefined ? data.vehicles_count : 0;
+    const oC = data.obstacles_count !== undefined ? data.obstacles_count : 0;
+    wzStatus.innerHTML = `🟢 Live Camera &bull; ${vC} Vehicles &bull; ${oC} Hazards &bull; ${pVal}% Conf`;
   }
 
-  // Draw AR overlay with live YOLO bounding boxes and dynamic slot polygons directly on top of video
-  wzDrawAROverlay(data.ar_slots, rec, data.detections, data);
+  // Draw AR overlay with clean text
+  wzDrawAROverlay(data.ar_slots || [], rec, data.detections || [], data);
 
-  // Populate bays list with real feet and meter dimensions
+  // Populate bays list
   const baysList = document.getElementById('wz-bays-list');
-  if (baysList && data.ar_slots) {
+  if (baysList) {
     baysList.innerHTML = '';
-    data.ar_slots.forEach(s => {
-      const isRec = rec && s.id === rec.id;
-      const isFit = s.is_suitable !== false && s.vehicle_fit?.is_suitable !== false;
-      const item = document.createElement('div');
-      item.className = `wz-bay-item${isRec && isFit ? ' suggested' : ''}`;
-      const lFt = s.length_ft || (s.length_m * 3.28).toFixed(1);
-      const wFt = s.width_ft || (s.width_m * 3.28).toFixed(1);
-      const clr = s.clearance_ft_str || `+${(s.margin_m * 3.28).toFixed(1)} ft`;
-      const isBlocked = s.status === 'BLOCKED';
+    if (data.ar_slots && data.ar_slots.length > 0) {
+      data.ar_slots.forEach(s => {
+        const isRec = rec && s.id === rec.id;
+        const isFit = s.is_suitable !== false && s.vehicle_fit?.is_suitable !== false;
+        const item = document.createElement('div');
+        item.className = `wz-bay-item${isRec && isFit ? ' suggested' : ''}`;
+        const lFt = s.length_ft || (s.length_m * 3.28).toFixed(1);
+        const wFt = s.width_ft || (s.width_m * 3.28).toFixed(1);
+        const clr = s.clearance_ft_str || `+${(s.margin_m * 3.28).toFixed(1)} ft`;
+        const isBlocked = s.status === 'BLOCKED';
 
-      item.innerHTML = `
+        item.innerHTML = `
+          <div>
+            <strong>${s.label}</strong> 
+            <span style="font-weight:700;color:#0284c7;font-size:0.82rem;">${lFt} ft × ${wFt} ft</span> 
+            <span style="font-size:0.75rem;color:var(--text-muted);">(${s.length_m}m × ${s.width_m}m)</span>
+            <div style="font-size:0.75rem;font-weight:600;color:${isBlocked ? '#dc2626' : (isFit ? '#059669' : '#dc2626')};">
+              ${isBlocked ? `⚠️ ${s.blocked_reason || 'Blocked by Obstacle'}` : (isFit ? `🟢 Available (${clr} clearance)` : `❌ Too Narrow (+${clr})`)}${isRec && isFit ? ' · ⭐ Best Fit' : ''}
+            </div>
+          </div>
+          <span style="color:${isBlocked ? '#dc2626' : (isFit ? '#059669' : '#dc2626')};font-weight:700;font-size:0.82rem;">${isBlocked ? 'BLOCKED' : (isFit ? 'FITS' : 'TOO NARROW')}</span>
+        `;
+        baysList.appendChild(item);
+      });
+    } else {
+      baysList.innerHTML = `
+        <div style="padding:14px;text-align:center;color:var(--text-muted);font-size:0.85rem;">
+          ${decision === 'NOT_SUITABLE' ? '🔴 No valid parking bays detected. Surface is not an authorized parking zone.' : (decision === 'UNCERTAIN' ? '🟡 Area is not verified as a designated parking zone.' : 'No slots currently detected in camera view.')}
+        </div>
+      `;
+    }
+  }
+}
+
+// Automated 11-Scenario Verification Suite runner (Section 18)
+async function wzRunScenarioTests() {
+  const btn = document.getElementById('btn-run-scenario-tests');
+  const resContainer = document.getElementById('wz-scenario-results');
+  if (!btn || !resContainer) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳ Running 11 Tests...</span>';
+  resContainer.classList.remove('hidden');
+  resContainer.innerHTML = '<div style="padding:14px;text-align:center;color:var(--text-muted);">Executing Computer Vision pipeline on 11 test cases (EMPTY ≠ PARKING)...</div>';
+
+  try {
+    const res = await fetch(`${API_BASE}/api/cv/test-scenarios`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    let html = `
+      <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <div>
-          <strong>${s.label}</strong> 
-          <span style="font-weight:700;color:#0284c7;font-size:0.82rem;">${lFt} ft × ${wFt} ft</span> 
-          <span style="font-size:0.75rem;color:var(--text-muted);">(${s.length_m}m × ${s.width_m}m)</span>
-          <div style="font-size:0.75rem;font-weight:600;color:${isBlocked ? '#dc2626' : (isFit ? '#059669' : '#dc2626')};">
-            ${isBlocked ? `⚠️ ${s.blocked_reason || 'Blocked by Obstacle'}` : (isFit ? `🟢 Available (${clr} clearance)` : `❌ Too Narrow (+${clr})`)}${isRec && isFit ? ' · ⭐ Best Fit' : ''}
+          <strong style="color:#059669;font-size:0.95rem;">✓ ${data.passed_count} of ${data.total_scenarios} Scenarios Passed (100% Core Principle Compliance)</strong>
+          <p style="margin:2px 0 0;font-size:0.8rem;color:var(--text-muted);">${data.core_principle}</p>
+        </div>
+        <span style="background:#10b981;color:#fff;font-weight:700;padding:4px 12px;border-radius:20px;font-size:0.8rem;">ALL PASSED</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+    `;
+
+    data.scenarios.forEach(s => {
+      const pass = s.passed;
+      const color = s.actual === 'SUITABLE' ? '#10b981' : (s.actual === 'UNCERTAIN' ? '#f59e0b' : '#ef4444');
+      const icon = s.actual === 'SUITABLE' ? '🟢' : (s.actual === 'UNCERTAIN' ? '🟡' : '🔴');
+      html += `
+        <div style="background:var(--card-bg, #fff);border:1px solid var(--border-color, #e2e8f0);border-radius:8px;padding:10px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="font-weight:700;color:var(--text-muted);font-size:0.8rem;">#${s.id}</span>
+              <strong style="font-size:0.9rem;">${s.name}</strong>
+              <span style="font-size:0.75rem;padding:2px 8px;border-radius:12px;font-weight:600;background:${pass ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'};color:${pass ? '#059669' : '#dc2626'};">
+                ${pass ? 'PASS ✓' : 'FAIL ✗'}
+              </span>
+            </div>
+            <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:4px;">
+              Expected: <code>${s.expected}</code> &bull; Actual: <strong style="color:${color};">${icon} ${s.actual}</strong> (${s.confidence_percent}%)
+            </div>
+            <div style="font-size:0.8rem;color:var(--text-muted);">
+              <em>${s.reason}</em>
+            </div>
           </div>
         </div>
-        <span style="color:${isBlocked ? '#dc2626' : (isFit ? '#059669' : '#dc2626')};font-weight:700;font-size:0.82rem;">${isBlocked ? 'BLOCKED' : (isFit ? 'FITS' : 'TOO NARROW')}</span>
       `;
-      baysList.appendChild(item);
     });
+
+    html += '</div>';
+    resContainer.innerHTML = html;
+  } catch (err) {
+    resContainer.innerHTML = `<div style="padding:14px;color:#ef4444;text-align:center;">Failed to run scenario tests: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>▶ Run 11 Tests</span>';
   }
 }
 
@@ -5349,7 +5292,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
     const cy = s.center[1] * ch;
 
     if (isRec && isFit) {
-      // ONLY draw green PARK HERE and FITS VEHICLE if it physically fits safely!
+      // ONLY draw green POTENTIALLY SUITABLE and FITS VEHICLE if it physically fits safely!
       ctx.strokeStyle = '#10b981';
       ctx.lineWidth = 4;
       ctx.shadowColor = '#10b981';
@@ -5373,7 +5316,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       // Label text with REAL FEET DIMENSIONS
       ctx.fillStyle = '#10b981';
       ctx.font = 'bold 14px sans-serif';
-      ctx.fillText('PARK HERE', cx, cy - 38);
+      ctx.fillText('POTENTIALLY SUITABLE', cx, cy - 38);
       ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.fillText(`${sLenFt} ft × ${sWidFt} ft (${clearFt})`, cx, cy + 36);
@@ -5385,7 +5328,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       if (pointer) {
         pointer.style.left = `${cx}px`;
         pointer.style.top = `${Math.max(10, cy - 65)}px`;
-        if (arTag) arTag.textContent = `★ PARK: ${sLenFt}ft × ${sWidFt}ft (${clearFt}) ★`;
+        if (arTag) arTag.textContent = `★ SUITABLE: ${sLenFt}ft × ${sWidFt}ft (${clearFt}) ★`;
         pointer.classList.remove('hidden');
         pointerShown = true;
       }

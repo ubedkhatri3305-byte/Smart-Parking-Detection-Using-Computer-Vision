@@ -1,0 +1,27 @@
+# Ultralytics YOLOv8/YOLOv11 Parking Zone Dataset Configuration
+# Enforces Requirement 10: EMPTY SPACE != PARKING SPACE
+# Contains both POSITIVE and NEGATIVE parking zone classes.
+
+path: C:\Users\DELL\Desktop\parking\backend\data\dataset
+train: images/train
+val: images/val
+test: images/test
+
+# Number of classes
+nc: 13
+
+# Class names
+names:
+  0: marked_parking_slot  # [POSITIVE]
+  1: parking_lot  # [POSITIVE]
+  2: designated_roadside  # [POSITIVE]
+  3: empty_parking_space  # [POSITIVE]
+  4: occupied_parking_space  # [POSITIVE]
+  5: house_floor  # [NEGATIVE]
+  6: driveway_private_entrance  # [NEGATIVE]
+  7: garden_lawn  # [NEGATIVE]
+  8: field_unpaved_land  # [NEGATIVE]
+  9: footpath_pedestrian_walkway  # [NEGATIVE]
+  10: road_traffic_lane  # [NEGATIVE]
+  11: private_property_perimeter  # [NEGATIVE]
+  12: random_empty_space  # [NEGATIVE]

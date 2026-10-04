@@ -9006,7 +9006,8 @@ select.custom-select:focus {
   box-shadow: 0 0 0 2px #059669, 0 0 20px rgba(5, 150, 105, 0.4);
 }
 
-AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
+/* ==========================================================================
+   AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
    Pure Light Mode, High Contrast, Fully Responsive for All Mobile & Desktop
    ========================================================================== */
 .auth-page-screen {
@@ -9086,7 +9087,9 @@ AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
 .auth-top-title .gradient-text {
   background: linear-gradient(135deg, #059669 0%, #0d9488 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
+  color: transparent;
   font-weight: 800;
 }
 
@@ -10036,3 +10039,332 @@ AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
     padding: 0.4rem 0.65rem !important;
   }
 }
+
+/* ==========================================================================
+   NEW COMPUTER VISION PARKING VALIDATION PIPELINE (EMPTY SPACE ≠ PARKING SPACE)
+   ========================================================================== */
+
+/* 1. Mandatory Safety Stop Notice (Section 13) */
+.wz-safety-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(245, 158, 11, 0.14));
+  border: 1.5px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius-md, 10px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.9rem;
+  animation: pulseSafety 2.5s infinite;
+}
+
+@keyframes pulseSafety {
+  0%, 100% { border-color: rgba(239, 68, 68, 0.35); }
+  50% { border-color: rgba(245, 158, 11, 0.7); }
+}
+
+.wz-safety-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.wz-safety-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+  color: var(--text-primary, #0f172a);
+}
+
+.wz-safety-text strong {
+  font-size: 0.88rem;
+  color: #dc2626;
+  letter-spacing: 0.01em;
+}
+
+.wz-safety-text span {
+  color: var(--text-secondary, #475569);
+  font-size: 0.75rem;
+}
+
+/* 2. 3-State Decision Badge (Section 8 & 16) */
+.wz-rec-decision-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-pill, 9999px);
+  margin-bottom: 0.6rem;
+  transition: all 0.3s ease;
+}
+
+.wz-rec-decision-badge.state-suitable {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
+}
+
+.wz-rec-decision-badge.state-uncertain {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3);
+}
+
+.wz-rec-decision-badge.state-not-suitable {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.3);
+}
+
+.wz-rec-decision-badge.state-neutral {
+  background: #64748b;
+  color: #ffffff;
+}
+
+/* Reason Box */
+.wz-rec-reason {
+  font-size: 0.86rem;
+  color: var(--text-secondary, #475569);
+  line-height: 1.45;
+  margin-bottom: 0.85rem;
+  background: rgba(148, 163, 184, 0.08);
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-md, 8px);
+  border-left: 3px solid var(--border-subtle, #cbd5e1);
+}
+
+/* 3. Section 16 Checklist Grid */
+.wz-checklist-card {
+  background: var(--bg-card, #f8fafc);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-md, 10px);
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.wz-checklist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+.wz-checklist-time {
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  text-transform: none;
+}
+
+.wz-checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem;
+}
+
+.wz-check-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.wz-check-item.chk-pass {
+  border-color: #a7f3d0;
+  background: #f0fdf4;
+}
+
+.wz-check-item.chk-fail {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.wz-check-item.chk-warn {
+  border-color: #fed7aa;
+  background: #fffbeb;
+}
+
+.wz-chk-icon {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.wz-chk-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wz-chk-name {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.wz-chk-status {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 4. Confidence Score Container (Section 7) */
+.wz-confidence-container {
+  background: rgba(14, 165, 233, 0.06);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: var(--radius-md, 8px);
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.9rem;
+}
+
+.wz-conf-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.wz-conf-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #0369a1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.wz-conf-percent {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0284c7;
+}
+
+.wz-conf-track {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 0.35rem;
+}
+
+.wz-conf-bar {
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #ef4444 0%, #f59e0b 50%, #10b981 100%);
+  transition: width 0.4s ease;
+}
+
+.wz-conf-breakdown {
+  font-size: 0.72rem;
+  color: var(--text-muted, #64748b);
+  line-height: 1.35;
+}
+
+/* 5. Automated 11-Scenario Test Suite Panel (Section 18) */
+.wz-scenario-test-box {
+  margin-top: 1.25rem;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  padding: 1rem;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.06));
+}
+
+.wz-scenario-test-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.wz-btn-test-scenarios {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  color: #ffffff;
+  border: none;
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s ease;
+}
+
+.wz-btn-test-scenarios:hover {
+  background: linear-gradient(135deg, #4338ca, #4f46e5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+.wz-scenario-results {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+.wz-test-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 0.35rem 0.8rem;
+  border-radius: 9999px;
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  margin-bottom: 0.65rem;
+}
+
+.wz-test-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.wz-test-table th {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 700;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.wz-test-table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.wz-test-tag {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.68rem;
+}
+
+.wz-test-tag.tag-suitable { background: #dcfce7; color: #15803d; }
+.wz-test-tag.tag-uncertain { background: #fef3c7; color: #b45309; }
+.wz-test-tag.tag-not-suitable { background: #fee2e2; color: #b91c1c; }
+

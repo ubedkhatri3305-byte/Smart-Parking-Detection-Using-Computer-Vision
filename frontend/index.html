@@ -754,6 +754,15 @@
             <p class="wz-subtitle" data-i18n="wz_s5_sub">AI detects empty spaces and suggests the best spot for your bike. 100% free — zero fees, no booking.</p>
           </div>
 
+          <!-- Mandatory Safe Stop Notice (Requirement 13) -->
+          <div class="wz-safety-notice" id="wz-safety-notice">
+            <span class="wz-safety-icon">🛑</span>
+            <div class="wz-safety-text">
+              <strong>Please stop safely before scanning.</strong>
+              <span>Ensure your vehicle is completely stopped before scanning. Never scan while driving.</span>
+            </div>
+          </div>
+
           <!-- Camera Viewport -->
           <div class="wz-camera-viewport" id="wz-camera-viewport">
             <video id="wz-cam-video" autoplay playsinline muted></video>
@@ -762,7 +771,7 @@
             <!-- AR Floating Pointer -->
             <div class="wz-ar-pointer hidden" id="wz-ar-pointer">
               <div class="wz-ar-arrow">⬇️</div>
-              <div class="wz-ar-tag" id="wz-ar-tag" data-i18n="pointer_park_here">PARK HERE</div>
+              <div class="wz-ar-tag" id="wz-ar-tag" data-i18n="pointer_park_here">POTENTIALLY SUITABLE</div>
             </div>
 
             <!-- Permission Overlay -->
@@ -781,7 +790,7 @@
             <!-- Scan Spinner -->
             <div class="wz-scan-spinner hidden" id="wz-scan-spinner">
               <div class="wz-radar"></div>
-              <span data-i18n="scan_radar">YOLOv8 Scanning...</span>
+              <span id="wz-scan-status-text" data-i18n="scan_radar">Analyzing Parking Zone...</span>
             </div>
 
             <!-- Camera HUD Top (Hidden until camera stream starts) -->
@@ -795,6 +804,12 @@
             </div>
           </div>
 
+          <!-- Safety Notice (Requirement 13) -->
+          <div class="wz-safety-notice" id="wz-safety-notice" style="display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:6px 12px;margin:8px 0;font-size:0.82rem;color:#f59e0b;font-weight:600;">
+            <span>⚠️</span>
+            <span>Please stop safely before scanning.</span>
+          </div>
+
           <!-- Camera Controls -->
           <div class="wz-cam-controls">
             <button type="button" class="wz-cam-btn wz-cam-back-pill" id="wz-cam-ctl-back" onclick="handleUserBackNavigation()" title="Go back to previous step">
@@ -806,25 +821,92 @@
             <button class="wz-cam-btn" id="wz-flip-cam">
               <span>🔄</span><span>Flip</span>
             </button>
-            <button class="wz-cam-btn" id="wz-scan-now">
-              <span>📸</span><span>Scan Now</span>
+            <button class="wz-cam-btn wz-cam-btn-primary active" id="wz-scan-now" style="background: linear-gradient(135deg, #059669, #10b981); color: #fff; font-weight: 700;">
+              <span>📸</span><span>Scan Parking Area</span>
             </button>
-            <button class="wz-cam-btn active" id="wz-autoscan">
-              <span>⚡</span><span>Auto: ON</span>
+            <button class="wz-cam-btn" id="wz-autoscan">
+              <span>⚡</span><span>Auto: OFF</span>
             </button>
             <button class="wz-cam-btn" id="wz-speak">
               <span>🔊</span><span>Speak</span>
             </button>
           </div>
 
-          <!-- Recommendation Card -->
+          <!-- 3-State Parking Decision Card (Section 8 & 16) -->
           <div class="wz-rec-card" id="wz-rec-card">
-            <div class="wz-rec-badge" data-i18n="rec_badge">⭐ SUGGESTED SPOT FOR YOUR BIKE</div>
-            <div class="wz-rec-title" id="wz-rec-title">Scanning...</div>
-            <div class="wz-rec-status" id="wz-rec-status">Point camera at parking row</div>
+            <!-- 3-State Status Badge -->
+            <div class="wz-rec-decision-badge state-neutral" id="wz-rec-decision-badge">
+              <span class="wz-decision-icon" id="wz-decision-icon">🟡</span>
+              <span class="wz-decision-text" id="wz-decision-text">Awaiting Camera Scan</span>
+            </div>
+
+            <!-- Headline & Reason Summary -->
+            <div class="wz-rec-title" id="wz-rec-title">Scanning Parking Area...</div>
+            <div class="wz-rec-reason" id="wz-rec-reason">Point camera toward marked parking spaces or designated roadside parking.</div>
+
+            <!-- Section 16 Checklist Grid -->
+            <div class="wz-checklist-card">
+              <div class="wz-checklist-header">
+                <span>Validation Checklist (EMPTY ≠ PARKING)</span>
+                <span class="wz-checklist-time" id="wz-checklist-time">Last check: Just now</span>
+              </div>
+              <div class="wz-checklist-grid">
+                <div class="wz-check-item" id="chk-zone">
+                  <span class="wz-chk-icon" id="chk-zone-icon">⏳</span>
+                  <div class="wz-chk-info">
+                    <span class="wz-chk-name">Parking Zone</span>
+                    <span class="wz-chk-status" id="chk-zone-status">Evaluating</span>
+                  </div>
+                </div>
+                <div class="wz-check-item" id="chk-space">
+                  <span class="wz-chk-icon" id="chk-space-icon">⏳</span>
+                  <div class="wz-chk-info">
+                    <span class="wz-chk-name">Space Free</span>
+                    <span class="wz-chk-status" id="chk-space-status">Evaluating</span>
+                  </div>
+                </div>
+                <div class="wz-check-item" id="chk-obstacle">
+                  <span class="wz-chk-icon" id="chk-obstacle-icon">⏳</span>
+                  <div class="wz-chk-info">
+                    <span class="wz-chk-name">Obstacles</span>
+                    <span class="wz-chk-status" id="chk-obstacle-status">Evaluating</span>
+                  </div>
+                </div>
+                <div class="wz-check-item" id="chk-fit">
+                  <span class="wz-chk-icon" id="chk-fit-icon">⏳</span>
+                  <div class="wz-chk-info">
+                    <span class="wz-chk-name">Vehicle Fit</span>
+                    <span class="wz-chk-status" id="chk-fit-status">Evaluating</span>
+                  </div>
+                </div>
+                <div class="wz-check-item" id="chk-permission">
+                  <span class="wz-chk-icon" id="chk-perm-icon">⏳</span>
+                  <div class="wz-chk-info">
+                    <span class="wz-chk-name">Permission</span>
+                    <span class="wz-chk-status" id="chk-perm-status">Evaluating</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Holistic Confidence Score Meter -->
+            <div class="wz-confidence-container">
+              <div class="wz-conf-row">
+                <span class="wz-conf-label">Holistic Confidence:</span>
+                <span class="wz-conf-percent" id="wz-conf-percent">—%</span>
+              </div>
+              <div class="wz-conf-track">
+                <div class="wz-conf-bar" id="wz-conf-bar" style="width: 0%;"></div>
+              </div>
+              <div class="wz-conf-breakdown" id="wz-conf-breakdown">
+                Zone: — • Space: — • Obstacle-free: — • Fit: — • Perm: —
+              </div>
+            </div>
+
+            <!-- Dimensions & Vehicle Specs -->
             <div class="wz-rec-specs">
               <div class="wz-spec">
-                <span class="wz-spec-label" data-i18n="spec_bay_size">Space Size (Feet & Meters):</span>
+                <span class="wz-spec-label" data-i18n="spec_bay_size">Space Size:</span>
                 <span class="wz-spec-val" id="wz-rec-dims">—</span>
               </div>
               <div class="wz-spec">
@@ -840,6 +922,7 @@
                 <span class="wz-spec-val free-text" data-i18n="fee_free_val">FREE (Zero Fee)</span>
               </div>
             </div>
+
             <p class="wz-rec-msg" id="wz-rec-msg" data-i18n="rec_aim_msg">Aim your camera at the parking row to detect available spaces.</p>
             <button class="wz-btn-primary" id="wz-confirm-parked">
               <span data-i18n="btn_parked_done">✅ Bike Parked — Done!</span>
@@ -850,6 +933,20 @@
           <div class="wz-bays-section">
             <h4 class="wz-bays-title" data-i18n="detected_bays_title">Detected Bays in View</h4>
             <div class="wz-bays-list" id="wz-bays-list"></div>
+          </div>
+
+          <!-- Automated Scenario Verification Panel (Section 18) -->
+          <div class="wz-scenario-test-box">
+            <div class="wz-scenario-test-header">
+              <div>
+                <strong>🧪 Parking Validation Test Suite (11 Scenarios)</strong>
+                <p style="margin:2px 0 0;font-size:0.78rem;color:var(--text-muted);">Verifies EMPTY ≠ PARKING logic across 11 test cases (Home floor, driveway, garden, road, etc.)</p>
+              </div>
+              <button type="button" class="wz-btn-test-scenarios" id="btn-run-scenario-tests">
+                <span>▶ Run 11 Tests</span>
+              </button>
+            </div>
+            <div class="wz-scenario-results hidden" id="wz-scenario-results"></div>
           </div>
 
           <div class="wz-actions wz-cam-bottom-actions" style="margin-top:1.5rem; margin-bottom: 2rem;">
