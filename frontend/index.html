@@ -576,7 +576,7 @@
             <button type="button" class="wz-btn-primary hidden" id="wz-goto-lots">
               <span>🧭 Continue to Parking →</span>
             </button>
-            <button type="button" class="wz-btn-back" id="wz-back-1">
+            <button type="button" class="wz-btn-back" id="wz-back-1" data-i18n="btn_back">
               ← Back
             </button>
           </div>
@@ -666,7 +666,7 @@
             <button type="button" class="wz-btn-primary" id="wz-goto-navigate" disabled>
               <span data-i18n="btn_nav_lot">🧭 Navigate to Selected Lot →</span>
             </button>
-            <button type="button" class="wz-btn-back" id="wz-back-2">← Back</button>
+            <button type="button" class="wz-btn-back" id="wz-back-2" data-i18n="btn_back">← Back</button>
           </div>
         </div>
       </div>
@@ -726,7 +726,7 @@
             <button type="button" class="wz-btn-secondary" id="wz-open-gmaps">
               <span data-i18n="btn_open_gmaps">🗺️ Open in Google Maps</span>
             </button>
-            <button type="button" class="wz-btn-back" id="wz-back-3">← Back</button>
+            <button type="button" class="wz-btn-back" id="wz-back-3" data-i18n="btn_back">← Back</button>
           </div>
         </div>
       </div>
@@ -784,8 +784,8 @@
               <span data-i18n="scan_radar">YOLOv8 Scanning...</span>
             </div>
 
-            <!-- Camera HUD Top -->
-            <div class="wz-cam-hud" id="wz-cam-hud">
+            <!-- Camera HUD Top (Hidden until camera stream starts) -->
+            <div class="wz-cam-hud hidden" id="wz-cam-hud">
               <div class="wz-hud-live">
                 <span class="wz-live-dot"></span>
                 <span id="wz-cam-status" data-i18n="cam_ready">Camera Ready</span>
@@ -852,7 +852,7 @@
             <div class="wz-bays-list" id="wz-bays-list"></div>
           </div>
 
-          <div class="wz-actions" style="margin-top:1rem;">
+          <div class="wz-actions wz-cam-bottom-actions" style="margin-top:1.5rem; margin-bottom: 2rem;">
             <button type="button" class="wz-btn-back" id="wz-back-4" data-i18n="btn_back_map">← Back to Map</button>
           </div>
         </div>

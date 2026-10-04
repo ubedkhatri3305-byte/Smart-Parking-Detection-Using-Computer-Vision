@@ -3180,6 +3180,17 @@ function initWizard() {
   wzInitStep4();
   wzInitStep5();
 
+  // Allow clicking on previous completed steps to navigate back easily
+  document.querySelectorAll('.wz-step-wrap').forEach(s => {
+    s.addEventListener('click', () => {
+      const targetStep = parseInt(s.getAttribute('data-wstep'));
+      if (targetStep && targetStep < wz.step) {
+        if (wz.step === 5) wzStopCamera();
+        wzGoToStep(targetStep);
+      }
+    });
+  });
+
   // Periodic real-time parking availability refresh loop
   setInterval(() => {
     if (wz.step === 3) {
@@ -4682,6 +4693,8 @@ async function wzStartCamera() {
     video.style.display = 'block';
 
     if (permOverlay) permOverlay.classList.add('hidden');
+    const camHud = document.getElementById('wz-cam-hud');
+    if (camHud) camHud.classList.remove('hidden');
     if (statusEl) statusEl.textContent = '🟢 Live Camera Active — Pointing at Parking Row';
 
     // Hook up metadata, canplay, playing events to start scanning immediately
@@ -4728,6 +4741,8 @@ function wzStopCamera() {
 
   const permOverlay = document.getElementById('wz-cam-perm-overlay');
   if (permOverlay) permOverlay.classList.remove('hidden');
+  const camHud = document.getElementById('wz-cam-hud');
+  if (camHud) camHud.classList.add('hidden');
   const statusEl = document.getElementById('wz-cam-status');
   if (statusEl) statusEl.textContent = 'Camera Stopped';
 }

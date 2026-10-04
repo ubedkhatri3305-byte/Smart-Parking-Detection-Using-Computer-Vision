@@ -2606,10 +2606,20 @@ select.custom-select:focus {
   font-weight: 700;
 }
 
+.wz-step-wrap.completed {
+  cursor: pointer;
+}
+
+.wz-step-wrap.completed:hover .wz-step-bubble {
+  transform: scale(1.08);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
 .wz-step-wrap.completed .wz-step-bubble {
   background: var(--color-green);
   border-color: var(--color-green);
   color: white;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .wz-step-wrap.completed .wz-step-bubble::after {
@@ -2647,7 +2657,7 @@ select.custom-select:focus {
   max-width: 800px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 1rem 2rem;
+  padding: 0 1rem 4.5rem;
 }
 
 .wz-panel {
@@ -3203,8 +3213,10 @@ select.custom-select:focus {
 .wz-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
+  gap: 0.85rem;
+  margin-top: 1.75rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
   align-items: center;
 }
 
@@ -3262,22 +3274,37 @@ select.custom-select:focus {
 }
 
 .wz-btn-back {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 600;
-  font-family: var(--font-main);
-  cursor: pointer;
-  padding: 0.5rem;
-  transition: color var(--transition-fast);
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  justify-content: center;
+  gap: 0.45rem;
+  background: var(--bg-surface, #ffffff);
+  color: var(--text-primary, #0f172a);
+  border: 1.5px solid var(--border-medium, #cbd5e1);
+  padding: 0.78rem 1.5rem;
+  border-radius: var(--radius-md, 12px);
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-family: var(--font-main);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  min-height: 46px;
+  box-sizing: border-box;
 }
 
 .wz-btn-back:hover {
-  color: var(--text-primary);
+  background: var(--bg-subtle, #f8fafc);
+  border-color: var(--border-strong, #94a3b8);
+  color: var(--primary, #059669);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12);
+}
+
+.wz-btn-back:active {
+  transform: translateY(0);
+  background: #e2e8f0;
 }
 
 /* GPS Step */
@@ -3694,14 +3721,17 @@ select.custom-select:focus {
 .wz-camera-viewport {
   position: relative;
   width: 100%;
+  min-height: 380px;
   aspect-ratio: 16 / 9;
-  background: #000;
+  background: #0f172a;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  margin-bottom: 0.75rem;
-  border: 1px solid var(--border-subtle);
+  margin-bottom: 0.85rem;
+  border: 1.5px solid var(--border-subtle);
   box-shadow: var(--shadow-md);
-  min-height: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .wz-camera-viewport video {
@@ -3770,49 +3800,74 @@ select.custom-select:focus {
 .wz-cam-perm-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.92);
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   z-index: 10;
-  padding: 1.5rem;
+  padding: 1.5rem 1.25rem;
   text-align: center;
+  overflow-y: auto;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
 }
 
 .wz-perm-icon {
-  font-size: 3rem;
+  font-size: 2.5rem;
+  line-height: 1;
+  margin-bottom: 0.2rem;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
 }
 
 .wz-cam-perm-overlay h3 {
-  color: white;
-  font-size: 1.1rem;
+  color: #ffffff;
+  font-size: 1.2rem;
   font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
 .wz-cam-perm-overlay p {
-  color: rgba(255,255,255,0.8);
-  font-size: 0.82rem;
-  line-height: 1.6;
-  max-width: 340px;
+  color: rgba(241, 245, 249, 0.9);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  max-width: 360px;
+  margin: 0;
 }
 
 .wz-perm-security {
   font-size: 0.72rem;
-  color: rgba(255,255,255,0.5);
-  background: rgba(255,255,255,0.05);
-  padding: 0.4rem 0.85rem;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.35rem 0.85rem;
   border-radius: var(--radius-pill);
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  max-width: 340px;
 }
 
 .wz-perm-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.5rem;
   width: 100%;
-  max-width: 280px;
+  max-width: 290px;
+  margin-top: 0.35rem;
+}
+
+#wz-req-cam {
+  width: 100%;
+  padding: 0.85rem 1.5rem;
+  font-size: 0.96rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.45);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
 /* Scan Spinner */
@@ -4576,7 +4631,7 @@ select.custom-select:focus {
   }
 
   .wizard-body {
-    padding: 0 0.75rem 2.5rem;
+    padding: 0 0.75rem 4.5rem;
     max-width: 100%;
   }
 
@@ -4662,7 +4717,10 @@ select.custom-select:focus {
   .wz-actions {
     flex-direction: column;
     width: 100%;
-    gap: 0.5rem;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
   }
 
   .wz-btn-primary {
@@ -4670,12 +4728,16 @@ select.custom-select:focus {
     justify-content: center;
     padding: 0.85rem 1rem;
     font-size: 0.92rem;
+    min-height: 48px;
+    box-sizing: border-box;
   }
 
   .wz-btn-secondary,
   .wz-btn-back {
     width: 100%;
     justify-content: center;
+    min-height: 48px;
+    box-sizing: border-box;
   }
 
   .wz-parking-layout {
@@ -4727,9 +4789,9 @@ select.custom-select:focus {
   }
 
   .wz-camera-viewport {
-    aspect-ratio: 4 / 3;
-    min-height: 220px;
-    max-height: 48vh;
+    aspect-ratio: auto;
+    min-height: 360px;
+    max-height: none;
   }
 
   .wz-cam-controls {
@@ -9710,7 +9772,7 @@ AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
 
   /* Wizard Panels & Headings with Full Clearance */
   .wizard-body {
-    padding: 0.85rem 0.75rem 2rem !important;
+    padding: 0.85rem 0.75rem 4.5rem !important;
   }
 
   .wz-panel {
@@ -9857,9 +9919,27 @@ AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
   }
 
   .wz-camera-viewport {
-    min-height: 200px !important;
-    max-height: 50vh !important;
+    min-height: 360px !important;
+    max-height: none !important;
     aspect-ratio: auto !important;
+  }
+
+  .wz-cam-perm-overlay {
+    padding: 1.25rem 0.85rem !important;
+    gap: 0.55rem !important;
+  }
+
+  .wz-perm-icon {
+    font-size: 2.2rem !important;
+  }
+
+  .wz-cam-perm-overlay h3 {
+    font-size: 1.1rem !important;
+  }
+
+  .wz-cam-perm-overlay p {
+    font-size: 0.82rem !important;
+    max-width: 320px !important;
   }
 
   .wz-cam-controls {
@@ -9891,20 +9971,35 @@ AUTHENTICATION & LOGIN GATEWAY PAGE STYLES (Light Jade & Tech Teal Aesthetic)
   .wz-actions {
     flex-direction: column !important;
     width: 100% !important;
-    gap: 0.6rem !important;
+    gap: 0.75rem !important;
+    margin-top: 1.5rem !important;
+    margin-bottom: 3.5rem !important;
+    padding-bottom: 2.5rem !important;
   }
 
   .wz-btn-primary,
   .wz-btn-secondary,
   .wz-btn-back {
     width: 100% !important;
+    min-height: 48px !important;
     justify-content: center !important;
     text-align: center !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
   }
 }
 
 /* EXTRA SMALL MOBILE BREAKPOINT (<= 420px) */
 @media (max-width: 420px) {
+  .wizard-body {
+    padding: 0.75rem 0.5rem 4.5rem !important;
+  }
+
+  .wz-camera-viewport {
+    min-height: 350px !important;
+  }
+
   .wizard-progress {
     padding: 0.4rem 0.15rem !important;
   }
