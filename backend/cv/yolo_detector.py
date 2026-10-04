@@ -11,14 +11,24 @@ from ultralytics import YOLO
 
 class ParkingYOLODetector:
     # Target vehicle classes
-    VEHICLE_CLASSES = {"car", "motorcycle", "bus", "truck", "train"}
+    VEHICLE_CLASSES = {"car", "motorcycle", "bus", "truck", "train", "bicycle"}
     
-    # Common known obstacle classes from COCO
-    KNOWN_OBSTACLE_CLASSES = {
-        "person", "bicycle", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
-        "dog", "cat", "horse", "sheep", "cow", "backpack", "umbrella", "handbag", "suitcase",
-        "bottle", "cup", "chair", "couch", "potted plant", "bed", "dining table", "tv", "laptop",
-        "cell phone", "box", "debris", "sports ball", "skateboard"
+    # Outdoor street and traffic infrastructure
+    OUTDOOR_ROAD_OBJECTS = {"traffic light", "fire hydrant", "stop sign", "parking meter", "bench"}
+
+    # Common indoor furniture, home appliances, and domestic items from COCO
+    INDOOR_CLASSES = {
+        "chair", "couch", "bed", "dining table", "toilet",
+        "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+        "microwave", "oven", "toaster", "sink", "refrigerator",
+        "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
+        "cup", "fork", "knife", "spoon", "bowl", "wine glass", "potted plant", "bottle"
+    }
+
+    # Physical road obstacles on pavement/street
+    ROAD_OBSTACLE_CLASSES = {
+        "person", "dog", "cat", "horse", "sheep", "cow", "backpack", "umbrella", "handbag",
+        "suitcase", "sports ball", "skateboard", "debris", "box"
     }
 
     def __init__(self, model_name: str = "yolov8n.pt", conf_threshold: float = 0.18):
@@ -30,6 +40,116 @@ class ParkingYOLODetector:
         self.conf_threshold = conf_threshold
         self.model = YOLO(model_name)
         self.class_names = self.model.names
+
+    def analyze_scene_environment(self, image: np.ndarray, detections: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Classifies whether the camera view is an authentic outdoor parking environment
+        or an indoor domestic setting (room, living room, bedroom, kitchen, wall, ceiling).
+        """
+        indoor_items = [d for d in detections if d.get("is_indoor", False) or d.get("class_name", "").lower() in self.INDOOR_CLASSES]
+        vehicles = [d for d in detections if d.get("is_vehicle", False)]
+        road_objects = [d for d in detections if d.get("class_name", "").lower() in self.OUTDOOR_ROAD_OBJECTS]
+
+        # 1. Direct indoor items detected by YOLO neural network
+        if indoor_items:
+            indoor_names = sorted(list(set(d["class_name"].capitalize() for d in indoor_items)))
+            return {
+                "is_parking_scene": False,
+                "is_indoor": True,
+                "scene_type": "indoor_home",
+                "confidence": 0.95,
+                "indoor_objects": indoor_names,
+                "vehicles_count": len(vehicles),
+                "reason": f"Indoor domestic area detected ({', '.join(indoor_names[:4])}). Please point camera outside at a road or parking lot."
+            }
+
+        # 2. Real vehicles or road infrastructure present
+        if len(vehicles) > 0 or len(road_objects) > 0:
+            return {
+                "is_parking_scene": True,
+                "is_indoor": False,
+                "scene_type": "outdoor_parking",
+                "confidence": 0.95,
+                "indoor_objects": [],
+                "vehicles_count": len(vehicles),
+                "reason": f"Verified parking environment ({len(vehicles)} vehicles detected)."
+            }
+
+        # 3. No objects detected — examine ground surface texture & color
+        h, w = image.shape[:2]
+        ground_roi = image[int(h * 0.38):, :]
+        if ground_roi.size == 0:
+            return {
+                "is_parking_scene": False,
+                "is_indoor": False,
+                "scene_type": "invalid_frame",
+                "confidence": 0.0,
+                "indoor_objects": [],
+                "vehicles_count": 0,
+                "reason": "Camera frame not loaded."
+            }
+
+        hsv = cv2.cvtColor(ground_roi, cv2.COLOR_BGR2HSV)
+        s_channel = hsv[:, :, 1]
+        v_channel = hsv[:, :, 2]
+        h_channel = hsv[:, :, 0]
+
+        mean_s = float(np.mean(s_channel))
+        mean_v = float(np.mean(v_channel))
+        std_v = float(np.std(v_channel))
+
+        # Blank wall, ceiling, or covered lens (very uniform color)
+        if std_v < 13.0 or mean_v < 20 or mean_v > 248:
+            return {
+                "is_parking_scene": False,
+                "is_indoor": True,
+                "scene_type": "blank_surface",
+                "confidence": 0.90,
+                "indoor_objects": ["Wall / Ceiling / Uniform Surface"],
+                "vehicles_count": 0,
+                "reason": "Camera is pointed at a wall, ceiling, or uniform surface. Point camera toward the road surface."
+            }
+
+        # Warm indoor floor (hardwood, tiles, carpets, indoor lighting with high saturation)
+        if mean_s > 65.0:
+            return {
+                "is_parking_scene": False,
+                "is_indoor": True,
+                "scene_type": "indoor_home",
+                "confidence": 0.85,
+                "indoor_objects": ["Indoor Floor / Carpet"],
+                "vehicles_count": 0,
+                "reason": "Indoor floor or carpet detected. Please point camera outside at a road or parking lot."
+            }
+
+        # Check for painted road markings (white/yellow bay stripes) on asphalt
+        white_mask = (s_channel < 45) & (v_channel > 185)
+        yellow_mask = (h_channel >= 15) & (h_channel <= 38) & (s_channel > 80) & (v_channel > 130)
+        marking_pixels = np.count_nonzero(white_mask | yellow_mask)
+        total_ground_pixels = ground_roi.shape[0] * ground_roi.shape[1]
+        marking_ratio = marking_pixels / float(total_ground_pixels)
+
+        if mean_s < 48.0 and marking_ratio >= 0.008:
+            return {
+                "is_parking_scene": True,
+                "is_indoor": False,
+                "scene_type": "outdoor_parking",
+                "confidence": 0.88,
+                "indoor_objects": [],
+                "vehicles_count": 0,
+                "reason": "Outdoor asphalt surface with marked parking bays detected."
+            }
+
+        # Unconfirmed surface without parking markers
+        return {
+            "is_parking_scene": False,
+            "is_indoor": False,
+            "scene_type": "unconfirmed_surface",
+            "confidence": 0.70,
+            "indoor_objects": [],
+            "vehicles_count": 0,
+            "reason": "Searching for parking area. Align camera with parking bays, road markings, or parked vehicles."
+        }
 
     def detect_ground_hazards(self, image: np.ndarray, existing_bboxes: List[List[float]]) -> List[Dict[str, Any]]:
         """
@@ -93,6 +213,7 @@ class ParkingYOLODetector:
                     "confidence": 0.82,
                     "is_vehicle": False,
                     "is_obstacle": True,
+                    "is_indoor": False,
                     "bbox": [round(abs_x1, 1), round(abs_y1, 1), round(abs_x2, 1), round(abs_y2, 1)],
                     "center": (round(cx, 1), round(cy, 1)),
                     "bottom_center": (round(cx, 1), round(abs_y2, 1)),
@@ -111,7 +232,7 @@ class ParkingYOLODetector:
     def detect(self, image: np.ndarray, conf_threshold: Optional[float] = None) -> List[Dict[str, Any]]:
         """
         Run inference on an image (BGR numpy array).
-        Detects both vehicles and obstacles with high sensitivity.
+        Detects both vehicles, obstacles, and indoor objects with high precision.
         :param image: Input image array
         :param conf_threshold: Optional override for confidence threshold
         :return: List of detection dictionaries
@@ -134,9 +255,16 @@ class ParkingYOLODetector:
                 conf = float(confidences[i])
 
                 is_vehicle = cls_name in self.VEHICLE_CLASSES
-                # Any non-vehicle detected in parking view is an obstacle!
-                is_obstacle = not is_vehicle
-                category = "vehicle" if is_vehicle else "obstacle"
+                is_indoor = cls_name in self.INDOOR_CLASSES
+                is_road_object = cls_name in self.OUTDOOR_ROAD_OBJECTS
+                is_obstacle = not is_vehicle and not is_indoor
+
+                if is_vehicle:
+                    category = "vehicle"
+                elif is_indoor:
+                    category = "indoor_object"
+                else:
+                    category = "obstacle"
 
                 # Compute key geometric references
                 center_x = (x1 + x2) / 2.0
@@ -150,6 +278,8 @@ class ParkingYOLODetector:
                     "class_name": cls_name,
                     "category": category,
                     "is_vehicle": is_vehicle,
+                    "is_indoor": is_indoor,
+                    "is_road_object": is_road_object,
                     "is_obstacle": is_obstacle,
                     "confidence": round(conf, 3),
                     "bbox": [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)],
@@ -167,12 +297,14 @@ class ParkingYOLODetector:
                 detections.append(det)
                 existing_bboxes.append([x1, y1, x2, y2])
 
-        # Also detect any unclassified ground hazards (cones, debris, boxes, barriers)
-        try:
-            cv_hazards = self.detect_ground_hazards(image, existing_bboxes)
-            detections.extend(cv_hazards)
-        except Exception as e:
-            # Fallback gracefully if CV morphological processing encounters an issue
-            pass
+        # Detect physical ground hazards only if not in an indoor room
+        indoor_count = sum(1 for d in detections if d.get("is_indoor", False))
+        if indoor_count == 0:
+            try:
+                cv_hazards = self.detect_ground_hazards(image, existing_bboxes)
+                detections.extend(cv_hazards)
+            except Exception:
+                pass
 
         return detections
+

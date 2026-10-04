@@ -76,6 +76,26 @@ class LazyDetectorProxy:
             return d.detect(*args, **kwargs)
         return []
 
+    def analyze_scene_environment(self, *args, **kwargs):
+        d = get_yolo_detector()
+        if d:
+            return d.analyze_scene_environment(*args, **kwargs)
+        return {
+            "is_parking_scene": False,
+            "is_indoor": False,
+            "scene_type": "unconfirmed_surface",
+            "confidence": 0.5,
+            "indoor_objects": [],
+            "vehicles_count": 0,
+            "reason": "YOLO neural detector not loaded."
+        }
+
+    def __getattr__(self, name):
+        d = get_yolo_detector()
+        if d and hasattr(d, name):
+            return getattr(d, name)
+        raise AttributeError(f"'LazyDetectorProxy' has no attribute '{name}'")
+
 detector = LazyDetectorProxy()
 analyzer = ParkingOccupancyAnalyzer()
 matcher = VehicleMatcher()
@@ -2620,19 +2640,12 @@ async def analyze_parking(
         rule_zone = s.get("custom_metadata", {}).get("rule_zone") or s.get("rule_zone", "registered")
         s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
 
-    # 6. Recommendation Selection
+    # 6. Recommendation Selection (Only recommend if space is genuinely suitable and legal)
     recommended_slot = None
-    # Pick first available slot that fits vehicle and is legal
     for s in analyzed_slots:
         if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
             recommended_slot = s
             break
-    # Fallback to any available slot
-    if not recommended_slot:
-        for s in analyzed_slots:
-            if s["status"] == "AVAILABLE":
-                recommended_slot = s
-                break
 
     # 7. Render Visual Annotations
     annotated_img = ParkingVisualizer.annotate_frame(
@@ -2757,33 +2770,122 @@ async def analyze_live_frame(
 
     h, w = image.shape[:2]
 
-    # 1. Run YOLO detection
+    # 1. Run YOLO detection & Scene Environment Analysis
     detections = detector.detect(image, conf_threshold=0.20)
+    scene_env = detector.analyze_scene_environment(image, detections)
 
-    # 2. Define or load slot geometry
-    scenarios = load_scenarios()
-    scenario_data = scenarios.get(scenario_key) if scenario_key in scenarios else None
-
-    if scenario_data and "slots" in scenario_data:
-        slot_definitions = scenario_data["slots"]
-        if "homography" in scenario_data:
-            h_cfg = scenario_data["homography"]
-            geom = ParkingGeometry(
-                src_points=h_cfg["src_points"],
-                ground_size_meters=tuple(h_cfg["ground_size_meters"]),
-                bev_resolution=tuple(h_cfg["bev_resolution"])
-            )
+    # Build normalized YOLO detections for AR HUD overlay
+    norm_detections = []
+    vehicles_count = 0
+    obstacles_count = 0
+    for d in detections:
+        xmin, ymin, xmax, ymax = d["bbox"]
+        cname = d.get("class_name", "object").lower()
+        is_indoor = d.get("is_indoor", False)
+        is_obs = d.get("is_obstacle", False) or (d.get("category") == "obstacle") or is_indoor or (cname not in ("car", "motorcycle", "bus", "truck", "train", "bicycle"))
+        if not is_obs:
+            vehicles_count += 1
         else:
-            geom = ParkingGeometry()
-    # 2. Vehicle Specs & Suitability
+            obstacles_count += 1
+
+        norm_detections.append({
+            "class_name": cname.upper(),
+            "confidence": round(float(d.get("confidence", 0.85)), 2),
+            "is_vehicle": not is_obs,
+            "is_obstacle": is_obs,
+            "is_indoor": is_indoor,
+            "normalized_bbox": [
+                round(xmin / w, 4),
+                round(ymin / h, 4),
+                round((xmax - xmin) / w, 4),
+                round((ymax - ymin) / h, 4)
+            ],
+            "raw_bbox": [round(float(v), 1) for v in [xmin, ymin, xmax, ymax]]
+        })
+
+    # Retrieve vehicle specs
     veh_specs = matcher.get_vehicle_specs(
         vehicle_type=vehicle_type,
         custom_length=custom_length,
         custom_width=custom_width,
         custom_name=bike_model
     )
+    bike_display_name = bike_model or veh_specs["name"]
 
-    # 3. Dynamic Perspective Ground Bays (No hardcoded fixed grid!)
+    # 2. INDOOR DOMESTIC SCENE FILTER: If camera is pointed indoors (couch, bed, tv, room, wall), reject immediately!
+    if not scenario_key and scene_env.get("is_indoor", False):
+        indoor_names = scene_env.get("indoor_objects", [])
+        indoor_str = ", ".join(indoor_names[:3]) if indoor_names else "Home interior"
+        annotated_frame = ParkingVisualizer.annotate_frame(
+            image,
+            [],
+            detections,
+            vehicle_name=veh_specs.get("name", "Vehicle"),
+            selected_slot_id=None
+        )
+        _, buf = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        annotated_b64 = base64.b64encode(buf).decode("utf-8")
+
+        return {
+            "success": True,
+            "status_code": "INDOOR_DETECTED",
+            "is_indoor": True,
+            "is_parking_scene": False,
+            "scene_type": scene_env.get("scene_type", "indoor_home"),
+            "scene_reason": scene_env.get("reason", "Indoor domestic environment detected."),
+            "indoor_objects": indoor_names,
+            "recommended_slot": None,
+            "ar_slots": [],
+            "vehicles_count": 0,
+            "obstacles_count": obstacles_count,
+            "detections": norm_detections,
+            "detections_count": len(detections),
+            "annotated_frame": f"data:image/jpeg;base64,{annotated_b64}",
+            "speech_text": "Indoor area detected. Please point camera outside at a road or parking lot.",
+            "guidance_banner": f"🏠 INDOOR DETECTED ({indoor_str}) • Point camera outside at a parking space",
+            "summary": {"total_slots": 0, "available": 0, "occupied": 0, "blocked": obstacles_count},
+            "vehicle": veh_specs,
+            "frame_resolution": {"width": w, "height": h}
+        }
+
+    # 3. UNCONFIRMED SURFACE FILTER: If camera is pointed at blank wall/floor without road markings or vehicles
+    if not scenario_key and not scene_env.get("is_parking_scene", False):
+        annotated_frame = ParkingVisualizer.annotate_frame(
+            image,
+            [],
+            detections,
+            vehicle_name=veh_specs.get("name", "Vehicle"),
+            selected_slot_id=None
+        )
+        _, buf = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        annotated_b64 = base64.b64encode(buf).decode("utf-8")
+
+        return {
+            "success": True,
+            "status_code": "SCANNING_FOR_ROAD",
+            "is_indoor": False,
+            "is_parking_scene": False,
+            "scene_type": scene_env.get("scene_type", "unconfirmed_surface"),
+            "scene_reason": scene_env.get("reason", "Searching for road markings or parking bays."),
+            "indoor_objects": [],
+            "recommended_slot": None,
+            "ar_slots": [],
+            "vehicles_count": 0,
+            "obstacles_count": obstacles_count,
+            "detections": norm_detections,
+            "detections_count": len(detections),
+            "annotated_frame": f"data:image/jpeg;base64,{annotated_b64}",
+            "speech_text": "Searching for parking area. Align camera with parking bays or road markings.",
+            "guidance_banner": "🔍 SCANNING GROUND • Align camera with parking bays, road markings, or parked vehicles",
+            "summary": {"total_slots": 0, "available": 0, "occupied": 0, "blocked": obstacles_count},
+            "vehicle": veh_specs,
+            "frame_resolution": {"width": w, "height": h}
+        }
+
+    # 4. Define or load slot geometry for authentic parking scene
+    scenarios = load_scenarios()
+    scenario_data = scenarios.get(scenario_key) if scenario_key in scenarios else None
+
     if scenario_data and "slots" in scenario_data:
         slot_definitions = scenario_data["slots"]
         if "homography" in scenario_data:
@@ -2805,7 +2907,8 @@ async def analyze_live_frame(
         y_top = int(h * 0.40)
         y_bot = int(h * 0.94)
 
-        ground_objects = [d for d in detections if d["bbox"][3] >= y_top]
+        # Exclude indoor furniture from being treated as road obstacles
+        ground_objects = [d for d in detections if d["bbox"][3] >= y_top and not d.get("is_indoor", False)]
         is_car = veh_specs.get("category") == "car" or veh_specs.get("wheels", 2) == 4
 
         if not ground_objects:
@@ -2900,17 +3003,12 @@ async def analyze_live_frame(
             s["vehicle_fit"]["fit_badge"] = "⚠️ Blocked by Obstacle"
             s["vehicle_fit"]["message"] = f"Blocked by {s['blocked_reason']}. Clear obstacle before parking."
 
-    # 5. Determine recommended slot
+    # 5. Determine recommended slot (Strict vehicle fitting: ONLY recommend if physically suitable and legal)
     recommended_slot = None
     for s in analyzed_slots:
         if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
             recommended_slot = s
             break
-    if not recommended_slot:
-        for s in analyzed_slots:
-            if s["status"] == "AVAILABLE":
-                recommended_slot = s
-                break
 
     # 6. Build normalized AR overlay coordinates (0.0 to 1.0)
     ar_slots = []
@@ -2925,6 +3023,8 @@ async def analyze_live_frame(
             "label": s["label"],
             "status": s["status"],
             "is_recommended": is_rec,
+            "is_suitable": s["vehicle_fit"]["is_suitable"],
+            "fit_status": s["vehicle_fit"]["fit_status"],
             "normalized_polygon": norm_poly,
             "center": [round(cx, 4), round(cy, 4)],
             "fit_badge": s["vehicle_fit"]["fit_badge"],
@@ -2942,7 +3042,6 @@ async def analyze_live_frame(
         })
 
     # 7. Natural Guidance & Voice Synthesis Speech String
-    bike_display_name = bike_model or veh_specs["name"]
     if recommended_slot:
         rec_label = recommended_slot["label"]
         rec_fit = recommended_slot["vehicle_fit"]
@@ -2956,41 +3055,19 @@ async def analyze_live_frame(
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     else:
-        speech_text = f"Scanning ground area for {bike_display_name}. Evaluating real space dimensions."
-        guidance_banner = f"Scanning Camera View... Evaluating space dimensions for {bike_display_name}"
+        any_avail = any(s["status"] == "AVAILABLE" for s in analyzed_slots)
+        if any_avail:
+            speech_text = f"Spaces detected are too narrow for your {bike_display_name}. Do not park here."
+            guidance_banner = f"❌ SPACES TOO NARROW • Detected bays do not fit {bike_display_name} safely"
+        else:
+            speech_text = f"Scanning ground area for {bike_display_name}. Evaluating space dimensions."
+            guidance_banner = f"Scanning Camera View... Evaluating space dimensions for {bike_display_name}"
 
     avail_count = sum(1 for s in analyzed_slots if s["status"] == "AVAILABLE")
     occ_count = sum(1 for s in analyzed_slots if s["status"] == "OCCUPIED")
     block_count = sum(1 for s in analyzed_slots if s["status"] == "BLOCKED")
 
-    # 8. Normalized YOLO detections and obstacle classification (Fixed coordinate unpacking!)
-    norm_detections = []
-    vehicles_count = 0
-    obstacles_count = 0
-    for d in detections:
-        xmin, ymin, xmax, ymax = d["bbox"]
-        cname = d.get("class_name", "vehicle").lower()
-        is_obs = d.get("is_obstacle", False) or (d.get("category") == "obstacle") or (cname not in ("car", "motorcycle", "bus", "truck", "train"))
-        if is_obs:
-            obstacles_count += 1
-        else:
-            vehicles_count += 1
-
-        norm_detections.append({
-            "class_name": cname.upper(),
-            "confidence": round(float(d.get("confidence", 0.85)), 2),
-            "is_vehicle": not is_obs,
-            "is_obstacle": is_obs,
-            "normalized_bbox": [
-                round(xmin / w, 4),
-                round(ymin / h, 4),
-                round((xmax - xmin) / w, 4),
-                round((ymax - ymin) / h, 4)
-            ],
-            "raw_bbox": [round(float(v), 1) for v in [xmin, ymin, xmax, ymax]]
-        })
-
-    # 9. Generate high-contrast Computer Vision annotated image
+    # 8. Generate high-contrast Computer Vision annotated image
     annotated_frame = ParkingVisualizer.annotate_frame(
         image,
         analyzed_slots,

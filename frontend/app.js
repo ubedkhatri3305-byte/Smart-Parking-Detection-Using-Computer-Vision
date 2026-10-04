@@ -1960,26 +1960,18 @@ async function captureAndScanFrame() {
     const data = await response.json();
     renderLiveScanResults(data);
   } catch (err) {
-    console.warn('Tab 1 scan using resilient client heuristic:', err.message);
-    const mockData = {
+    console.warn('Tab 1 scan notice:', err.message);
+    renderLiveScanResults({
       success: true,
+      status_code: 'SCANNING_FOR_ROAD',
+      is_parking_scene: false,
+      recommended_slot: null,
+      ar_slots: [],
+      detections: [],
       vehicles_count: 0,
       obstacles_count: 0,
-      detections: [],
-      recommended_slot: {
-        id: "A1",
-        label: "Bay A1 (Optimal)",
-        status: "AVAILABLE",
-        metrics: { length_m: 2.40, width_m: 1.25 },
-        vehicle_fit: { is_suitable: true, width_margin_m: 0.41, message: "Clear open bay with wide access margin." }
-      },
-      ar_slots: [
-        { id: "A1", label: "Bay A1", status: "AVAILABLE", is_recommended: true, normalized_polygon: [[0.08, 0.45], [0.42, 0.45], [0.38, 0.90], [0.04, 0.90]], center: [0.23, 0.67], length_m: 2.40, width_m: 1.25, margin_m: 0.41 },
-        { id: "A2", label: "Bay A2", status: "AVAILABLE", is_recommended: false, normalized_polygon: [[0.44, 0.45], [0.72, 0.45], [0.70, 0.90], [0.40, 0.90]], center: [0.56, 0.67], length_m: 2.30, width_m: 1.15, margin_m: 0.31 },
-        { id: "A3", label: "Bay A3", status: "AVAILABLE", is_recommended: false, normalized_polygon: [[0.74, 0.45], [0.96, 0.45], [0.96, 0.90], [0.72, 0.90]], center: [0.84, 0.67], length_m: 2.20, width_m: 1.10, margin_m: 0.26 }
-      ]
-    };
-    renderLiveScanResults(mockData);
+      guidance_banner: '🔍 Point camera at outdoor road surface or parking bays'
+    });
   } finally {
     clearTimeout(scanSafety);
     state.camera.isScanningNow = false;
@@ -2003,6 +1995,20 @@ function renderLiveScanResults(data) {
 
   if (recFee) recFee.textContent = 'FREE (Zero Fee)';
 
+  // Handle INDOOR domestic scenes
+  if (data.status_code === 'INDOOR_DETECTED' || data.is_indoor) {
+    if (recTitle) recTitle.textContent = '🏠 Indoor Area Detected';
+    if (recStatus) {
+      recStatus.textContent = '⚠️ Not a Parking Area';
+      recStatus.style.color = '#ef4444';
+    }
+    if (recDims) recDims.innerHTML = '<span style="color:#ef4444;font-weight:600;">Domestic Space</span>';
+    if (recClearance) recClearance.innerHTML = '<span style="color:#ef4444;font-weight:600;">0.0 ft</span>';
+    if (recMsg) recMsg.textContent = data.guidance_banner || data.scene_reason || 'Indoor domestic setting detected. Please point camera outside at a road or parking lot.';
+    drawLiveAROverlay([], null, data.detections || [], data);
+    return;
+  }
+
   if (rec) {
     const sLenFt = rec.metrics?.length_ft || (rec.metrics?.length_m ? (rec.metrics.length_m * 3.28084).toFixed(1) : (rec.length_ft || '7.5'));
     const sWidFt = rec.metrics?.width_ft || (rec.metrics?.width_m ? (rec.metrics.width_m * 3.28084).toFixed(1) : (rec.width_ft || '4.0'));
@@ -2015,7 +2021,7 @@ function renderLiveScanResults(data) {
     recTitle.textContent = rec.label || `Bay ${rec.id}`;
     if (rec.vehicle_fit?.is_suitable) {
       recStatus.textContent = `🟢 Available & Fits Vehicle (+${marginFt} ft)`;
-      recStatus.style.color = '#34d399';
+      recStatus.style.color = '#10b981';
     } else if (rec.blocked_reason) {
       recStatus.textContent = `⚠️ ${rec.blocked_reason}`;
       recStatus.style.color = '#ef4444';
@@ -2028,24 +2034,33 @@ function renderLiveScanResults(data) {
       recDims.innerHTML = `<span style="font-weight:700;color:#0284c7;">${sLenFt} ft (L) × ${sWidFt} ft (W)</span> <span style="font-size:0.78rem;color:var(--text-muted);">(${sLenM}m × ${sWidM}m)</span>`;
     }
     if (recClearance) {
-      recClearance.innerHTML = `<span style="font-weight:700;color:#059669;">${clearanceStr}</span> <span style="font-size:0.78rem;color:var(--text-muted);">(+${marginM}m)</span>`;
+      recClearance.innerHTML = `<span style="font-weight:700;color:${rec.vehicle_fit?.is_suitable ? '#059669' : '#ef4444'};">${clearanceStr}</span> <span style="font-size:0.78rem;color:var(--text-muted);">(+${marginM}m)</span>`;
     }
     recMsg.textContent = `${rec.vehicle_fit?.message || ''} Free public parking space. Pull straight in.`;
 
     // Voice announcement (throttled to avoid repeat spam)
     const now = Date.now();
-    if (state.camera.speechEnabled && (state.camera.lastSpokenSlotId !== rec.id || now - state.camera.lastSpokenTime > 12000)) {
+    if (state.camera.speechEnabled && rec.vehicle_fit?.is_suitable && (state.camera.lastSpokenSlotId !== rec.id || now - state.camera.lastSpokenTime > 12000)) {
       state.camera.lastSpokenSlotId = rec.id;
       state.camera.lastSpokenTime = now;
       speakGuidance(data.speech_text || `Free space found! Space is ${sLenFt} feet long by ${sWidFt} feet wide. It fits your vehicle.`);
     }
   } else {
-    recTitle.textContent = 'Scanning Ground View...';
-    recStatus.textContent = '🟡 Evaluating Clearance';
-    recStatus.style.color = '#fbbf24';
-    if (recDims) recDims.textContent = '—';
-    if (recClearance) recClearance.textContent = '0.0 ft';
-    recMsg.textContent = `Point camera directly at parking bays or empty ground. AI is actively scanning.`;
+    if (data.status_code === 'SCANNING_FOR_ROAD') {
+      recTitle.textContent = 'Scanning Ground View...';
+      recStatus.textContent = '🟡 Searching for Road Surface';
+      recStatus.style.color = '#f59e0b';
+      if (recDims) recDims.textContent = '—';
+      if (recClearance) recClearance.textContent = '0.0 ft';
+      recMsg.textContent = 'Align camera with outdoor roadway or marked parking bays.';
+    } else {
+      recTitle.textContent = 'No Fitting Space';
+      recStatus.textContent = '❌ Spaces Detected Are Too Narrow';
+      recStatus.style.color = '#ef4444';
+      if (recDims) recDims.textContent = '—';
+      if (recClearance) recClearance.textContent = '0.0 ft';
+      recMsg.textContent = 'Detected spaces do not provide safe clearance for your vehicle. Do not park here.';
+    }
   }
 
   const mobStatus = document.getElementById('cam-status-label');
@@ -2098,7 +2113,7 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   const pointer = document.getElementById('ar-floating-pointer');
   let pointerShown = false;
 
-  // 1. Draw YOLO Object Detections (Vehicles & Obstacles)
+  // 1. Draw YOLO Object Detections (Vehicles, Obstacles & Indoor Items)
   if (detections && detections.length > 0) {
     detections.forEach(det => {
       const [xNorm, yNorm, wNorm, hNorm] = det.normalized_bbox;
@@ -2107,15 +2122,34 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
-      if (det.is_obstacle) {
+      if (det.is_indoor) {
+        // Magenta / Purple dashed box for indoor items (couch, bed, tv, chair, laptop, etc.)
+        ctx.strokeStyle = '#c026d3';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([5, 3]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(192, 38, 211, 0.16)';
+        ctx.fillRect(bx, by, bw, bh);
+
+        const label = `🏠 INDOOR: ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = '#c026d3';
+        ctx.fillRect(bx, Math.max(0, by - 18), tw + 8, 18);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, bx + 4, Math.max(13, by - 4));
+      } else if (det.is_obstacle) {
         // Warning Obstacle Box
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 2.5;
         ctx.setLineDash([5, 3]);
         ctx.strokeRect(bx, by, bw, bh);
         ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.16)';
+        ctx.fillRect(bx, by, bw, bh);
 
-        const label = `⚠️ ${det.class_name} ${(det.confidence * 100).toFixed(0)}%`;
+        const label = `⚠️ ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = '#ef4444';
@@ -2134,7 +2168,7 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.beginPath(); ctx.moveTo(bx, by + clen); ctx.lineTo(bx, by); ctx.lineTo(bx + clen, by); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(bx + bw - clen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + clen); ctx.stroke();
 
-        const label = `🚗 ${det.class_name} ${(det.confidence * 100).toFixed(0)}%`;
+        const label = `🚗 ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = 'rgba(6, 182, 212, 0.9)';
@@ -2146,28 +2180,45 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   }
 
   // 2. Draw Top Canvas HUD
-  const vCount = (data && data.vehicles_count !== undefined) ? data.vehicles_count : (detections ? detections.filter(d => !d.is_obstacle).length : 0);
-  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => d.is_obstacle).length : 0);
-  const hudText = `⚡ YOLOv8 Neural Engine • 🚗 Vehicles: ${vCount} • ⚠️ Hazards: ${oCount}`;
+  const isIndoorScene = data && (data.status_code === 'INDOOR_DETECTED' || data.is_indoor);
+  const isScanningRoad = data && data.status_code === 'SCANNING_FOR_ROAD';
+  let hudText = `⚡ YOLOv8 Neural Engine • 🚗 Vehicles: ${data?.vehicles_count || 0} • ⚠️ Hazards: ${data?.obstacles_count || 0}`;
+  let hudBg = 'rgba(15, 23, 42, 0.85)';
+  let hudBorder = '#06b6d4';
+  let hudTextColor = '#38bdf8';
+
+  if (isIndoorScene) {
+    hudText = `🏠 INDOOR DETECTED • Point Camera Outside at Parking Area`;
+    hudBg = 'rgba(88, 28, 135, 0.92)';
+    hudBorder = '#c026d3';
+    hudTextColor = '#fdf4ff';
+  } else if (isScanningRoad) {
+    hudText = `🔍 SCANNING GROUND • Align Camera with Road or Marked Bays`;
+    hudBg = 'rgba(120, 53, 15, 0.92)';
+    hudBorder = '#f59e0b';
+    hudTextColor = '#fef3c7';
+  }
+
   ctx.font = 'bold 11px monospace';
   const hudTw = ctx.measureText(hudText).width;
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  ctx.fillStyle = hudBg;
   ctx.fillRect(cw / 2 - hudTw / 2 - 12, 8, hudTw + 24, 22);
-  ctx.strokeStyle = '#06b6d4';
+  ctx.strokeStyle = hudBorder;
   ctx.lineWidth = 1;
   ctx.strokeRect(cw / 2 - hudTw / 2 - 12, 8, hudTw + 24, 22);
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = hudTextColor;
   ctx.textAlign = 'center';
   ctx.fillText(hudText, cw / 2, 23);
   ctx.textAlign = 'left';
 
-  if (!arSlots || arSlots.length === 0) {
+  if (!arSlots || arSlots.length === 0 || isIndoorScene || isScanningRoad) {
     if (pointer) pointer.classList.add('hidden');
     return;
   }
 
   arSlots.forEach(s => {
     const isRec = recommendedSlot && s.id === recommendedSlot.id;
+    const isFit = s.is_suitable !== false && s.vehicle_fit?.is_suitable !== false;
     const poly = s.normalized_polygon; // [[x/w, y/h], ...]
     if (!poly || poly.length < 3) return;
 
@@ -2178,8 +2229,14 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
     }
     ctx.closePath();
 
-    if (isRec) {
-      // Glowing green suggested slot
+    const cx = s.center[0] * cw;
+    const cy = s.center[1] * ch;
+    const sLenFt = s.length_ft || (s.length_m * 3.28).toFixed(1);
+    const sWidFt = s.width_ft || (s.width_m * 3.28).toFixed(1);
+    const clearFt = s.clearance_ft_str || (s.margin_ft !== undefined ? `${s.margin_ft >= 0 ? '+' : ''}${s.margin_ft} ft` : `+${(s.margin_m * 3.28).toFixed(1)} ft`);
+
+    if (isRec && isFit) {
+      // Glowing green suggested slot ONLY IF IT FITS THE VEHICLE SAFELY
       ctx.strokeStyle = '#10b981';
       ctx.lineWidth = 4;
       ctx.shadowColor = '#10b981';
@@ -2192,13 +2249,6 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       ctx.shadowBlur = 0;
 
       // Draw Center Badge
-      const cx = s.center[0] * cw;
-      const cy = s.center[1] * ch;
-
-      const sLenFt = s.length_ft || (s.length_m * 3.28).toFixed(1);
-      const sWidFt = s.width_ft || (s.width_m * 3.28).toFixed(1);
-      const clearFt = s.clearance_ft_str || (s.margin_ft !== undefined ? `${s.margin_ft >= 0 ? '+' : ''}${s.margin_ft} ft` : `+${(s.margin_m * 3.28).toFixed(1)} ft`);
-
       ctx.fillStyle = '#10b981';
       ctx.beginPath();
       ctx.arc(cx, cy, 20, 0, Math.PI * 2);
@@ -2231,6 +2281,35 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         pointer.classList.remove('hidden');
         pointerShown = true;
       }
+    } else if (isRec && !isFit) {
+      // Red/amber alert: Unsuitable space (too narrow or short)
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.20)';
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('❌', cx, cy);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText('TOO NARROW', cx, cy - 34);
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`${sLenFt} ft × ${sWidFt} ft`, cx, cy + 32);
+      ctx.fillStyle = '#f87171';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText('DOES NOT FIT VEHICLE ❌', cx, cy + 48);
+      ctx.textAlign = 'left';
     } else if (s.status === 'AVAILABLE') {
       const sLenFt = s.length_ft || (s.length_m * 3.28).toFixed(1);
       const sWidFt = s.width_ft || (s.width_m * 3.28).toFixed(1);
@@ -4921,59 +5000,22 @@ function wzFallbackClientScan(video) {
       if (suitable && !recSlot) recSlot = rightBay;
     }
   } else {
-    // Clear ground space without obstacles
-    const lM = Number((p.length + 0.60).toFixed(2));
-    const wM = Number((p.width + 0.55).toFixed(2));
-    const lFt = (lM * 3.28084).toFixed(1);
-    const wFt = (wM * 3.28084).toFixed(1);
-    const marginM = Number((wM - p.width).toFixed(2));
-    const marginFt = (marginM * 3.28084).toFixed(1);
-
-    recSlot = {
-      id: "Center Bay (Clear)",
-      label: "Center Parking Space",
-      status: "AVAILABLE",
-      is_recommended: true,
-      metrics: { length_m: lM, width_m: wM, length_ft: lFt, width_ft: wFt },
-      vehicle_fit: {
-        is_suitable: true,
-        fit_status: "OPTIMAL",
-        fit_badge: "🟢 Optimal Fit",
-        width_margin_m: marginM,
-        width_margin_ft: marginFt,
-        clearance_ft_str: `+${marginFt} ft`,
-        message: `Clear open space (${lFt} ft × ${wFt} ft) fits your ${p.bikeModel} with +${marginFt} ft clearance.`
-      }
-    };
-    arSlots.push({
-      id: "Center Bay (Clear)",
-      label: "Center Parking Space",
-      status: "AVAILABLE",
-      is_recommended: true,
-      normalized_polygon: [[0.20, 0.42], [0.80, 0.42], [0.88, 0.94], [0.12, 0.94]],
-      center: [0.50, 0.68],
-      length_m: lM,
-      width_m: wM,
-      length_ft: lFt,
-      width_ft: wFt,
-      margin_m: marginM,
-      margin_ft: marginFt,
-      clearance_ft_str: `+${marginFt} ft`,
-      dims_ft: `${lFt} ft (L) × ${wFt} ft (W)`,
-      fit_badge: "🟢 Optimal Fit",
-      message: `Open space fits your ${p.bikeModel}.`
-    });
+    // Plain ground without marked bays or vehicles - requires outdoor road confirmation
+    recSlot = null;
+    arSlots = [];
   }
 
   const resultData = {
     success: true,
+    status_code: recSlot ? 'SPACE_FOUND' : 'SCANNING_FOR_ROAD',
+    is_parking_scene: !!recSlot,
     vehicles_count: 0,
     obstacles_count: detectedObstacles.length,
     detections: detectedObstacles,
     recommended_slot: recSlot,
     ar_slots: arSlots,
-    guidance_banner: recSlot ? `⭐ PARK HERE • Space ${recSlot.metrics?.length_ft || recSlot.length_ft} ft × ${recSlot.metrics?.width_ft || recSlot.width_ft} ft • Fits ${p.bikeModel}` : '⚠️ Scanning Camera View for Clear Ground',
-    speech_text: recSlot ? `Free space found! Length is ${recSlot.metrics?.length_ft || recSlot.length_ft} feet, width is ${recSlot.metrics?.width_ft || recSlot.width_ft} feet. It fits your ${p.bikeModel}.` : 'Scanning camera view for free ground space.'
+    guidance_banner: recSlot ? `⭐ PARK HERE • Space ${recSlot.metrics?.length_ft || recSlot.length_ft} ft × ${recSlot.metrics?.width_ft || recSlot.width_ft} ft • Fits ${p.bikeModel}` : '🔍 Align Camera with Marked Parking Bays or Outdoor Road',
+    speech_text: recSlot ? `Free space found! Length is ${recSlot.metrics?.length_ft || recSlot.length_ft} feet, width is ${recSlot.metrics?.width_ft || recSlot.width_ft} feet. It fits your ${p.bikeModel}.` : 'Scanning camera view for road surface or marked parking bays.'
   };
 
   wzRenderScanResults(resultData);
@@ -4998,6 +5040,71 @@ function wzRenderScanResults(data) {
   const vWidFt = (p.width * 3.28084).toFixed(1);
 
   if (bikeEl) bikeEl.innerHTML = `${vIcon} <strong>${p.bikeModel}</strong> (${vLenFt} ft × ${vWidFt} ft)`;
+
+  const pointer = document.getElementById('wz-ar-pointer');
+
+  // 1. Handle INDOOR domestic scene
+  if (data.status_code === 'INDOOR_DETECTED' || data.is_indoor) {
+    if (titleEl) titleEl.textContent = '🏠 Indoor Domestic Area Detected';
+    if (statusEl) {
+      statusEl.textContent = '⚠️ Not a Parking Area';
+      statusEl.style.color = '#dc2626';
+    }
+    if (dimsEl) dimsEl.innerHTML = '<span style="color:#dc2626;font-weight:600;">Domestic Space</span>';
+    if (clearEl) clearEl.innerHTML = '<span style="color:#dc2626;font-weight:600;">0.0 ft</span>';
+    if (msgEl) msgEl.textContent = data.guidance_banner || data.scene_reason || 'Indoor domestic setting detected. Please point camera outside at a road or parking lot.';
+
+    const wzStatus = document.getElementById('wz-cam-status');
+    if (wzStatus) {
+      const indoorObjStr = (data.indoor_objects && data.indoor_objects.length > 0) ? `(${data.indoor_objects.join(', ')})` : '';
+      wzStatus.innerHTML = `<span style="color:#dc2626;font-weight:700;">🏠 Indoor Environment Detected ${indoorObjStr}</span>`;
+    }
+
+    if (pointer) pointer.classList.add('hidden');
+    wzDrawAROverlay([], null, data.detections || [], data);
+
+    const baysList = document.getElementById('wz-bays-list');
+    if (baysList) {
+      baysList.innerHTML = `
+        <div style="padding:16px;text-align:center;color:#ef4444;background:rgba(239,68,68,0.08);border-radius:10px;border:1px dashed #ef4444;">
+          <strong>🏠 Domestic Environment Detected</strong>
+          <p style="margin:6px 0 0;font-size:0.85rem;color:var(--text-muted);">Please point your phone camera at an outdoor parking lot or roadway.</p>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  // 2. Handle scanning for outdoor road surface
+  if (data.status_code === 'SCANNING_FOR_ROAD') {
+    if (titleEl) titleEl.textContent = 'Scanning Ground Surface...';
+    if (statusEl) {
+      statusEl.textContent = '🟡 Searching for Road Surface';
+      statusEl.style.color = '#d97706';
+    }
+    if (dimsEl) dimsEl.textContent = '—';
+    if (clearEl) clearEl.textContent = '—';
+    if (msgEl) msgEl.textContent = 'Align camera with outdoor roadway or marked parking bays.';
+
+    const wzStatus = document.getElementById('wz-cam-status');
+    if (wzStatus) {
+      wzStatus.innerHTML = `🟡 Searching for Outdoor Parking Surface &bull; Point toward road`;
+    }
+
+    if (pointer) pointer.classList.add('hidden');
+    wzDrawAROverlay([], null, data.detections || [], data);
+
+    const baysList = document.getElementById('wz-bays-list');
+    if (baysList) {
+      baysList.innerHTML = `
+        <div style="padding:16px;text-align:center;color:#d97706;background:rgba(217,119,6,0.08);border-radius:10px;border:1px dashed #d97706;">
+          <strong>🔍 Align Camera with Parking Ground</strong>
+          <p style="margin:6px 0 0;font-size:0.85rem;color:var(--text-muted);">Point camera toward street asphalt, marked lines, or parked vehicles.</p>
+        </div>
+      `;
+    }
+    return;
+  }
 
   if (rec) {
     const sLenFt = rec.metrics?.length_ft || (rec.metrics?.length_m ? (rec.metrics.length_m * 3.28084).toFixed(1) : (rec.length_ft || '7.5'));
@@ -5025,7 +5132,7 @@ function wzRenderScanResults(data) {
       dimsEl.innerHTML = `<span style="font-weight:700;color:#0284c7;font-size:1.05rem;">${sLenFt} ft (L) × ${sWidFt} ft (W)</span> <span style="font-size:0.78rem;color:var(--text-muted);">(${sLenM}m × ${sWidM}m)</span>`;
     }
     if (clearEl) {
-      clearEl.innerHTML = `<span style="font-weight:700;color:#059669;">${clearanceStr} clearance</span> <span style="font-size:0.78rem;color:var(--text-muted);">(+${marginM}m)</span>`;
+      clearEl.innerHTML = `<span style="font-weight:700;color:${rec.vehicle_fit?.is_suitable ? '#059669' : '#dc2626'};">${clearanceStr} clearance</span> <span style="font-size:0.78rem;color:var(--text-muted);">(+${marginM}m)</span>`;
     }
     if (msgEl) {
       msgEl.textContent = `${rec.vehicle_fit?.message || ''} Free public space — pull straight in.`;
@@ -5033,17 +5140,21 @@ function wzRenderScanResults(data) {
 
     // Voice announcement (throttled)
     const now = Date.now();
-    if (wz.cam.speechEnabled && (wz.cam.lastSpokenSlotId !== rec.id || now - wz.cam.lastSpokenTime > 12000)) {
+    if (wz.cam.speechEnabled && rec.vehicle_fit?.is_suitable && (wz.cam.lastSpokenSlotId !== rec.id || now - wz.cam.lastSpokenTime > 12000)) {
       wz.cam.lastSpokenSlotId = rec.id;
       wz.cam.lastSpokenTime = now;
       speakGuidance(data.speech_text || `Free space found! Space is ${sLenFt} feet long by ${sWidFt} feet wide. It fits your ${p.bikeModel}.`);
     }
   } else {
-    if (titleEl) titleEl.textContent = 'Scanning Camera View...';
-    if (statusEl) { statusEl.textContent = '🟡 Evaluating Ground Space'; statusEl.style.color = '#d97706'; }
+    if (titleEl) titleEl.textContent = 'No Fitting Space';
+    if (statusEl) {
+      statusEl.textContent = '❌ Spaces Detected Are Too Narrow';
+      statusEl.style.color = '#dc2626';
+    }
     if (dimsEl) dimsEl.textContent = '—';
     if (clearEl) clearEl.textContent = '—';
-    if (msgEl) msgEl.textContent = `Point camera directly at parking area or empty ground. AI is dynamically evaluating real dimensions.`;
+    if (msgEl) msgEl.textContent = `Detected spaces do not provide safe clearance for your ${p.bikeModel}. Do not park here.`;
+    if (pointer) pointer.classList.add('hidden');
   }
 
   // Update Status HUD
@@ -5061,8 +5172,9 @@ function wzRenderScanResults(data) {
     baysList.innerHTML = '';
     data.ar_slots.forEach(s => {
       const isRec = rec && s.id === rec.id;
+      const isFit = s.is_suitable !== false && s.vehicle_fit?.is_suitable !== false;
       const item = document.createElement('div');
-      item.className = `wz-bay-item${isRec ? ' suggested' : ''}`;
+      item.className = `wz-bay-item${isRec && isFit ? ' suggested' : ''}`;
       const lFt = s.length_ft || (s.length_m * 3.28).toFixed(1);
       const wFt = s.width_ft || (s.width_m * 3.28).toFixed(1);
       const clr = s.clearance_ft_str || `+${(s.margin_m * 3.28).toFixed(1)} ft`;
@@ -5073,11 +5185,11 @@ function wzRenderScanResults(data) {
           <strong>${s.label}</strong> 
           <span style="font-weight:700;color:#0284c7;font-size:0.82rem;">${lFt} ft × ${wFt} ft</span> 
           <span style="font-size:0.75rem;color:var(--text-muted);">(${s.length_m}m × ${s.width_m}m)</span>
-          <div style="font-size:0.75rem;font-weight:600;color:${isBlocked ? '#dc2626' : (s.status === 'AVAILABLE' ? '#059669' : '#d97706')};">
-            ${isBlocked ? `⚠️ ${s.blocked_reason || 'Blocked by Obstacle'}` : (s.status === 'AVAILABLE' ? `🟢 Available (${clr} clearance)` : '🔴 Occupied')}${isRec ? ' · ⭐ Best Fit' : ''}
+          <div style="font-size:0.75rem;font-weight:600;color:${isBlocked ? '#dc2626' : (isFit ? '#059669' : '#dc2626')};">
+            ${isBlocked ? `⚠️ ${s.blocked_reason || 'Blocked by Obstacle'}` : (isFit ? `🟢 Available (${clr} clearance)` : `❌ Too Narrow (+${clr})`)}${isRec && isFit ? ' · ⭐ Best Fit' : ''}
           </div>
         </div>
-        <span style="color:#059669;font-weight:700;font-size:0.82rem;">${isBlocked ? 'BLOCKED' : 'FREE'}</span>
+        <span style="color:${isBlocked ? '#dc2626' : (isFit ? '#059669' : '#dc2626')};font-weight:700;font-size:0.82rem;">${isBlocked ? 'BLOCKED' : (isFit ? 'FITS' : 'TOO NARROW')}</span>
       `;
       baysList.appendChild(item);
     });
@@ -5096,7 +5208,10 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   const arTag = document.getElementById('wz-ar-tag');
   let pointerShown = false;
 
-  // 1. Draw YOLO Object Detections (Vehicles & Obstacles)
+  const isIndoorScene = data && (data.status_code === 'INDOOR_DETECTED' || data.is_indoor);
+  const isScanningRoad = data && data.status_code === 'SCANNING_FOR_ROAD';
+
+  // 1. Draw YOLO Object Detections (Vehicles, Obstacles & Indoor items)
   if (detections && detections.length > 0) {
     detections.forEach(det => {
       const [xNorm, yNorm, wNorm, hNorm] = det.normalized_bbox;
@@ -5105,7 +5220,24 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
-      if (det.is_obstacle) {
+      if (det.is_indoor) {
+        // Magenta / Purple dashed box for indoor items
+        ctx.strokeStyle = '#c026d3';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([5, 3]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(192, 38, 211, 0.16)';
+        ctx.fillRect(bx, by, bw, bh);
+
+        const label = `🏠 INDOOR: ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = '#c026d3';
+        ctx.fillRect(bx, Math.max(0, by - 20), tw + 10, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, bx + 5, Math.max(14, by - 5));
+      } else if (det.is_obstacle) {
         // Red dashed warning box for obstacles
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 3;
@@ -5147,28 +5279,46 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   }
 
   // 2. Draw Top Canvas HUD
-  const vCount = (data && data.vehicles_count !== undefined) ? data.vehicles_count : (detections ? detections.filter(d => !d.is_obstacle).length : 0);
-  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => d.is_obstacle).length : 0);
-  const hudText = `⚡ YOLOv8 Neural Active • 🚗 Vehicles: ${vCount} • ⚠️ Hazards: ${oCount} • 📐 Feet & Meters`;
+  const vCount = (data && data.vehicles_count !== undefined) ? data.vehicles_count : (detections ? detections.filter(d => !d.is_obstacle && !d.is_indoor).length : 0);
+  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => d.is_obstacle || d.is_indoor).length : 0);
+
+  let hudText = `⚡ YOLOv8 Neural Active • 🚗 Vehicles: ${vCount} • ⚠️ Hazards: ${oCount} • 📐 Feet & Meters`;
+  let hudBg = 'rgba(15, 23, 42, 0.88)';
+  let hudBorder = '#06b6d4';
+  let hudColor = '#38bdf8';
+
+  if (isIndoorScene) {
+    hudText = `🏠 INDOOR DETECTED • Point Camera Outside at Parking Area`;
+    hudBg = 'rgba(88, 28, 135, 0.94)';
+    hudBorder = '#c026d3';
+    hudColor = '#fdf4ff';
+  } else if (isScanningRoad) {
+    hudText = `🔍 SCANNING GROUND • Align Camera with Road or Marked Bays`;
+    hudBg = 'rgba(120, 53, 15, 0.94)';
+    hudBorder = '#f59e0b';
+    hudColor = '#fef3c7';
+  }
+
   ctx.font = 'bold 11px monospace';
   const hudTw = ctx.measureText(hudText).width;
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  ctx.fillStyle = hudBg;
   ctx.fillRect(cw / 2 - hudTw / 2 - 12, 8, hudTw + 24, 22);
-  ctx.strokeStyle = '#06b6d4';
+  ctx.strokeStyle = hudBorder;
   ctx.lineWidth = 1;
   ctx.strokeRect(cw / 2 - hudTw / 2 - 12, 8, hudTw + 24, 22);
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = hudColor;
   ctx.textAlign = 'center';
   ctx.fillText(hudText, cw / 2, 23);
   ctx.textAlign = 'left';
 
-  if (!arSlots || arSlots.length === 0) {
+  if (!arSlots || arSlots.length === 0 || isIndoorScene || isScanningRoad) {
     if (pointer) pointer.classList.add('hidden');
     return;
   }
 
   arSlots.forEach(s => {
     const isRec = recommendedSlot && s.id === recommendedSlot.id;
+    const isFit = s.is_suitable !== false && s.vehicle_fit?.is_suitable !== false;
     const poly = s.normalized_polygon;
     if (!poly || poly.length < 3) return;
 
@@ -5183,7 +5333,8 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
     const cx = s.center[0] * cw;
     const cy = s.center[1] * ch;
 
-    if (isRec) {
+    if (isRec && isFit) {
+      // ONLY draw green PARK HERE and FITS VEHICLE if it physically fits safely!
       ctx.strokeStyle = '#10b981';
       ctx.lineWidth = 4;
       ctx.shadowColor = '#10b981';
@@ -5223,6 +5374,34 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         pointer.classList.remove('hidden');
         pointerShown = true;
       }
+    } else if (isRec && !isFit) {
+      // Red/amber alert: Space is too narrow or small
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3.5;
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('❌', cx, cy);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('TOO NARROW', cx, cy - 38);
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`${sLenFt} ft × ${sWidFt} ft`, cx, cy + 36);
+      ctx.fillStyle = '#f87171';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText('DOES NOT FIT VEHICLE ❌', cx, cy + 52);
+      ctx.textAlign = 'left';
     } else if (s.status === 'BLOCKED') {
       ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
       ctx.lineWidth = 2.5;

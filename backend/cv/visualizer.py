@@ -77,13 +77,21 @@ class ParkingVisualizer:
             cls_name = det["class_name"]
             conf = det["confidence"]
             cat = det.get("category", "other")
+            is_indoor = det.get("is_indoor", False)
             is_obs = det.get("is_obstacle", False) or cat == "obstacle"
 
-            # High-visibility red for obstacles, cyan/orange for vehicles
-            box_color = (0, 0, 235) if is_obs else (0, 140, 255)
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), box_color, 2)
+            # Color coding: Purple for indoor furniture, Red for road obstacles, Cyan for vehicles
+            if is_indoor:
+                box_color = (180, 50, 220)  # Purple
+                tag = f"INDOOR: {cls_name.upper()} {int(conf*100)}%"
+            elif is_obs:
+                box_color = (0, 0, 235)    # Red
+                tag = f"HAZARD: {cls_name.upper()} {int(conf*100)}%"
+            else:
+                box_color = (0, 140, 255)  # Cyan / Orange
+                tag = f"{cls_name.upper()} {int(conf*100)}%"
 
-            tag = f"HAZARD: {cls_name} {int(conf*100)}%" if is_obs else f"{cls_name} {int(conf*100)}%"
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), box_color, 2)
             (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
             cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 6, y1), box_color, -1)
             cv2.putText(annotated, tag, (x1 + 3, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
