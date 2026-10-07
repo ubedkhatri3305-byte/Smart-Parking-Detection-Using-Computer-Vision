@@ -10480,3 +10480,26 @@ select.custom-select:focus {
 .wz-test-tag.tag-uncertain { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
 .wz-test-tag.tag-not-suitable { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); }
 
+
+/* Cloud Backend Status Pill */
+.cloud-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+.cloud-status-pill:hover {
+  background: rgba(14, 165, 233, 0.18);
+  border-color: #38bdf8;
+  color: #fff;
+  transform: translateY(-1px);
+}

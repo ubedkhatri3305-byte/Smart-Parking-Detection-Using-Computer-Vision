@@ -4,7 +4,15 @@
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/:match*",
+      "destination": "/api/:match*"
+    },
+    {
+      "source": "/assets/:match*",
+      "destination": "/frontend/assets/:match*"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/frontend/$1"
     }
   ]
