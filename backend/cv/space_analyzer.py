@@ -134,13 +134,16 @@ class ParkingSpaceAnalyzer:
             and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
         ]
 
+        # Calibrate real camera pinhole homography and photogrammetry scale
+        self.geom.calibrate_from_camera_and_detections(image_shape, cleaned_detections)
+
         # Run occupancy and vehicle fit evaluation
         evaluated_slots = self.occupancy_analyzer.evaluate_slots(candidate_slots, cleaned_detections)
 
         for s in evaluated_slots:
-            # 1. Compute metric dimensions using ground homography
+            # 1. Compute physically-grounded metric dimensions using calibrated ground homography
             s["metrics"] = self.geom.compute_slot_metric_dimensions(s["polygon"])
-            # 2. Evaluate physical vehicle fit
+            # 2. Evaluate physical vehicle fit against user vehicle
             s["vehicle_fit"] = self.vehicle_matcher.evaluate_fit(s["metrics"], veh_specs)
             # 3. Check for obstacle / pedestrian blockers
             if s.get("blocked_reason"):

@@ -1793,7 +1793,7 @@ function initCameraScanner() {
   }
 
   if (scanNowBtn) {
-    scanNowBtn.addEventListener('click', () => captureAndScanFrame());
+    scanNowBtn.addEventListener('click', () => captureAndScanFrame(true));
   }
 
   if (autoScanBtn) {
@@ -1856,6 +1856,12 @@ async function startCameraStream() {
     state.camera.stream = stream;
     state.camera.isSimulated = false;
 
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('autoplay', '');
     video.srcObject = stream;
     video.style.display = 'block';
 
@@ -1951,7 +1957,7 @@ function scheduleNextAutoScan() {
   if (state.camera.isAutoScanning && state.currentTab === 'camera-scan' && (state.camera.stream || state.camera.isSimulated)) {
     if (state.camera.scanTimeout) clearTimeout(state.camera.scanTimeout);
     state.camera.scanTimeout = setTimeout(() => {
-      captureAndScanFrame();
+      captureAndScanFrame(false);
     }, 1500);
   }
 }
@@ -1982,7 +1988,7 @@ function resizeARCanvas() {
   canvas.height = rect.height || video.videoHeight || 480;
 }
 
-async function captureAndScanFrame() {
+async function captureAndScanFrame(isManual = false) {
   if (state.camera.isScanningNow) return;
   const video = document.getElementById('mobile-cam-video');
   const isSim = state.camera.isSimulated;
@@ -1995,13 +2001,17 @@ async function captureAndScanFrame() {
   }
 
   if (!isSim && video && (video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < 2)) {
-    setTimeout(captureAndScanFrame, 200);
+    setTimeout(() => captureAndScanFrame(isManual), 200);
     return;
   }
 
   state.camera.isScanningNow = true;
   const spinner = document.getElementById('cam-scan-spinner');
-  if (spinner) spinner.classList.remove('hidden');
+  if (isManual && spinner) {
+    spinner.classList.remove('hidden');
+  } else if (spinner) {
+    spinner.classList.add('hidden');
+  }
 
   // Safety timer so scanner never hangs
   const scanSafety = setTimeout(() => {
@@ -2229,7 +2239,33 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
-      if (det.is_indoor) {
+      const cNameUpper = (det.class_name || '').toUpperCase();
+      const isPerson = det.is_person || cNameUpper === 'PERSON' || cNameUpper === 'PEDESTRIAN';
+
+      if (isPerson) {
+        // Amber box for Pedestrians / Persons
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.16)';
+        ctx.fillRect(bx, by, bw, bh);
+
+        const clen = Math.min(12, bw / 4, bh / 4);
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(bx, by + clen); ctx.lineTo(bx, by); ctx.lineTo(bx + clen, by); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + bw - clen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + clen); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx, by + bh - clen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + clen, by + bh); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + bw - clen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - clen); ctx.stroke();
+
+        const label = `🚶 PERSON ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(bx, Math.max(0, by - 20), tw + 10, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, bx + 5, Math.max(14, by - 5));
+      } else if (det.is_indoor) {
         // Magenta / Purple dashed box for indoor items (couch, bed, tv, chair, laptop, etc.)
         ctx.strokeStyle = '#c026d3';
         ctx.lineWidth = 2.5;
@@ -4733,7 +4769,7 @@ function wzInitStep5() {
     });
   }
 
-  if (scanNowBtn) scanNowBtn.addEventListener('click', () => wzCaptureAndScan());
+  if (scanNowBtn) scanNowBtn.addEventListener('click', () => wzCaptureAndScan(true));
 
   if (autoScanBtn) {
     autoScanBtn.addEventListener('click', () => {
@@ -4880,9 +4916,22 @@ function wzDrawLiveARFrame() {
 }
 
 function wzDrawTargetGroundFrame(ctx, cw, ch) {
-  const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84 };
-  const vLenFt = (p.length * 3.28084).toFixed(1);
-  const vWidFt = (p.width * 3.28084).toFixed(1);
+  const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84, wheels: 2 };
+  const vLen = Number(p.length) || 2.14;
+  const vWid = Number(p.width) || 0.84;
+  const vLenFt = (vLen * 3.28084).toFixed(1);
+  const vWidFt = (vWid * 3.28084).toFixed(1);
+  const wheels = Number(p.wheels) || 2;
+  const isCar = wheels === 4;
+  const isAuto = wheels === 3;
+
+  // Real ground bay dimensions in feet
+  const bayLenM = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
+  const bayWidM = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
+  const bayLenFt = (bayLenM * 3.28084).toFixed(1);
+  const bayWidFt = (bayWidM * 3.28084).toFixed(1);
+  const clearMarginFt = Math.max(0, (bayWidM - vWid) * 3.28084).toFixed(1);
+  const clearStr = `+${clearMarginFt} ft`;
 
   const yTop = ch * 0.48;
   const yBot = ch * 0.92;
@@ -4926,11 +4975,11 @@ function wzDrawTargetGroundFrame(ctx, cw, ch) {
   ctx.beginPath(); ctx.moveTo(xBotL + cLen, yBot); ctx.lineTo(xBotL, yBot); ctx.lineTo(xBotL, yBot - cLen); ctx.stroke();
 
   // Center crosshair / badge
-  ctx.fillStyle = 'rgba(11, 19, 41, 0.88)';
+  ctx.fillStyle = 'rgba(11, 19, 41, 0.92)';
   ctx.strokeStyle = '#0ea5e9';
   ctx.lineWidth = 1.5;
-  const badgeW = Math.min(320, cw * 0.75);
-  const badgeH = 50;
+  const badgeW = Math.min(380, cw * 0.84);
+  const badgeH = 54;
   ctx.fillRect(cx - badgeW / 2, cy - badgeH / 2, badgeW, badgeH);
   ctx.strokeRect(cx - badgeW / 2, cy - badgeH / 2, badgeW, badgeH);
 
@@ -4938,11 +4987,11 @@ function wzDrawTargetGroundFrame(ctx, cw, ch) {
   ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('🎯 VEHICLE PARKING TARGET FRAME', cx, cy - 9);
+  ctx.fillText(`🎯 TARGET BAY: ${bayLenFt} ft × ${bayWidFt} ft (${clearStr} clearance)`, cx, cy - 10);
 
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 11px sans-serif';
-  ctx.fillText(`${vLenFt} ft (L) × ${vWidFt} ft (W) • Align with Ground`, cx, cy + 12);
+  ctx.fillText(`${p.bikeModel} (${vLenFt} ft × ${vWidFt} ft) • Align Ground with Road/Bay`, cx, cy + 12);
   ctx.restore();
 }
 
@@ -4984,11 +5033,11 @@ function wzStartSimulatedCamera() {
   wzStartARRenderLoop();
 
   if (simulatedImgElement.complete) {
-    setTimeout(() => wzCaptureAndScan(), 200);
+    setTimeout(() => wzCaptureAndScan(false), 200);
   } else {
     simulatedImgElement.onload = () => {
       wzResizeARCanvas();
-      setTimeout(() => wzCaptureAndScan(), 200);
+      setTimeout(() => wzCaptureAndScan(false), 200);
     };
   }
 }
@@ -5008,26 +5057,46 @@ async function wzStartCamera() {
 
   try {
     let stream = null;
+    const facingModeReq = wz.cam.facingMode || 'environment';
+
+    // Progressive camera constraint fallback for 100% reliability on mobile and desktop
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: wz.cam.facingMode ? { ideal: wz.cam.facingMode } : 'environment',
+          facingMode: { ideal: facingModeReq },
           width: { ideal: 1280 },
           height: { ideal: 720 }
         },
         audio: false
       });
-    } catch (e) {
-      console.warn('Default camera constraints failed, trying basic video:', e);
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    } catch (e1) {
+      console.warn('Ideal resolution constraints failed, trying basic facingMode:', e1);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingModeReq },
+          audio: false
+        });
+      } catch (e2) {
+        console.warn('FacingMode failed, trying generic video stream:', e2);
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
     }
 
     wz.cam.stream = stream;
     wz.cam.isSimulated = false;
     wz.cam.lastScanData = null;
 
-    video.srcObject = stream;
-    video.style.display = 'block';
+    if (video) {
+      // Crucial mobile Safari & Android attributes to prevent fullscreen hijack or playback freezing
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.setAttribute('autoplay', '');
+      video.srcObject = stream;
+      video.style.display = 'block';
+    }
 
     if (permOverlay) permOverlay.classList.add('hidden');
     const camHud = document.getElementById('wz-cam-hud');
@@ -5039,7 +5108,7 @@ async function wzStartCamera() {
     const triggerScanLoop = () => {
       wzResizeARCanvas();
       wzStartARRenderLoop();
-      // Draw initial ground frame immediately so user sees live targeting
+      // Draw initial ground frame immediately so user sees live targeting in real feet
       const canvas = document.getElementById('wz-ar-canvas');
       if (canvas && (!wz.cam.lastScanData || !wz.cam.lastScanData.ar_slots || wz.cam.lastScanData.ar_slots.length === 0)) {
         wzDrawTargetGroundFrame(canvas.getContext('2d'), canvas.width, canvas.height);
@@ -5047,7 +5116,7 @@ async function wzStartCamera() {
       if (!scanStarted) {
         scanStarted = true;
         if (wz.cam.isAutoScanning) {
-          setTimeout(() => wzCaptureAndScan(), 300);
+          setTimeout(() => wzCaptureAndScan(false), 300);
           wzStartAutoScan();
         } else {
           if (statusEl) statusEl.textContent = '🟢 Camera Ready — Align vehicle and press "Scan Parking Area"';
@@ -5055,18 +5124,20 @@ async function wzStartCamera() {
       }
     };
 
-    video.onloadedmetadata = triggerScanLoop;
-    video.oncanplay = triggerScanLoop;
-    video.onplaying = triggerScanLoop;
-
-    await video.play().catch(e => console.warn('Video play warning:', e));
+    if (video) {
+      video.onloadedmetadata = triggerScanLoop;
+      video.oncanplay = triggerScanLoop;
+      video.onplaying = triggerScanLoop;
+      await video.play().catch(e => console.warn('Video play warning:', e));
+    }
     triggerScanLoop();
 
-    // Update vehicle tag in HUD
+    // Update vehicle tag in HUD with real feet
     const hudVehicle = document.getElementById('wz-hud-vehicle');
     if (hudVehicle && state.userProfile) {
       const vIcon = state.userProfile.icon || (state.userProfile.wheels === 4 ? '🚗' : (state.userProfile.wheels === 3 ? '🛺' : '🏍️'));
-      hudVehicle.textContent = `${vIcon} ${state.userProfile.bikeModel || 'Vehicle'} (${state.userProfile.length}m)`;
+      const vLenFt = (Number(state.userProfile.length || 2.14) * 3.28084).toFixed(1);
+      hudVehicle.textContent = `${vIcon} ${state.userProfile.bikeModel || 'Vehicle'} (${vLenFt} ft)`;
     }
   } catch (err) {
     console.warn('Camera access denied or unavailable, auto-switching to demo feed:', err.message);
@@ -5098,12 +5169,12 @@ function wzStopCamera() {
 
 function wzStartAutoScan() {
   wzStopAutoScan();
-  // Real-time scan interval: 1.8s for smooth non-blocking live feedback
+  // Real-time scan interval: 1.5s for smooth non-blocking live feedback without loading spinners
   wz.cam.scanInterval = setInterval(() => {
     if (wz.step === 5 && (wz.cam.stream || wz.cam.isSimulated) && !wz.cam.isScanningNow) {
-      wzCaptureAndScan();
+      wzCaptureAndScan(false);
     }
-  }, 1800);
+  }, 1500);
 }
 
 function wzStopAutoScan() {
@@ -5143,7 +5214,7 @@ function wzClearARCanvas() {
   if (pointer) pointer.classList.add('hidden');
 }
 
-async function wzCaptureAndScan() {
+async function wzCaptureAndScan(isManual = false) {
   if (wz.cam.isScanningNow) return;
   const video = document.getElementById('wz-cam-video');
   let isSim = wz.cam.isSimulated;
@@ -5181,21 +5252,35 @@ async function wzCaptureAndScan() {
     });
   }
 
-  // If live video is starting and has zero dimensions, retry briefly
+  // If live video is starting and has zero dimensions, retry briefly up to 4 times
   if (!isSim && video && (video.videoWidth === 0 || video.videoHeight === 0)) {
-    setTimeout(wzCaptureAndScan, 200);
-    return;
+    if (!wz.cam.retryCount) wz.cam.retryCount = 0;
+    if (wz.cam.retryCount < 4) {
+      wz.cam.retryCount++;
+      setTimeout(() => wzCaptureAndScan(isManual), 200);
+      return;
+    }
   }
+  wz.cam.retryCount = 0;
 
   wz.cam.isScanningNow = true;
   const viewport = document.getElementById('wz-camera-viewport');
   if (viewport) viewport.classList.add('scanning-active');
   const spinner = document.getElementById('wz-scan-spinner');
   const spinnerText = document.getElementById('wz-scan-status-text');
-  if (spinner) spinner.classList.remove('hidden');
+
+  // ONLY display blocking spinner on explicit manual button scan, NOT during background auto-scanning
+  if (isManual && spinner) {
+    spinner.classList.remove('hidden');
+    if (spinnerText) spinnerText.textContent = 'Analyzing Parking Zone...';
+  } else if (spinner) {
+    spinner.classList.add('hidden');
+  }
 
   const statusEl = document.getElementById('wz-cam-status');
-  if (statusEl) statusEl.textContent = '⚡ Real-time CV Scanning active...';
+  if (statusEl && !wz.cam.lastScanData) {
+    statusEl.textContent = '⚡ Real-time CV Scanning active...';
+  }
 
   // Safety timer so scanner never hangs
   const scanSafety = setTimeout(() => {

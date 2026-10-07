@@ -3074,13 +3074,19 @@ async def analyze_live_frame(request: Request):
     # Build normalized YOLO detections for AR HUD overlay
     norm_detections = []
     vehicles_count = 0
+    persons_count = 0
     obstacles_count = 0
     for d in detections:
         xmin, ymin, xmax, ymax = d["bbox"]
         cname = d.get("class_name", "object").lower()
         is_indoor = d.get("is_indoor", False)
-        is_obs = d.get("is_obstacle", False) or (d.get("category") == "obstacle") or is_indoor or (cname not in ("car", "motorcycle", "bus", "truck", "train", "bicycle"))
-        if not is_obs:
+        is_pers = (cname == "person") or d.get("is_person", False)
+        is_veh = (cname in ("car", "motorcycle", "bus", "truck", "train", "bicycle", "auto", "rickshaw")) or d.get("is_vehicle", False)
+        is_obs = (not is_veh and not is_pers) or is_indoor or d.get("is_obstacle", False)
+
+        if is_pers:
+            persons_count += 1
+        elif is_veh:
             vehicles_count += 1
         else:
             obstacles_count += 1
@@ -3088,7 +3094,8 @@ async def analyze_live_frame(request: Request):
         norm_detections.append({
             "class_name": cname.upper(),
             "confidence": round(float(d.get("confidence", 0.85)), 2),
-            "is_vehicle": not is_obs,
+            "is_person": is_pers,
+            "is_vehicle": is_veh,
             "is_obstacle": is_obs,
             "is_indoor": is_indoor,
             "normalized_bbox": [
@@ -3325,7 +3332,8 @@ async def analyze_live_frame(request: Request):
             "dims_m": s["metrics"]["dims_m"],
             "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
             "blocked_reason": s.get("blocked_reason"),
-            "message": s["vehicle_fit"]["message"]
+            "message": s["vehicle_fit"]["message"],
+            "vehicle_fit": s["vehicle_fit"]
         })
 
     # Guidance speech & banners
@@ -3391,6 +3399,7 @@ async def analyze_live_frame(request: Request):
         "detections": norm_detections,
         "detections_count": len(detections),
         "vehicles_count": vehicles_count,
+        "persons_count": persons_count,
         "obstacles_count": obstacles_count,
         "annotated_frame": f"data:image/jpeg;base64,{annotated_b64}",
         "summary": {
@@ -3719,7 +3728,8 @@ async def scan_multiframe_endpoint(request: Request):
             "dims_m": s["metrics"]["dims_m"],
             "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
             "blocked_reason": s.get("blocked_reason"),
-            "message": s["vehicle_fit"]["message"]
+            "message": s["vehicle_fit"]["message"],
+            "vehicle_fit": s["vehicle_fit"]
         })
 
     # Guidance banner & speech

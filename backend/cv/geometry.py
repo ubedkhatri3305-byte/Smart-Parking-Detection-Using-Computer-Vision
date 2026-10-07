@@ -49,6 +49,101 @@ class ParkingGeometry:
         if self.src_pts is not None and len(self.src_pts) == 4:
             self.compute_homography()
 
+    def calibrate_from_camera_and_detections(
+        self,
+        image_shape: Tuple[int, int],
+        detections: List[Dict[str, Any]],
+        camera_height_m: float = 1.35,
+        camera_pitch_deg: float = 30.0
+    ):
+        """
+        Dynamically computes the projective homography matrix H and metric ground scale
+        using real camera pinhole optics and reference physical objects (persons, cars, bikes, chairs).
+        Enforces physically-grounded real dimensions in feet and meters.
+        """
+        h, w = image_shape[:2]
+        f = 0.95 * float(h)
+        cx = float(w) / 2.0
+        cy = float(h) / 2.0
+
+        # Photogrammetry calibration: Extract ground scale samples from detected reference entities
+        scale_samples: List[float] = []
+        for d in detections:
+            bbox = d.get("bbox", [])
+            if len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = bbox
+            bw = float(x2 - x1)
+            bh = float(y2 - y1)
+            if bw <= 0 or bh <= 0:
+                continue
+
+            cname = str(d.get("class_name", "")).lower()
+            # Standard ISO / real-world metric dimensions
+            if cname == "person" or d.get("is_person", False):
+                # Standard human adult height: 1.70 meters (5.58 ft)
+                scale_samples.append(1.70 / bh)
+            elif cname in ("car", "truck", "bus") or d.get("is_vehicle", False):
+                # Standard vehicle width: 1.78 meters (5.84 ft)
+                scale_samples.append(1.78 / bw)
+            elif cname in ("motorcycle", "bicycle"):
+                # Standard two-wheeler length: 2.05 meters (6.72 ft)
+                scale_samples.append(2.05 / bw)
+            elif cname in ("chair", "couch"):
+                # Standard chair height: 0.85 meters (2.79 ft)
+                scale_samples.append(0.85 / bh)
+
+        pitch_rad = np.radians(camera_pitch_deg)
+
+        # Ground control trapezoid in normalized image space
+        y_near = float(h) * 0.92
+        y_far = float(h) * 0.46
+        x_near_l = float(w) * 0.10
+        x_near_r = float(w) * 0.90
+        x_far_l = float(w) * 0.25
+        x_far_r = float(w) * 0.75
+
+        src_pts = np.array([
+            [x_far_l, y_far],
+            [x_far_r, y_far],
+            [x_near_r, y_near],
+            [x_near_l, y_near]
+        ], dtype=np.float32)
+
+        # Physical distance Z using pinhole projection
+        phi_near = np.arctan((y_near - cy) / f)
+        z_near = camera_height_m / np.tan(pitch_rad + phi_near)
+        phi_far = np.arctan((y_far - cy) / f)
+        z_far = camera_height_m / np.tan(pitch_rad + phi_far)
+
+        if scale_samples:
+            ref_factor = float(np.median(scale_samples))
+            ground_w_near = (x_near_r - x_near_l) * ref_factor
+            ground_w_far = (x_far_r - x_far_l) * ref_factor
+            ground_len = max(float(z_far - z_near), 2.60)
+        else:
+            ground_w_near = ((x_near_r - x_near_l) / f) * z_near
+            ground_w_far = ((x_far_r - x_far_l) / f) * z_far
+            ground_len = float(z_far - z_near)
+
+        ground_width_avg = max(1.35, float((ground_w_near + ground_w_far) / 2.0))
+        ground_length_val = max(2.50, float(ground_len))
+
+        dst_pts = np.array([
+            [0, 0],
+            [self.bev_width - 1, 0],
+            [self.bev_width - 1, self.bev_height - 1],
+            [0, self.bev_height - 1]
+        ], dtype=np.float32)
+
+        self.src_pts = src_pts
+        self.dst_pts = dst_pts
+        self.ground_width_m = ground_width_avg
+        self.ground_length_m = ground_length_val
+        self.meters_per_px_x = self.ground_width_m / float(self.bev_width)
+        self.meters_per_px_y = self.ground_length_m / float(self.bev_height)
+        self.compute_homography()
+
     def set_reference_points(self, src_points: List[List[float]]):
         """Update source perspective points and recompute homography matrix."""
         self.src_pts = np.array(src_points, dtype=np.float32)
