@@ -128,6 +128,7 @@
       // Registration & Login Modal
       tab_register: '📝 Register Rider & Vehicle',
       tab_login: '🔑 Existing User Login',
+      lbl_login_id: 'Email, Username, or Mobile',
       auth_create_title: 'Create Your Rider Account',
       auth_create_desc: 'Enter your vehicle name — length and width are automatically fetched from our real vehicle dataset.',
       lbl_email: 'Email Address',

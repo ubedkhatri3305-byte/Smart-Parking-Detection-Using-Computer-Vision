@@ -3284,13 +3284,21 @@ function initWizard() {
   wzInitStep4();
   wzInitStep5();
 
-  // Allow clicking on previous completed steps to navigate back easily
+  // Allow clicking on any step bubble to navigate smoothly across the flow
   document.querySelectorAll('.wz-step-wrap').forEach(s => {
     s.addEventListener('click', () => {
       const targetStep = parseInt(s.getAttribute('data-wstep'));
-      if (targetStep && targetStep < wz.step) {
-        if (wz.step === 5) wzStopCamera();
+      if (targetStep && targetStep >= 1 && targetStep <= 5) {
+        if (wz.step === 5 && targetStep !== 5) wzStopCamera();
         wzGoToStep(targetStep);
+        if (targetStep === 5) {
+          setTimeout(() => {
+            if (!wz.cam.stream && !wz.cam.isSimulated) {
+              const permOverlay = document.getElementById('wz-cam-perm-overlay');
+              if (permOverlay) permOverlay.classList.remove('hidden');
+            }
+          }, 200);
+        }
       }
     });
   });
@@ -4802,15 +4810,21 @@ function wzDrawLiveARFrame() {
   const vw = viewport.clientWidth || 640;
   const vh = viewport.clientHeight || 400;
 
+  let targetW = vw;
+  let targetH = vh;
+
   if (wz.cam.isSimulated && simulatedImgElement && simulatedImgElement.complete) {
-    canvas.width = simulatedImgElement.naturalWidth || vw;
-    canvas.height = simulatedImgElement.naturalHeight || vh;
+    targetW = simulatedImgElement.naturalWidth || vw;
+    targetH = simulatedImgElement.naturalHeight || vh;
   } else if (video && video.videoWidth > 0) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-  } else {
-    canvas.width = vw;
-    canvas.height = vh;
+    targetW = video.videoWidth;
+    targetH = video.videoHeight;
+  }
+
+  // Only re-allocate canvas buffer when dimensions actually change to prevent flickering
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
   }
 
   const ctx = canvas.getContext('2d');
@@ -4953,15 +4967,22 @@ function wzStartSimulatedCamera() {
   if (camHud) camHud.classList.remove('hidden');
   if (statusEl) statusEl.textContent = '🟢 Demo Camera Active (Driver View) — Scanning...';
 
+  // Update vehicle profile tag in HUD
+  const hudVehicle = document.getElementById('wz-hud-vehicle');
+  if (hudVehicle && state.userProfile) {
+    const vIcon = state.userProfile.icon || (state.userProfile.wheels === 4 ? '🚗' : (state.userProfile.wheels === 3 ? '🛺' : '🏍️'));
+    hudVehicle.textContent = `${vIcon} ${state.userProfile.bikeModel || 'Vehicle'} (${state.userProfile.length}m)`;
+  }
+
   wzResizeARCanvas();
   wzStartARRenderLoop();
 
   if (simulatedImgElement.complete) {
-    setTimeout(() => wzCaptureAndScan(), 250);
+    setTimeout(() => wzCaptureAndScan(), 200);
   } else {
     simulatedImgElement.onload = () => {
       wzResizeARCanvas();
-      setTimeout(() => wzCaptureAndScan(), 250);
+      setTimeout(() => wzCaptureAndScan(), 200);
     };
   }
 }
@@ -4974,7 +4995,8 @@ async function wzStartCamera() {
   if (statusEl) statusEl.textContent = 'Requesting Camera Permission...';
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Camera API is not supported on this browser. Please use Chrome, Safari, or Edge on HTTPS/localhost.');
+    showToast('📷 Live camera API unavailable — activating Demo Feed');
+    wzStartSimulatedCamera();
     return;
   }
 
@@ -5036,9 +5058,9 @@ async function wzStartCamera() {
       hudVehicle.textContent = `${vIcon} ${state.userProfile.bikeModel || 'Vehicle'} (${state.userProfile.length}m)`;
     }
   } catch (err) {
-    console.error('Wizard camera error:', err);
-    if (statusEl) statusEl.textContent = '⚠️ Camera Access Denied';
-    alert(`Camera Permission Needed\n\n${err.message || 'Please enable camera in browser settings.'}`);
+    console.warn('Camera access denied or unavailable, auto-switching to demo feed:', err.message);
+    showToast('📷 Camera not accessible — switched to High-Precision Demo Feed');
+    wzStartSimulatedCamera();
   }
 }
 
@@ -5111,15 +5133,39 @@ function wzClearARCanvas() {
 async function wzCaptureAndScan() {
   if (wz.cam.isScanningNow) return;
   const video = document.getElementById('wz-cam-video');
-  const isSim = wz.cam.isSimulated;
+  let isSim = wz.cam.isSimulated;
 
+  // If camera is not running, start it or fall back to demo mode without quitting
   if (!isSim && (!video || !wz.cam.stream)) {
-    showToast('📷 Opening camera for parking scan...');
-    await wzStartCamera();
-    return;
+    showToast('📷 Activating camera for parking scan...');
+    try {
+      await wzStartCamera();
+    } catch (_) {
+      wzStartSimulatedCamera();
+    }
+    isSim = wz.cam.isSimulated;
+    if (!wz.cam.stream && !wz.cam.isSimulated) {
+      wzStartSimulatedCamera();
+      isSim = true;
+    }
   }
 
-  // If video hasn't loaded frame yet, retry quickly
+  // Ensure simulated image element is fully loaded if in demo mode
+  if (isSim && (!simulatedImgElement || !simulatedImgElement.complete)) {
+    if (!simulatedImgElement) {
+      simulatedImgElement = new Image();
+      simulatedImgElement.crossOrigin = 'anonymous';
+      simulatedImgElement.src = '/static/scenarios/scenario_2_driver.jpg';
+    }
+    await new Promise((resolve) => {
+      if (simulatedImgElement.complete) return resolve();
+      simulatedImgElement.onload = () => resolve();
+      simulatedImgElement.onerror = () => resolve();
+      setTimeout(resolve, 800);
+    });
+  }
+
+  // If live video is starting and has zero dimensions, retry briefly
   if (!isSim && video && (video.videoWidth === 0 || video.videoHeight === 0)) {
     setTimeout(wzCaptureAndScan, 200);
     return;
@@ -5156,6 +5202,12 @@ async function wzCaptureAndScan() {
       let targetW = 640, targetH = 480;
 
       if (isSim && simulatedImgElement && simulatedImgElement.complete) {
+        targetW = simulatedImgElement.naturalWidth || 640;
+        targetH = simulatedImgElement.naturalHeight || 480;
+        if (targetW > maxDim || targetH > maxDim) {
+          if (targetW > targetH) { targetH = Math.round((targetH * maxDim) / targetW); targetW = maxDim; }
+          else { targetW = Math.round((targetW * maxDim) / targetH); targetH = maxDim; }
+        }
         tmpCanvas.width = targetW;
         tmpCanvas.height = targetH;
         const tmpCtx = tmpCanvas.getContext('2d');
@@ -5180,7 +5232,7 @@ async function wzCaptureAndScan() {
         tmpCtx.fillRect(0, 0, targetW, targetH);
       }
 
-      const b64 = tmpCanvas.toDataURL('image/jpeg', 0.70);
+      const b64 = tmpCanvas.toDataURL('image/jpeg', 0.75);
       frames.push(b64);
 
       if (f < maxFrames - 1) {
@@ -5226,6 +5278,34 @@ async function wzCaptureAndScan() {
     if (viewport) viewport.classList.remove('scanning-active');
   }
 }
+
+// Expose camera actions globally on window object for rock-solid button binding
+window.wzCaptureAndScan = wzCaptureAndScan;
+window.wzStartCamera = wzStartCamera;
+window.wzStartSimulatedCamera = wzStartSimulatedCamera;
+window.wzStopCamera = wzStopCamera;
+window.wzToggleCamera = function() {
+  if (wz.cam.stream || wz.cam.isSimulated) wzStopCamera();
+  else wzStartCamera();
+};
+window.wzFlipCamera = function() {
+  wz.cam.facingMode = wz.cam.facingMode === 'environment' ? 'user' : 'environment';
+  if (wz.cam.stream) { wzStopCamera(); wzStartCamera(); }
+};
+window.wzToggleAutoScan = function() {
+  const btn = document.getElementById('wz-autoscan');
+  wz.cam.isAutoScanning = !wz.cam.isAutoScanning;
+  if (btn) {
+    btn.classList.toggle('active', wz.cam.isAutoScanning);
+    const label = btn.querySelector('span:last-child');
+    if (label) label.textContent = wz.cam.isAutoScanning ? 'Auto: ON' : 'Auto: OFF';
+  }
+  if (wz.cam.isAutoScanning) wzStartAutoScan(); else wzStopAutoScan();
+};
+window.wzSpeakGuidance = function() {
+  const msg = document.getElementById('wz-rec-msg')?.textContent || 'Scanning parking area.';
+  speakGuidance(msg, true);
+};
 
 // Client-side fallback enforces EMPTY != PARKING. Never fabricate parking on empty area.
 function wzFallbackClientScan(video) {

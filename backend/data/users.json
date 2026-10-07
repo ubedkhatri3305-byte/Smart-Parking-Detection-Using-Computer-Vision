@@ -2,7 +2,7 @@
   "kavita@test.com": {
     "name": "Kavita Patel",
     "email": "kavita@test.com",
-    "password": "123",
+    "password": "123456",
     "phone": "",
     "license_plate": "MH-01-BK-1234",
     "bike_model": "Hero Splendor",
@@ -10,7 +10,16 @@
     "length_m": 2.0,
     "width_m": 0.72,
     "clearance_m": 0.15,
-    "registered_at": "2026-09-22"
+    "registered_at": "2026-09-22",
+    "licensePlate": "MH-01-BK-1234",
+    "bikeModel": "Hero Splendor",
+    "bikeType": "bike_commuter",
+    "wheels": 2,
+    "category": "Scooter",
+    "icon": "🛵",
+    "length": 2,
+    "width": 0.72,
+    "clearance": 0.15
   },
   "suresh.kumar@example.com": {
     "name": "Suresh Kumar",

@@ -781,10 +781,10 @@
               <p>Allow your device camera to scan the parking row. The AI will highlight the best available spot that fits your <strong id="wz-perm-bike-name">vehicle</strong>.</p>
               <div class="wz-perm-security" data-i18n="perm_security">🔒 Frames are processed locally for parking detection only. Nothing is stored.</div>
               <div class="wz-perm-actions" style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:center;">
-                <button class="wz-btn-primary" id="wz-req-cam">
+                <button type="button" class="wz-btn-primary" id="wz-req-cam" onclick="wzStartCamera()">
                   <span data-i18n="btn_allow_cam">📷 Allow &amp; Open Camera</span>
                 </button>
-                <button type="button" class="wz-btn-secondary" id="wz-use-sample-cam" style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: #fff; padding: 0.65rem 1.1rem; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <button type="button" class="wz-btn-secondary" id="wz-use-sample-cam" onclick="wzStartSimulatedCamera()" style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: #fff; padding: 0.65rem 1.1rem; border-radius: 8px; cursor: pointer; font-weight: 600;">
                   <span>🎬 Use Demo Feed</span>
                 </button>
               </div>
@@ -818,19 +818,19 @@
             <button type="button" class="wz-cam-btn wz-cam-back-pill" id="wz-cam-ctl-back" onclick="handleUserBackNavigation()" title="Go back to previous step">
               <span>←</span><span>Back</span>
             </button>
-            <button class="wz-cam-btn" id="wz-toggle-cam">
+            <button type="button" class="wz-cam-btn" id="wz-toggle-cam" onclick="wzToggleCamera()">
               <span>⏹️</span><span>Stop</span>
             </button>
-            <button class="wz-cam-btn" id="wz-flip-cam">
+            <button type="button" class="wz-cam-btn" id="wz-flip-cam" onclick="wzFlipCamera()">
               <span>🔄</span><span>Flip</span>
             </button>
-            <button class="wz-cam-btn wz-cam-btn-primary active" id="wz-scan-now" style="background: linear-gradient(135deg, #059669, #10b981); color: #fff; font-weight: 700;">
+            <button type="button" class="wz-cam-btn wz-cam-btn-primary active" id="wz-scan-now" onclick="wzCaptureAndScan()" style="background: linear-gradient(135deg, #059669, #10b981); color: #fff; font-weight: 700;">
               <span>📸</span><span>Scan Parking Area</span>
             </button>
-            <button class="wz-cam-btn" id="wz-autoscan">
+            <button type="button" class="wz-cam-btn" id="wz-autoscan" onclick="wzToggleAutoScan()">
               <span>⚡</span><span>Auto: OFF</span>
             </button>
-            <button class="wz-cam-btn" id="wz-speak">
+            <button type="button" class="wz-cam-btn" id="wz-speak" onclick="wzSpeakGuidance()">
               <span>🔊</span><span>Speak</span>
             </button>
           </div>
