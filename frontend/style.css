@@ -3311,8 +3311,6 @@ select.custom-select:focus {
   border-color: rgba(56, 189, 248, 0.35);
   color: #ffffff;
 }
-  border-color: var(--border-strong);
-}
 
 .wz-btn-back {
   display: inline-flex;
