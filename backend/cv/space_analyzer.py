@@ -73,11 +73,16 @@ class ParkingSpaceAnalyzer:
             y_top = int(h * 0.40)
             y_bot = int(h * 0.94)
 
-            # Ground vehicles/obstacles
-            ground_objects = [d for d in detections if d["bbox"][3] >= y_top and not d.get("is_indoor", False)]
+            # Filter out ego-vehicle hood / dashboard detections
+            cleaned_ground = [
+                d for d in detections
+                if d["bbox"][3] >= y_top
+                and not d.get("is_indoor", False)
+                and not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.40 * h)
+                and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
+            ]
 
-            if not ground_objects:
-                # Open marked stall
+            if not cleaned_ground:
                 candidate_slots = [
                     {
                         "id": "Slot 1 (Marked Bay)",
@@ -87,21 +92,54 @@ class ParkingSpaceAnalyzer:
                     }
                 ]
             else:
-                # Segment corridors between detected objects
-                candidate_slots = self._segment_corridors(w, h, y_top, y_bot, ground_objects)
+                candidate_slots = self._segment_corridors(w, h, y_top, y_bot, cleaned_ground)
         elif is_zone_valid and zone_class == "designated_roadside":
             # Mode B: Validated roadside parking row with infrastructure
             y_top = int(h * 0.45)
             y_bot = int(h * 0.94)
-            ground_objects = [d for d in detections if d["bbox"][3] >= y_top and not d.get("is_indoor", False)]
-            candidate_slots = self._segment_corridors(w, h, y_top, y_bot, ground_objects)
+            cleaned_ground = [
+                d for d in detections
+                if d["bbox"][3] >= y_top
+                and not d.get("is_indoor", False)
+                and not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.40 * h)
+                and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
+            ]
+            candidate_slots = self._segment_corridors(w, h, y_top, y_bot, cleaned_ground)
+        elif not zone_info.get("is_indoor", False):
+            # Mode C: Outdoor candidate area - synthesize target bay for vehicle alignment
+            y_top = int(h * 0.45)
+            y_bot = int(h * 0.94)
+            cleaned_ground = [
+                d for d in detections
+                if d["bbox"][3] >= y_top
+                and not d.get("is_indoor", False)
+                and not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.40 * h)
+                and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
+            ]
+            if cleaned_ground:
+                candidate_slots = self._segment_corridors(w, h, y_top, y_bot, cleaned_ground)
+            if not candidate_slots:
+                candidate_slots = [
+                    {
+                        "id": "Target Bay 1",
+                        "label": "Target Parking Bay",
+                        "polygon": [[int(w * 0.24), y_top], [int(w * 0.76), y_top], [int(w * 0.85), y_bot], [int(w * 0.15), y_bot]],
+                        "rule_zone": "unconfirmed"
+                    }
+                ]
         else:
-            # INVALID or UNKNOWN ZONE: Do NOT create fake parking slots!
-            # The system must NOT say "Park Here" on an empty floor, field, or unverified area.
+            # Indoor surface: No parking slots
             return []
 
+        # Filter out ego-vehicle hood from detections passed to occupancy evaluation
+        cleaned_detections = [
+            d for d in detections
+            if not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.40 * h)
+            and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
+        ]
+
         # Run occupancy and vehicle fit evaluation
-        evaluated_slots = self.occupancy_analyzer.evaluate_slots(candidate_slots, detections)
+        evaluated_slots = self.occupancy_analyzer.evaluate_slots(candidate_slots, cleaned_detections)
 
         for s in evaluated_slots:
             # 1. Compute metric dimensions using ground homography
@@ -128,12 +166,18 @@ class ParkingSpaceAnalyzer:
         """
         Dynamically segment ground corridors between detected vehicles/obstacles.
         """
-        ground_objects.sort(key=lambda o: (o["bbox"][0] + o["bbox"][2]) / 2.0)
+        # Exclude ego vehicle hood boxes
+        cleaned_objects = [
+            o for o in ground_objects
+            if not ((o["bbox"][2] - o["bbox"][0]) / float(w) > 0.75 and o["bbox"][1] > 0.40 * h)
+            and not (o.get("confidence", 1.0) < 0.30 and o["bbox"][1] > 0.50 * h)
+        ]
+        cleaned_objects.sort(key=lambda o: (o["bbox"][0] + o["bbox"][2]) / 2.0)
         last_x_norm = 0.04
         bay_idx = 1
         bays = []
 
-        for obj in ground_objects:
+        for obj in cleaned_objects:
             x1, y1, x2, y2 = obj["bbox"]
             x1_norm = max(0.04, min(0.96, x1 / w))
             x2_norm = max(0.04, min(0.96, x2 / w))

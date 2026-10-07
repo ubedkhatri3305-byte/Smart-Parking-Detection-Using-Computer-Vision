@@ -4771,12 +4771,171 @@ function wzInitStep5() {
   }
 }
 
+let wzARAnimId = null;
+let wzLaserY = 0.50;
+let wzLaserDir = 1;
+
+function wzStartARRenderLoop() {
+  if (wzARAnimId) cancelAnimationFrame(wzARAnimId);
+  function tick() {
+    if (wz.step === 5 && (wz.cam.stream || wz.cam.isSimulated)) {
+      wzDrawLiveARFrame();
+      wzARAnimId = requestAnimationFrame(tick);
+    }
+  }
+  wzARAnimId = requestAnimationFrame(tick);
+}
+
+function wzStopARRenderLoop() {
+  if (wzARAnimId) {
+    cancelAnimationFrame(wzARAnimId);
+    wzARAnimId = null;
+  }
+}
+
+function wzDrawLiveARFrame() {
+  const canvas = document.getElementById('wz-ar-canvas');
+  const video = document.getElementById('wz-cam-video');
+  const viewport = document.getElementById('wz-camera-viewport');
+  if (!canvas || !viewport) return;
+
+  const vw = viewport.clientWidth || 640;
+  const vh = viewport.clientHeight || 400;
+
+  if (wz.cam.isSimulated && simulatedImgElement && simulatedImgElement.complete) {
+    canvas.width = simulatedImgElement.naturalWidth || vw;
+    canvas.height = simulatedImgElement.naturalHeight || vh;
+  } else if (video && video.videoWidth > 0) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  } else {
+    canvas.width = vw;
+    canvas.height = vh;
+  }
+
+  const ctx = canvas.getContext('2d');
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  ctx.clearRect(0, 0, cw, ch);
+
+  // If in simulated mode, draw demo feed background directly on canvas
+  if (wz.cam.isSimulated && simulatedImgElement && simulatedImgElement.complete) {
+    ctx.drawImage(simulatedImgElement, 0, 0, cw, ch);
+  }
+
+  // Draw previous scan data if present; otherwise draw targeting alignment bay
+  if (wz.cam.lastScanData) {
+    wzDrawAROverlay(
+      wz.cam.lastScanData.ar_slots || [],
+      wz.cam.lastScanData.recommended_slot,
+      wz.cam.lastScanData.detections || [],
+      wz.cam.lastScanData
+    );
+  } else {
+    wzDrawTargetGroundFrame(ctx, cw, ch);
+  }
+
+  // Live laser scan sweep beam while scanning is in progress
+  if (wz.cam.isScanningNow) {
+    wzLaserY += wzLaserDir * 0.016;
+    if (wzLaserY > 0.92) { wzLaserY = 0.92; wzLaserDir = -1; }
+    else if (wzLaserY < 0.44) { wzLaserY = 0.44; wzLaserDir = 1; }
+
+    const curY = wzLaserY * ch;
+    const grad = ctx.createLinearGradient(0, curY - 26, 0, curY + 26);
+    grad.addColorStop(0, 'rgba(56, 189, 248, 0)');
+    grad.addColorStop(0.5, 'rgba(56, 189, 248, 0.75)');
+    grad.addColorStop(1, 'rgba(14, 165, 233, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(cw * 0.08, curY - 26, cw * 0.84, 52);
+
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#00f2fe';
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.moveTo(cw * 0.08, curY);
+    ctx.lineTo(cw * 0.92, curY);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function wzDrawTargetGroundFrame(ctx, cw, ch) {
+  const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84 };
+  const vLenFt = (p.length * 3.28084).toFixed(1);
+  const vWidFt = (p.width * 3.28084).toFixed(1);
+
+  const yTop = ch * 0.48;
+  const yBot = ch * 0.92;
+  const xTopL = cw * 0.28;
+  const xTopR = cw * 0.72;
+  const xBotL = cw * 0.12;
+  const xBotR = cw * 0.88;
+  const cx = cw * 0.5;
+  const cy = (yTop + yBot) * 0.5;
+
+  ctx.save();
+
+  // Perspective target bay
+  ctx.beginPath();
+  ctx.moveTo(xTopL, yTop);
+  ctx.lineTo(xTopR, yTop);
+  ctx.lineTo(xBotR, yBot);
+  ctx.lineTo(xBotL, yBot);
+  ctx.closePath();
+
+  ctx.fillStyle = 'rgba(14, 165, 233, 0.09)';
+  ctx.fill();
+
+  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Corner brackets [   ]
+  const cLen = 24;
+  ctx.strokeStyle = '#00f2fe';
+  ctx.lineWidth = 3.5;
+  // Top left
+  ctx.beginPath(); ctx.moveTo(xTopL, yTop + cLen); ctx.lineTo(xTopL, yTop); ctx.lineTo(xTopL + cLen, yTop); ctx.stroke();
+  // Top right
+  ctx.beginPath(); ctx.moveTo(xTopR - cLen, yTop); ctx.lineTo(xTopR, yTop); ctx.lineTo(xTopR, yTop + cLen); ctx.stroke();
+  // Bottom right
+  ctx.beginPath(); ctx.moveTo(xBotR, yBot - cLen); ctx.lineTo(xBotR, yBot); ctx.lineTo(xBotR - cLen, yBot); ctx.stroke();
+  // Bottom left
+  ctx.beginPath(); ctx.moveTo(xBotL + cLen, yBot); ctx.lineTo(xBotL, yBot); ctx.lineTo(xBotL, yBot - cLen); ctx.stroke();
+
+  // Center crosshair / badge
+  ctx.fillStyle = 'rgba(11, 19, 41, 0.88)';
+  ctx.strokeStyle = '#0ea5e9';
+  ctx.lineWidth = 1.5;
+  const badgeW = Math.min(320, cw * 0.75);
+  const badgeH = 50;
+  ctx.fillRect(cx - badgeW / 2, cy - badgeH / 2, badgeW, badgeH);
+  ctx.strokeRect(cx - badgeW / 2, cy - badgeH / 2, badgeW, badgeH);
+
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🎯 VEHICLE PARKING TARGET FRAME', cx, cy - 9);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText(`${vLenFt} ft (L) × ${vWidFt} ft (W) • Align with Ground`, cx, cy + 12);
+  ctx.restore();
+}
+
 function wzStartSimulatedCamera() {
   const permOverlay = document.getElementById('wz-cam-perm-overlay');
   const statusEl = document.getElementById('wz-cam-status');
   const video = document.getElementById('wz-cam-video');
 
   wz.cam.isSimulated = true;
+  wz.cam.lastScanData = null;
   if (wz.cam.stream) {
     wz.cam.stream.getTracks().forEach(t => t.stop());
     wz.cam.stream = null;
@@ -4788,14 +4947,23 @@ function wzStartSimulatedCamera() {
     simulatedImgElement.src = '/static/scenarios/scenario_2_driver.jpg';
   }
 
-  if (video) video.style.display = 'block';
+  if (video) video.style.display = 'none'; // Directly render demo image to canvas
   if (permOverlay) permOverlay.classList.add('hidden');
   const camHud = document.getElementById('wz-cam-hud');
   if (camHud) camHud.classList.remove('hidden');
-  if (statusEl) statusEl.textContent = '🟢 Demo Camera Active (Driver View) — Press "Scan Parking Area"';
+  if (statusEl) statusEl.textContent = '🟢 Demo Camera Active (Driver View) — Scanning...';
 
   wzResizeARCanvas();
-  setTimeout(() => wzCaptureAndScan(), 300);
+  wzStartARRenderLoop();
+
+  if (simulatedImgElement.complete) {
+    setTimeout(() => wzCaptureAndScan(), 250);
+  } else {
+    simulatedImgElement.onload = () => {
+      wzResizeARCanvas();
+      setTimeout(() => wzCaptureAndScan(), 250);
+    };
+  }
 }
 
 async function wzStartCamera() {
@@ -4828,6 +4996,7 @@ async function wzStartCamera() {
 
     wz.cam.stream = stream;
     wz.cam.isSimulated = false;
+    wz.cam.lastScanData = null;
 
     video.srcObject = stream;
     video.style.display = 'block';
@@ -4841,6 +5010,7 @@ async function wzStartCamera() {
     let scanStarted = false;
     const triggerScanLoop = () => {
       wzResizeARCanvas();
+      wzStartARRenderLoop();
       if (!scanStarted) {
         scanStarted = true;
         if (wz.cam.isAutoScanning) {
@@ -4873,6 +5043,7 @@ async function wzStartCamera() {
 }
 
 function wzStopCamera() {
+  wzStopARRenderLoop();
   if (wz.cam.stream) {
     wz.cam.stream.getTracks().forEach(t => t.stop());
     wz.cam.stream = null;
@@ -4880,6 +5051,7 @@ function wzStopCamera() {
   const video = document.getElementById('wz-cam-video');
   if (video) { video.srcObject = null; }
   wz.cam.isSimulated = false;
+  wz.cam.lastScanData = null;
   wzStopAutoScan();
   wzClearARCanvas();
 
@@ -4895,7 +5067,7 @@ function wzStartAutoScan() {
   wzStopAutoScan();
   // Real-time scan interval: 1.1s for responsive live feedback
   wz.cam.scanInterval = setInterval(() => {
-    if (wz.step === 5 && wz.cam.stream) wzCaptureAndScan();
+    if (wz.step === 5 && (wz.cam.stream || wz.cam.isSimulated)) wzCaptureAndScan();
   }, 1100);
 }
 
@@ -4909,10 +5081,21 @@ function wzStopAutoScan() {
 function wzResizeARCanvas() {
   const video = document.getElementById('wz-cam-video');
   const canvas = document.getElementById('wz-ar-canvas');
-  if (!video || !canvas) return;
-  const rect = video.getBoundingClientRect();
-  canvas.width = rect.width || video.videoWidth || 640;
-  canvas.height = rect.height || video.videoHeight || 480;
+  const viewport = document.getElementById('wz-camera-viewport');
+  if (!canvas) return;
+  const vw = (viewport && viewport.clientWidth) || 640;
+  const vh = (viewport && viewport.clientHeight) || 400;
+
+  if (wz.cam.isSimulated && simulatedImgElement && simulatedImgElement.complete) {
+    canvas.width = simulatedImgElement.naturalWidth || vw;
+    canvas.height = simulatedImgElement.naturalHeight || vh;
+  } else if (video && video.videoWidth > 0) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  } else {
+    canvas.width = vw;
+    canvas.height = vh;
+  }
 }
 
 function wzClearARCanvas() {
@@ -4923,16 +5106,6 @@ function wzClearARCanvas() {
   }
   const pointer = document.getElementById('wz-ar-pointer');
   if (pointer) pointer.classList.add('hidden');
-}
-
-function wzStartAutoScan() {
-  wzStopAutoScan();
-  // Continuously scan frame every 1.0s
-  wz.cam.scanInterval = setInterval(() => {
-    if (wz.step === 5 && wz.cam.stream && wz.cam.isAutoScanning) {
-      wzCaptureAndScan();
-    }
-  }, 1000);
 }
 
 async function wzCaptureAndScan() {
@@ -5082,6 +5255,7 @@ function wzFallbackClientScan(video) {
 
 function wzRenderScanResults(data) {
   if (!data || !data.success) return;
+  wz.cam.lastScanData = data;
 
   const rec = data.recommended_slot;
   const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84, wheels: 2 };
@@ -5334,25 +5508,28 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
+      // Filter out ego-vehicle hood full-width box at bottom of screen
+      if (wNorm > 0.75 && yNorm > 0.40) return;
+
       if (det.is_indoor) {
-        // Magenta / Purple dashed box for indoor items
-        ctx.strokeStyle = '#c026d3';
-        ctx.lineWidth = 3;
+        // Cool Steel Slate dashed box for indoor items
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 2.5;
         ctx.setLineDash([5, 3]);
         ctx.strokeRect(bx, by, bw, bh);
         ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(192, 38, 211, 0.16)';
+        ctx.fillStyle = 'rgba(100, 116, 139, 0.16)';
         ctx.fillRect(bx, by, bw, bh);
 
         const label = `🏠 INDOOR: ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
-        ctx.fillStyle = '#c026d3';
+        ctx.fillStyle = '#475569';
         ctx.fillRect(bx, Math.max(0, by - 20), tw + 10, 20);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(label, bx + 5, Math.max(14, by - 5));
       } else if (det.is_obstacle) {
-        // Red dashed warning box for obstacles
+        // Coral warning box for obstacles
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 3;
         ctx.setLineDash([6, 4]);
@@ -5361,7 +5538,6 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
         ctx.fillRect(bx, by, bw, bh);
 
-        // Warning Badge
         const label = `⚠️ OBSTACLE: ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
@@ -5370,24 +5546,26 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.fillStyle = '#ffffff';
         ctx.fillText(label, bx + 5, Math.max(14, by - 5));
       } else {
-        // Cyan box for vehicles
-        ctx.strokeStyle = '#06b6d4';
-        ctx.lineWidth = 2;
+        // Cool Ice Cyan box for vehicles
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 2.5;
         ctx.strokeRect(bx, by, bw, bh);
 
-        const clen = Math.min(10, bw / 4, bh / 4);
-        ctx.strokeStyle = '#22d3ee';
-        ctx.lineWidth = 3;
+        const clen = Math.min(12, bw / 4, bh / 4);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 3.5;
         ctx.beginPath(); ctx.moveTo(bx, by + clen); ctx.lineTo(bx, by); ctx.lineTo(bx + clen, by); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(bx + bw - clen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + clen); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx, by + bh - clen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + clen, by + bh); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + bw - clen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - clen); ctx.stroke();
 
         const label = `🚗 ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
-        ctx.fillStyle = 'rgba(6, 182, 212, 0.9)';
-        ctx.fillRect(bx, Math.max(0, by - 18), tw + 8, 18);
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.92)';
+        ctx.fillRect(bx, Math.max(0, by - 19), tw + 8, 19);
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(label, bx + 4, Math.max(13, by - 4));
+        ctx.fillText(label, bx + 4, Math.max(14, by - 5));
       }
     });
   }
@@ -5397,15 +5575,15 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => d.is_obstacle || d.is_indoor).length : 0);
 
   let hudText = `⚡ YOLOv8 Neural Active • 🚗 Vehicles: ${vCount} • ⚠️ Hazards: ${oCount} • 📐 Feet & Meters`;
-  let hudBg = 'rgba(15, 23, 42, 0.88)';
-  let hudBorder = '#06b6d4';
+  let hudBg = 'rgba(11, 19, 41, 0.90)';
+  let hudBorder = '#0ea5e9';
   let hudColor = '#38bdf8';
 
   if (isIndoorScene) {
     hudText = `🏠 INDOOR DETECTED • Point Camera Outside at Parking Area`;
-    hudBg = 'rgba(88, 28, 135, 0.94)';
-    hudBorder = '#c026d3';
-    hudColor = '#fdf4ff';
+    hudBg = 'rgba(30, 41, 59, 0.94)';
+    hudBorder = '#64748b';
+    hudColor = '#e2e8f0';
   } else if (isScanningRoad) {
     hudText = `🔍 SCANNING GROUND • Align Camera with Road or Marked Bays`;
     hudBg = 'rgba(120, 53, 15, 0.94)';
@@ -5425,7 +5603,11 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   ctx.fillText(hudText, cw / 2, 23);
   ctx.textAlign = 'left';
 
+  // If no slots exist yet or scene is scanning, always render candidate ground target frame!
   if (!arSlots || arSlots.length === 0 || isIndoorScene || isScanningRoad) {
+    if (!isIndoorScene) {
+      wzDrawTargetGroundFrame(ctx, cw, ch);
+    }
     if (pointer) pointer.classList.add('hidden');
     return;
   }

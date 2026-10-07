@@ -3556,15 +3556,25 @@ async def scan_multiframe_endpoint(request: Request):
             )
             analyzed_slots = []
         elif zone_result["status"] == ZoneStatus.UNKNOWN:
+            analyzed_slots = space_analyzer.analyze_spaces(
+                image_shape=(h, w),
+                detections=detections,
+                zone_info=zone_result,
+                predefined_slots=None,
+                vehicle_specs=veh_specs,
+                parking_mode="unmarked"
+            )
+            for s in analyzed_slots:
+                s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": "unconfirmed"})
+
             conf_res = confidence_scorer.evaluate(
                 zone_result=zone_result,
-                occupancy_status="AVAILABLE",
-                obstacle_detected=False,
-                vehicle_fit={"is_suitable": True, "width_margin_m": 0.0, "clearance_ft_str": "Unverified"},
+                occupancy_status="AVAILABLE" if any(s["status"] == "AVAILABLE" for s in analyzed_slots) else "OCCUPIED",
+                obstacle_detected=any(bool(s.get("blocked_reason")) for s in analyzed_slots),
+                vehicle_fit=analyzed_slots[0]["vehicle_fit"] if analyzed_slots else {"is_suitable": True, "width_margin_m": 0.0, "clearance_ft_str": "Unverified"},
                 permission_info={"can_park_legally": False, "is_unknown": True},
                 detection_confidence=float(np.mean([d["confidence"] for d in detections])) if detections else 0.70
             )
-            analyzed_slots = []
         else:
             # VALID ZONE
             scenarios = load_scenarios()
@@ -3648,13 +3658,15 @@ async def scan_multiframe_endpoint(request: Request):
         headline = "NOT SUITABLE FOR PARKING"
         reason = "A non-parking surface (indoor floor, traffic lane, or private boundary) was detected during multi-frame scan."
 
-    # If not SUITABLE, do not recommend slot
+    # Identify recommended / candidate slot to project on screen
     recommended_slot = None
-    if final_decision == DecisionState.SUITABLE and latest_slots:
+    if latest_slots:
         for s in latest_slots:
-            if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s.get("rules", {}).get("can_park_legally", True):
+            if s["status"] == "AVAILABLE" and s["vehicle_fit"].get("is_suitable", True):
                 recommended_slot = s
                 break
+        if not recommended_slot and latest_slots:
+            recommended_slot = latest_slots[0]
 
     h_best, w_best = best_img.shape[:2]
     ar_slots = []
