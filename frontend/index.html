@@ -15,9 +15,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="style.css?v=2.1">
+  <link rel="stylesheet" href="style.css?v=3.0">
 </head>
-<body class="classic-theme">
+<body class="cyber-theme">
 
   <!-- ============================================================= -->
   <!-- USER AUTHENTICATION & LOGIN GATEWAY PAGE                      -->
@@ -100,11 +100,11 @@
           <div class="form-grid login-grid">
             <div class="form-group full-width">
               <label for="login-email">
-                <span>Registered Email Address</span> <span class="required-star">*</span>
+                <span data-i18n="lbl_login_id">Email, Username, or Mobile</span> <span class="required-star">*</span>
               </label>
               <div class="input-icon-wrap">
-                <span class="field-icon">✉️</span>
-                <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+                <span class="field-icon">👤</span>
+                <input type="text" id="login-email" required placeholder="e.g. kavita@test.com, Rahul, or 9876543210" autocomplete="username">
               </div>
             </div>
 

@@ -2,7 +2,7 @@
   "kavita@test.com": {
     "name": "Kavita Patel",
     "email": "kavita@test.com",
-    "password": "123456",
+    "password": "123",
     "phone": "",
     "license_plate": "MH-01-BK-1234",
     "bike_model": "Hero Splendor",
@@ -75,5 +75,37 @@
     "width_m": 0.69,
     "clearance_m": 0.15,
     "registered_at": "2026-09-22"
+  },
+  "ubed@example.com": {
+    "name": "Ubed",
+    "email": "ubed@example.com",
+    "password": "pass",
+    "phone": "",
+    "license_plate": "MH-01-BK-4638",
+    "bike_model": "Honda Activa 6G",
+    "bike_type": "bike_scooter",
+    "wheels": 2,
+    "category": "Scooter",
+    "icon": "🛵",
+    "length_m": 1.83,
+    "width_m": 0.69,
+    "clearance_m": 0.15,
+    "registered_at": "2026-10-07"
+  },
+  "newdriver@parkvision.local": {
+    "name": "Newdriver",
+    "email": "newdriver@parkvision.local",
+    "password": "999",
+    "phone": "",
+    "license_plate": "MH-01-BK-3095",
+    "bike_model": "Honda Activa 6G",
+    "bike_type": "bike_scooter",
+    "wheels": 2,
+    "category": "Scooter",
+    "icon": "🛵",
+    "length_m": 1.83,
+    "width_m": 0.69,
+    "clearance_m": 0.15,
+    "registered_at": "2026-10-07"
   }
 }
