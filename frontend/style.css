@@ -3914,32 +3914,39 @@ select.custom-select:focus {
   cursor: pointer;
 }
 
-/* Scan Spinner */
+/* Scan Spinner - Sleek Non-Blocking HUD Pill */
 .wz-scan-spinner {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(15, 23, 42, 0.8);
-  color: white;
+  top: 12px;
+  right: 12px;
+  transform: none;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #f8fafc;
+  border: 1px solid rgba(16, 185, 129, 0.45);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 0.6rem;
-  padding: 1.1rem 1.5rem;
-  border-radius: var(--radius-lg);
-  font-size: 0.82rem;
-  font-weight: 700;
-  z-index: 8;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  z-index: 9;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: opacity 0.25s ease;
 }
 
 .wz-radar {
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(255,255,255,0.2);
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
   border-top-color: #10b981;
   border-radius: 50%;
-  animation: wz-spin 0.8s linear infinite;
+  animation: wz-spin 0.75s linear infinite;
+  flex-shrink: 0;
 }
 
 /* AR Pointer */
@@ -9097,6 +9104,8 @@ select.custom-select:focus {
 
 /* Top bar in auth screen */
 .auth-top-bar {
+  position: relative;
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -9769,15 +9778,15 @@ select.custom-select:focus {
   .wizard-header-actions {
     display: flex !important;
     align-items: center !important;
-    gap: 0.3rem !important;
+    gap: 0.25rem !important;
     flex-wrap: nowrap !important;
     flex-shrink: 0 !important;
   }
 
   .wz-user-pill {
-    padding: 0.22rem 0.5rem !important;
+    padding: 0.22rem 0.45rem !important;
     font-size: 0.72rem !important;
-    max-width: 105px !important;
+    max-width: 90px !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
@@ -9789,9 +9798,55 @@ select.custom-select:focus {
   }
 
   .wz-logout-btn {
-    padding: 0.25rem 0.5rem !important;
+    padding: 0.22rem 0.45rem !important;
     font-size: 0.72rem !important;
     white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Compact Responsive Language Switcher on Mobile */
+  .lang-selector-dropdown {
+    position: relative !important;
+    display: inline-flex !important;
+    flex-shrink: 0 !important;
+    z-index: 150 !important;
+  }
+
+  .lang-btn {
+    padding: 0.22rem 0.45rem !important;
+    font-size: 0.75rem !important;
+    gap: 0.22rem !important;
+    border-radius: 6px !important;
+    min-height: 28px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .lang-btn .lang-text-label {
+    display: none !important; /* On mobile screens hide 'English' / 'हिन्दी' text so button stays compact */
+  }
+
+  .lang-btn .lang-icon {
+    font-size: 0.85rem !important;
+  }
+
+  .lang-btn .lang-flag {
+    font-size: 0.85rem !important;
+  }
+
+  .lang-menu {
+    position: absolute !important;
+    top: calc(100% + 5px) !important;
+    right: 0 !important;
+    left: auto !important;
+    min-width: 185px !important;
+    max-width: calc(100vw - 20px) !important;
+    z-index: 999999 !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25) !important;
+    padding: 0.35rem !important;
   }
 
   /* WIZARD PROGRESS STEPPER ON MOBILE: ALL 5 STEPS FIT NEATLY WITHOUT OVERFLOW */

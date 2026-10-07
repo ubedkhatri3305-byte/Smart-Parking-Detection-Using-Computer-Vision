@@ -5033,13 +5033,18 @@ async function wzStartCamera() {
     const triggerScanLoop = () => {
       wzResizeARCanvas();
       wzStartARRenderLoop();
+      // Draw initial ground frame immediately so user sees live targeting
+      const canvas = document.getElementById('wz-ar-canvas');
+      if (canvas && (!wz.cam.lastScanData || !wz.cam.lastScanData.ar_slots || wz.cam.lastScanData.ar_slots.length === 0)) {
+        wzDrawTargetGroundFrame(canvas.getContext('2d'), canvas.width, canvas.height);
+      }
       if (!scanStarted) {
         scanStarted = true;
         if (wz.cam.isAutoScanning) {
-          setTimeout(() => wzCaptureAndScan(), 250);
+          setTimeout(() => wzCaptureAndScan(), 300);
           wzStartAutoScan();
         } else {
-          if (statusEl) statusEl.textContent = '🟢 Camera Ready — Stop safely and press "Scan Parking Area"';
+          if (statusEl) statusEl.textContent = '🟢 Camera Ready — Align vehicle and press "Scan Parking Area"';
         }
       }
     };
@@ -5087,10 +5092,12 @@ function wzStopCamera() {
 
 function wzStartAutoScan() {
   wzStopAutoScan();
-  // Real-time scan interval: 1.1s for responsive live feedback
+  // Real-time scan interval: 1.8s for smooth non-blocking live feedback
   wz.cam.scanInterval = setInterval(() => {
-    if (wz.step === 5 && (wz.cam.stream || wz.cam.isSimulated)) wzCaptureAndScan();
-  }, 1100);
+    if (wz.step === 5 && (wz.cam.stream || wz.cam.isSimulated) && !wz.cam.isScanningNow) {
+      wzCaptureAndScan();
+    }
+  }, 1800);
 }
 
 function wzStopAutoScan() {
@@ -5447,8 +5454,27 @@ function wzRenderScanResults(data) {
       statusEl.textContent = decision === 'UNCERTAIN' ? '🟡 Parking Status Uncertain' : '🔴 Not Suitable for Parking';
       statusEl.style.color = decision === 'UNCERTAIN' ? '#d97706' : '#dc2626';
     }
-    if (dimsEl) dimsEl.textContent = '—';
-    if (clearEl) clearEl.textContent = '—';
+    if (rec) {
+      const sLenFt = rec.metrics?.length_ft || (rec.metrics?.length_m ? (rec.metrics.length_m * 3.28084).toFixed(1) : (rec.length_ft || '7.5'));
+      const sWidFt = rec.metrics?.width_ft || (rec.metrics?.width_m ? (rec.metrics.width_m * 3.28084).toFixed(1) : (rec.width_ft || '4.0'));
+      const sLenM = rec.metrics?.length_m || rec.length_m || (sLenFt / 3.28).toFixed(2);
+      const sWidM = rec.metrics?.width_m || rec.width_m || (sWidFt / 3.28).toFixed(2);
+      if (dimsEl) {
+        dimsEl.innerHTML = `<span style="font-weight:700;color:#0284c7;font-size:1.05rem;">${sLenFt} ft (L) × ${sWidFt} ft (W)</span> <span style="font-size:0.78rem;color:var(--text-muted);">(${sLenM}m × ${sWidM}m)</span>`;
+      }
+      if (clearEl) {
+        if (rec.status === 'BLOCKED') {
+          clearEl.innerHTML = `<span style="font-weight:700;color:#dc2626;">🚫 ${rec.blocked_reason || 'Blocked by Obstacle/Person'}</span>`;
+        } else if (rec.vehicle_fit && !rec.vehicle_fit.is_suitable) {
+          clearEl.innerHTML = `<span style="font-weight:700;color:#dc2626;">❌ Too narrow for ${p.bikeModel}</span>`;
+        } else {
+          clearEl.innerHTML = `<span style="font-weight:700;color:#d97706;">⚠️ Unverified parking zone</span>`;
+        }
+      }
+    } else {
+      if (dimsEl) dimsEl.textContent = '—';
+      if (clearEl) clearEl.textContent = '—';
+    }
     if (msgEl) msgEl.textContent = data.reason || 'An empty area was seen, but a valid parking zone could not be verified.';
     if (pointer) pointer.classList.add('hidden');
   }
@@ -5457,8 +5483,9 @@ function wzRenderScanResults(data) {
   const wzStatus = document.getElementById('wz-cam-status');
   if (wzStatus) {
     const vC = data.vehicles_count !== undefined ? data.vehicles_count : 0;
+    const pC = data.persons_count !== undefined ? data.persons_count : 0;
     const oC = data.obstacles_count !== undefined ? data.obstacles_count : 0;
-    wzStatus.innerHTML = `🟢 Live Camera &bull; ${vC} Vehicles &bull; ${oC} Hazards &bull; ${pVal}% Conf`;
+    wzStatus.innerHTML = `🟢 Live &bull; 🚗 ${vC} Vehicles &bull; 🚶 ${pC} Persons &bull; ⚠️ ${oC} Hazards &bull; ${pVal}% Conf`;
   }
 
   // Draw AR overlay with clean text
@@ -5579,7 +5606,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   const isIndoorScene = data && (data.status_code === 'INDOOR_DETECTED' || data.is_indoor);
   const isScanningRoad = data && data.status_code === 'SCANNING_FOR_ROAD';
 
-  // 1. Draw YOLO Object Detections (Vehicles, Obstacles & Indoor items)
+  // 1. Draw YOLO Object Detections (Persons, Obstacles, Vehicles & Indoor items)
   if (detections && detections.length > 0) {
     detections.forEach(det => {
       const [xNorm, yNorm, wNorm, hNorm] = det.normalized_bbox;
@@ -5591,8 +5618,35 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       // Filter out ego-vehicle hood full-width box at bottom of screen
       if (wNorm > 0.75 && yNorm > 0.40) return;
 
-      if (det.is_indoor) {
-        // Cool Steel Slate dashed box for indoor items
+      const cNameUpper = (det.class_name || '').toUpperCase();
+      const isPerson = det.is_person || cNameUpper === 'PERSON' || cNameUpper === 'PEDESTRIAN';
+
+      if (isPerson) {
+        // High-Visibility Amber/Gold Box for Pedestrians / Persons
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.16)';
+        ctx.fillRect(bx, by, bw, bh);
+
+        // Reticle corners
+        const clen = Math.min(12, bw / 4, bh / 4);
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(bx, by + clen); ctx.lineTo(bx, by); ctx.lineTo(bx + clen, by); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + bw - clen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + clen); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx, by + bh - clen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + clen, by + bh); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx + bw - clen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - clen); ctx.stroke();
+
+        const label = `🚶 PERSON ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(bx, Math.max(0, by - 20), tw + 10, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, bx + 5, Math.max(14, by - 5));
+      } else if (det.is_indoor) {
+        // Steel Slate dashed box for indoor domestic items
         ctx.strokeStyle = '#64748b';
         ctx.lineWidth = 2.5;
         ctx.setLineDash([5, 3]);
@@ -5601,24 +5655,24 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.fillStyle = 'rgba(100, 116, 139, 0.16)';
         ctx.fillRect(bx, by, bw, bh);
 
-        const label = `🏠 INDOOR: ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
+        const label = `🏠 INDOOR: ${cNameUpper} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = '#475569';
         ctx.fillRect(bx, Math.max(0, by - 20), tw + 10, 20);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(label, bx + 5, Math.max(14, by - 5));
-      } else if (det.is_obstacle) {
-        // Coral warning box for obstacles
+      } else if (det.is_obstacle || det.category === 'obstacle') {
+        // Coral warning box for physical obstacles & hazards
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2.8;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(bx, by, bw, bh);
         ctx.setLineDash([]);
         ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
         ctx.fillRect(bx, by, bw, bh);
 
-        const label = `⚠️ OBSTACLE: ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
+        const label = `⚠️ OBSTACLE: ${cNameUpper} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = '#ef4444';
@@ -5639,7 +5693,9 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.beginPath(); ctx.moveTo(bx, by + bh - clen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + clen, by + bh); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(bx + bw - clen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - clen); ctx.stroke();
 
-        const label = `🚗 ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
+        const isBikeOrMoto = cNameUpper.includes('MOTORCYCLE') || cNameUpper.includes('BICYCLE') || cNameUpper.includes('SCOOTER');
+        const vIcon = isBikeOrMoto ? '🏍️' : '🚗';
+        const label = `${vIcon} ${cNameUpper} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = 'rgba(14, 165, 233, 0.92)';
@@ -5651,10 +5707,11 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   }
 
   // 2. Draw Top Canvas HUD
-  const vCount = (data && data.vehicles_count !== undefined) ? data.vehicles_count : (detections ? detections.filter(d => !d.is_obstacle && !d.is_indoor).length : 0);
-  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => d.is_obstacle || d.is_indoor).length : 0);
+  const vCount = (data && data.vehicles_count !== undefined) ? data.vehicles_count : (detections ? detections.filter(d => d.is_vehicle).length : 0);
+  const pCount = (data && data.persons_count !== undefined) ? data.persons_count : (detections ? detections.filter(d => d.is_person || (d.class_name && d.class_name.toUpperCase() === 'PERSON')).length : 0);
+  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => (d.is_obstacle || d.is_indoor) && !d.is_person && (d.class_name && d.class_name.toUpperCase() !== 'PERSON')).length : 0);
 
-  let hudText = `⚡ YOLOv8 Neural Active • 🚗 Vehicles: ${vCount} • ⚠️ Hazards: ${oCount} • 📐 Feet & Meters`;
+  let hudText = `⚡ YOLOv8 Neural Active • 🚗 ${vCount} Vehicles • 🚶 ${pCount} Persons • ⚠️ ${oCount} Hazards`;
   let hudBg = 'rgba(11, 19, 41, 0.90)';
   let hudBorder = '#0ea5e9';
   let hudColor = '#38bdf8';
@@ -5683,14 +5740,15 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   ctx.fillText(hudText, cw / 2, 23);
   ctx.textAlign = 'left';
 
-  // If no slots exist yet or scene is scanning, always render candidate ground target frame!
-  if (!arSlots || arSlots.length === 0 || isIndoorScene || isScanningRoad) {
-    if (!isIndoorScene) {
-      wzDrawTargetGroundFrame(ctx, cw, ch);
-    }
+  // If no slots returned yet, draw guide ground target frame
+  if (!arSlots || arSlots.length === 0) {
+    wzDrawTargetGroundFrame(ctx, cw, ch);
     if (pointer) pointer.classList.add('hidden');
     return;
   }
+
+  const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84, wheels: 2 };
+  const targetVehName = p.bikeModel || 'Vehicle';
 
   arSlots.forEach(s => {
     const isRec = recommendedSlot && s.id === recommendedSlot.id;
@@ -5709,8 +5767,38 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
     const cx = s.center[0] * cw;
     const cy = s.center[1] * ch;
 
-    if (isRec && isFit) {
-      // ONLY draw green POTENTIALLY SUITABLE and FITS VEHICLE if it physically fits safely!
+    if (s.status === 'BLOCKED') {
+      // 🔴 Blocked by Pedestrian or Obstacle
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3.5;
+      ctx.setLineDash([7, 4]);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🚫', cx, cy);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText('NOT SUITABLE - BLOCKED', cx, cy - 38);
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`${sLenFt} ft × ${sWidFt} ft`, cx, cy + 36);
+      ctx.fillStyle = '#f87171';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`🚫 ${s.blocked_reason || 'Blocked by Person/Obstacle'}`, cx, cy + 52);
+      ctx.textAlign = 'left';
+    } else if (isRec && isFit) {
+      // 🟢 Fits Vehicle Safely & Clear
       ctx.strokeStyle = '#10b981';
       ctx.lineWidth = 4;
       ctx.shadowColor = '#10b981';
@@ -5731,16 +5819,15 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       ctx.textBaseline = 'middle';
       ctx.fillText('🅿️', cx, cy);
 
-      // Label text with REAL FEET DIMENSIONS
       ctx.fillStyle = '#10b981';
-      ctx.font = 'bold 14px sans-serif';
+      ctx.font = 'bold 13px sans-serif';
       ctx.fillText('POTENTIALLY SUITABLE', cx, cy - 38);
       ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.fillText(`${sLenFt} ft × ${sWidFt} ft (${clearFt})`, cx, cy + 36);
       ctx.fillStyle = '#34d399';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText('FITS VEHICLE ✅', cx, cy + 52);
+      ctx.fillText(`FITS ${targetVehName.toUpperCase()} ✅`, cx, cy + 52);
       ctx.textAlign = 'left';
 
       if (pointer) {
@@ -5751,7 +5838,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         pointerShown = true;
       }
     } else if (isRec && !isFit) {
-      // Red/amber alert: Space is too narrow or small
+      // ❌ Space Too Narrow / Short for Selected Vehicle
       ctx.strokeStyle = '#ef4444';
       ctx.lineWidth = 3.5;
       ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
@@ -5769,25 +5856,14 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       ctx.fillText('❌', cx, cy);
 
       ctx.fillStyle = '#ef4444';
-      ctx.font = 'bold 14px sans-serif';
+      ctx.font = 'bold 13px sans-serif';
       ctx.fillText('TOO NARROW', cx, cy - 38);
       ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.fillText(`${sLenFt} ft × ${sWidFt} ft`, cx, cy + 36);
       ctx.fillStyle = '#f87171';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText('DOES NOT FIT VEHICLE ❌', cx, cy + 52);
-      ctx.textAlign = 'left';
-    } else if (s.status === 'BLOCKED') {
-      ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
-      ctx.lineWidth = 2.5;
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
-      ctx.fill(); ctx.stroke();
-
-      ctx.fillStyle = '#ef4444';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`🚫 ${s.blocked_reason || 'BLOCKED BY OBSTACLE'}`, cx, cy);
+      ctx.fillText(`DOES NOT FIT ${targetVehName.toUpperCase()} ❌`, cx, cy + 52);
       ctx.textAlign = 'left';
     } else if (s.status === 'AVAILABLE') {
       ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
@@ -5801,6 +5877,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       ctx.fillText(`${sLenFt} ft × ${sWidFt} ft`, cx, cy);
       ctx.textAlign = 'left';
     } else {
+      // Occupied
       ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
       ctx.lineWidth = 2;
       ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';

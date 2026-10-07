@@ -4,8 +4,14 @@ Connects Computer Vision pipeline, GPS navigation, and Rule Engine with Web Inte
 """
 
 import os
+import sys
 import io
 import base64
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
 import json
 import time
 import math
@@ -3516,20 +3522,28 @@ async def scan_multiframe_endpoint(request: Request):
         # Norm detections for HUD
         norm_dets = []
         v_count = 0
+        p_count = 0
         o_count = 0
         for d in detections:
             xmin, ymin, xmax, ymax = d["bbox"]
             cname = d.get("class_name", "object").lower()
             is_indoor = d.get("is_indoor", False)
-            is_obs = d.get("is_obstacle", False) or (d.get("category") == "obstacle") or is_indoor or (cname not in ("car", "motorcycle", "bus", "truck", "train", "bicycle"))
-            if not is_obs:
+            is_pers = (cname == "person") or d.get("is_person", False)
+            is_veh = (cname in ("car", "motorcycle", "bus", "truck", "train", "bicycle", "auto", "rickshaw")) or d.get("is_vehicle", False)
+            is_obs = (not is_veh and not is_pers) or is_indoor or d.get("is_obstacle", False)
+
+            if is_pers:
+                p_count += 1
+            elif is_veh:
                 v_count += 1
             else:
                 o_count += 1
+
             norm_dets.append({
                 "class_name": cname.upper(),
                 "confidence": round(float(d.get("confidence", 0.85)), 2),
-                "is_vehicle": not is_obs,
+                "is_person": is_pers,
+                "is_vehicle": is_veh,
                 "is_obstacle": is_obs,
                 "is_indoor": is_indoor,
                 "normalized_bbox": [
@@ -3545,16 +3559,26 @@ async def scan_multiframe_endpoint(request: Request):
 
         # Evaluate individual frame
         if zone_result["status"] == ZoneStatus.INVALID:
+            analyzed_slots = space_analyzer.analyze_spaces(
+                image_shape=(h, w),
+                detections=detections,
+                zone_info=zone_result,
+                predefined_slots=None,
+                vehicle_specs=veh_specs,
+                parking_mode="unmarked"
+            )
+            for s in analyzed_slots:
+                s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": "unconfirmed"})
+
             conf_res = confidence_scorer.evaluate(
                 zone_result=zone_result,
                 occupancy_status="BLOCKED",
-                obstacle_detected=True,
-                vehicle_fit={"is_suitable": False, "width_margin_m": -1.0, "message": "Not an authorized parking zone."},
+                obstacle_detected=any(bool(s.get("blocked_reason")) for s in analyzed_slots) or True,
+                vehicle_fit=analyzed_slots[0]["vehicle_fit"] if analyzed_slots else {"is_suitable": False, "width_margin_m": -1.0, "message": "Not an authorized parking zone."},
                 permission_info={"can_park_legally": False, "is_unknown": False, "is_prohibited": True},
                 detection_confidence=float(np.mean([d["confidence"] for d in detections])) if detections else 0.85,
                 blocked_reason=zone_result["headline"]
             )
-            analyzed_slots = []
         elif zone_result["status"] == ZoneStatus.UNKNOWN:
             analyzed_slots = space_analyzer.analyze_spaces(
                 image_shape=(h, w),
@@ -3750,6 +3774,9 @@ async def scan_multiframe_endpoint(request: Request):
         "speech_text": speech_text,
         "ar_slots": ar_slots,
         "detections": latest_norm_detections,
+        "vehicles_count": v_count,
+        "persons_count": p_count,
+        "obstacles_count": o_count,
         "annotated_frame": f"data:image/jpeg;base64,{annotated_b64}",
         "summary": {
             "total_slots": len(latest_slots),

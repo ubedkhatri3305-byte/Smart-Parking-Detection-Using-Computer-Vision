@@ -973,17 +973,24 @@
 
     updateDropdowns() {
       const langInfo = LANGUAGES[this.currentLang] || LANGUAGES[this.defaultLang];
+      const htmlContent = `<span class="lang-flag">${langInfo.flag}</span> <span class="lang-text-label">${langInfo.nativeName}</span>`;
 
       // Update Wizard header display
       const wzCurrent = document.getElementById('wz-lang-current');
       if (wzCurrent) {
-        wzCurrent.innerHTML = `<span class="lang-flag">${langInfo.flag}</span> ${langInfo.nativeName}`;
+        wzCurrent.innerHTML = htmlContent;
+      }
+
+      // Update Auth / Login top bar display
+      const authCurrent = document.getElementById('auth-lang-current');
+      if (authCurrent) {
+        authCurrent.innerHTML = htmlContent;
       }
 
       // Update Nav header display
       const navCurrent = document.getElementById('nav-lang-current');
       if (navCurrent) {
-        navCurrent.innerHTML = `<span class="lang-flag">${langInfo.flag}</span> ${langInfo.nativeName}`;
+        navCurrent.innerHTML = htmlContent;
       }
 
       // Update active option in menus
@@ -1014,6 +1021,7 @@
       };
 
       setupDropdown('wz-lang-btn', 'wz-lang-menu');
+      setupDropdown('auth-lang-btn', 'auth-lang-menu');
       setupDropdown('nav-lang-btn', 'nav-lang-menu');
 
       // Global option click delegate

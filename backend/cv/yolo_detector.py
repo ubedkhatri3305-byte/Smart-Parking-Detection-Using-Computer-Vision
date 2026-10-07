@@ -254,12 +254,15 @@ class ParkingYOLODetector:
                 cls_name = self.class_names.get(cls_id, str(cls_id)).lower()
                 conf = float(confidences[i])
 
+                is_person = cls_name == "person"
                 is_vehicle = cls_name in self.VEHICLE_CLASSES
                 is_indoor = cls_name in self.INDOOR_CLASSES
                 is_road_object = cls_name in self.OUTDOOR_ROAD_OBJECTS
                 is_obstacle = not is_vehicle and not is_indoor
 
-                if is_vehicle:
+                if is_person:
+                    category = "person"
+                elif is_vehicle:
                     category = "vehicle"
                 elif is_indoor:
                     category = "indoor_object"
@@ -277,6 +280,7 @@ class ParkingYOLODetector:
                     "class_id": cls_id,
                     "class_name": cls_name,
                     "category": category,
+                    "is_person": is_person,
                     "is_vehicle": is_vehicle,
                     "is_indoor": is_indoor,
                     "is_road_object": is_road_object,

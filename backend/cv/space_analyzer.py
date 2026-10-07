@@ -105,14 +105,13 @@ class ParkingSpaceAnalyzer:
                 and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
             ]
             candidate_slots = self._segment_corridors(w, h, y_top, y_bot, cleaned_ground)
-        elif not zone_info.get("is_indoor", False):
-            # Mode C: Outdoor candidate area - synthesize target bay for vehicle alignment
+        else:
+            # Mode C: Synthesize candidate perspective bay for vehicle alignment
             y_top = int(h * 0.45)
             y_bot = int(h * 0.94)
             cleaned_ground = [
                 d for d in detections
                 if d["bbox"][3] >= y_top
-                and not d.get("is_indoor", False)
                 and not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.40 * h)
                 and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
             ]
@@ -122,14 +121,11 @@ class ParkingSpaceAnalyzer:
                 candidate_slots = [
                     {
                         "id": "Target Bay 1",
-                        "label": "Target Parking Bay",
-                        "polygon": [[int(w * 0.24), y_top], [int(w * 0.76), y_top], [int(w * 0.85), y_bot], [int(w * 0.15), y_bot]],
+                        "label": "Candidate Alignment Bay",
+                        "polygon": [[int(w * 0.22), y_top], [int(w * 0.78), y_top], [int(w * 0.88), y_bot], [int(w * 0.12), y_bot]],
                         "rule_zone": "unconfirmed"
                     }
                 ]
-        else:
-            # Indoor surface: No parking slots
-            return []
 
         # Filter out ego-vehicle hood from detections passed to occupancy evaluation
         cleaned_detections = [
@@ -146,12 +142,17 @@ class ParkingSpaceAnalyzer:
             s["metrics"] = self.geom.compute_slot_metric_dimensions(s["polygon"])
             # 2. Evaluate physical vehicle fit
             s["vehicle_fit"] = self.vehicle_matcher.evaluate_fit(s["metrics"], veh_specs)
-            # 3. Check for obstacle blockers
+            # 3. Check for obstacle / pedestrian blockers
             if s.get("blocked_reason"):
                 s["status"] = SlotStatus.BLOCKED
                 s["vehicle_fit"]["is_suitable"] = False
-                s["vehicle_fit"]["fit_badge"] = "⚠️ Blocked by Obstacle"
-                s["vehicle_fit"]["message"] = f"Blocked by {s['blocked_reason']}. Clear obstacle before parking."
+                s["vehicle_fit"]["fit_badge"] = "⚠️ Blocked"
+                s["vehicle_fit"]["message"] = f"Blocked by {s['blocked_reason']}. Clear space before parking."
+            elif not is_zone_valid and zone_info.get("is_indoor", False):
+                s["status"] = SlotStatus.BLOCKED
+                s["vehicle_fit"]["is_suitable"] = False
+                s["vehicle_fit"]["fit_badge"] = "🏠 Indoor Space"
+                s["vehicle_fit"]["message"] = "Indoor space detected. Point camera at an outdoor parking area."
 
         return evaluated_slots
 

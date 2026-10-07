@@ -102,7 +102,15 @@ class ParkingOccupancyAnalyzer:
                     category = det["category"]
                     cls_name = det["class_name"]
 
-                    if category == "obstacle" or cls_name in {"bicycle", "person", "stop sign"}:
+                    is_pers = det.get("is_person", False) or (cls_name == "person")
+                    is_obs = (
+                        category in {"obstacle", "person", "indoor_object"}
+                        or det.get("is_obstacle", False)
+                        or is_pers
+                        or cls_name in {"bicycle", "person", "stop sign"}
+                    )
+
+                    if is_obs:
                         if slot_shapely.intersects(obj["poly"]):
                             intersection_area = slot_shapely.intersection(obj["poly"]).area
                             slot_overlap = intersection_area / slot_area
@@ -110,7 +118,10 @@ class ParkingOccupancyAnalyzer:
 
                             if slot_overlap > self.obstacle_iou_threshold or contact_inside:
                                 status = SlotStatus.BLOCKED
-                                blocked_reason = f"Blocked by {cls_name} ({det['confidence']*100:.0f}%)"
+                                if is_pers:
+                                    blocked_reason = f"Pedestrian / Person ({det['confidence']*100:.0f}%)"
+                                else:
+                                    blocked_reason = f"{cls_name.capitalize()} ({det['confidence']*100:.0f}%)"
                                 matched_detection = det
                                 max_overlap_ratio = max(max_overlap_ratio, slot_overlap)
                                 break
