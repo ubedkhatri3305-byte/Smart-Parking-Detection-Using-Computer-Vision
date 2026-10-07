@@ -15,7 +15,7 @@ import urllib.parse
 from typing import Optional, List, Dict, Any, Tuple
 import cv2
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
@@ -118,6 +118,23 @@ if os.path.exists(ROOT_DIR):
 
 from backend.data.vehicle_dataset import VEHICLE_DATASET, search_vehicles, lookup_vehicle
 import math
+
+async def extract_cv_payload(request: Request) -> Dict[str, Any]:
+    content_type = request.headers.get("content-type", "").lower()
+    if "application/json" in content_type:
+        try:
+            return await request.json()
+        except Exception:
+            return {}
+    try:
+        form = await request.form(max_part_size=50 * 1024 * 1024)
+        return dict(form)
+    except Exception:
+        try:
+            return await request.json()
+        except Exception:
+            return {}
+
 
 def load_scenarios():
     if os.path.exists(CONFIG_PATH):
@@ -2561,14 +2578,7 @@ def get_scenarios():
 
 
 @app.post("/api/cv/analyze")
-async def analyze_parking(
-    scenario_key: Optional[str] = Form(None),
-    vehicle_type: str = Form("suv"),
-    custom_length: Optional[float] = Form(None),
-    custom_width: Optional[float] = Form(None),
-    image_file: Optional[UploadFile] = File(None),
-    custom_slots_json: Optional[str] = Form(None)
-):
+async def analyze_parking(request: Request):
     """
     Main Computer Vision inference endpoint.
     Performs:
@@ -2579,15 +2589,41 @@ async def analyze_parking(
     5. Parking regulation verification
     6. Recommendation selection
     """
+    payload = await extract_cv_payload(request)
+    scenario_key = payload.get("scenario_key")
+    vehicle_type = str(payload.get("vehicle_type", "suv"))
+    try:
+        custom_length = float(payload.get("custom_length")) if payload.get("custom_length") is not None else None
+    except Exception:
+        custom_length = None
+    try:
+        custom_width = float(payload.get("custom_width")) if payload.get("custom_width") is not None else None
+    except Exception:
+        custom_width = None
+    image_file = payload.get("image_file")
+    image_base64 = payload.get("image_base64")
+    custom_slots_json = payload.get("custom_slots_json")
+
     scenarios = load_scenarios()
     scenario_data = None
 
-    if image_file:
+    image = None
+    if image_file and hasattr(image_file, "read"):
         contents = await image_file.read()
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if image is None:
             raise HTTPException(status_code=400, detail="Invalid uploaded image format")
+    elif image_base64:
+        clean_b64 = image_base64
+        if "," in clean_b64:
+            clean_b64 = clean_b64.split(",", 1)[1]
+        try:
+            raw_bytes = base64.b64decode(clean_b64)
+            nparr = np.frombuffer(raw_bytes, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception:
+            image = None
     elif scenario_key and scenario_key in scenarios:
         scenario_data = scenarios[scenario_key]
         img_path = scenario_data["image_path"]
@@ -2883,22 +2919,11 @@ async def analyze_parking(
 
 
 @app.post("/api/cv/analyze-live-frame")
-async def analyze_live_frame(
-    image_file: Optional[UploadFile] = File(None),
-    image_base64: Optional[str] = Form(None),
-    vehicle_type: str = Form("bike_cruiser"),
-    custom_length: Optional[float] = Form(2.15),
-    custom_width: Optional[float] = Form(0.85),
-    bike_model: Optional[str] = Form("Royal Enfield Classic 350"),
-    scenario_key: Optional[str] = Form(None),
-    map_lot_id: Optional[str] = Form(None),
-    map_is_known: Optional[bool] = Form(False),
-    parking_mode: Optional[str] = Form("auto")
-):
+async def analyze_live_frame(request: Request):
     """
     Real-time mobile camera frame inference endpoint implementing the new CV pipeline:
-    1. Preprocessing & Decoding
-    2. YOLO Object Detection (Vehicles, obstacles, pedestrians, infrastructure, domestic items)
+    1. Preprocessing & Decoding (supports JSON and Multipart)
+    2. Fast YOLO Object Detection (Vehicles, obstacles, pedestrians, infrastructure, domestic items)
     3. ParkingZoneValidator (Distinguishes authentic parking from home floor, driveway, garden, footpath, road)
     4. ParkingSpaceAnalyzer (Evaluates boundaries, occupancy, obstacle clearance, perspective metrics)
     5. Vehicle Matcher (Physical fit check with category clearance margins)
@@ -2906,8 +2931,26 @@ async def analyze_live_frame(
     7. TemporalParkingTracker (Multi-frame temporal stability)
     8. Three Final States: 🟢 SUITABLE, 🟡 UNCERTAIN, 🔴 NOT SUITABLE
     """
+    payload = await extract_cv_payload(request)
+    image_file = payload.get("image_file")
+    image_base64 = payload.get("image_base64")
+    vehicle_type = str(payload.get("vehicle_type", "bike_cruiser"))
+    try:
+        custom_length = float(payload.get("custom_length", 2.15) or 2.15)
+    except Exception:
+        custom_length = 2.15
+    try:
+        custom_width = float(payload.get("custom_width", 0.85) or 0.85)
+    except Exception:
+        custom_width = 0.85
+    bike_model = payload.get("bike_model", "Royal Enfield Classic 350")
+    scenario_key = payload.get("scenario_key")
+    map_lot_id = payload.get("map_lot_id")
+    map_is_known = bool(payload.get("map_is_known", False))
+    parking_mode = payload.get("parking_mode", "auto")
+
     image = None
-    if image_file:
+    if image_file and hasattr(image_file, "read"):
         contents = await image_file.read()
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -2915,9 +2958,12 @@ async def analyze_live_frame(
         clean_b64 = image_base64
         if "," in clean_b64:
             clean_b64 = clean_b64.split(",", 1)[1]
-        raw_bytes = base64.b64decode(clean_b64)
-        nparr = np.frombuffer(raw_bytes, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        try:
+            raw_bytes = base64.b64decode(clean_b64)
+            nparr = np.frombuffer(raw_bytes, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception:
+            image = None
     elif scenario_key:
         scenarios = load_scenarios()
         if scenario_key in scenarios:
@@ -2941,8 +2987,20 @@ async def analyze_live_frame(
 
     h, w = image.shape[:2]
 
-    # 1. Run YOLO detection
-    detections = detector.detect(image, conf_threshold=0.20)
+    # Pre-scale image for fast neural detection if resolution is excessively high
+    max_dim = max(h, w)
+    if max_dim > 720:
+        scale = 720.0 / float(max_dim)
+        proc_img = cv2.resize(image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        raw_dets = detector.detect(proc_img, conf_threshold=0.20)
+        inv_scale = 1.0 / scale
+        detections = []
+        for rd in raw_dets:
+            rb = rd["bbox"]
+            rd["bbox"] = [rb[0] * inv_scale, rb[1] * inv_scale, rb[2] * inv_scale, rb[3] * inv_scale]
+            detections.append(rd)
+    else:
+        detections = detector.detect(image, conf_threshold=0.20)
 
     # Build normalized YOLO detections for AR HUD overlay
     norm_detections = []
@@ -3278,21 +3336,10 @@ async def analyze_live_frame(
 
 
 @app.post("/api/cv/scan-multiframe")
-async def scan_multiframe_endpoint(
-    frames_json: Optional[str] = Form(None),
-    image_base64: Optional[str] = Form(None),
-    vehicle_type: str = Form("bike_cruiser"),
-    custom_length: Optional[float] = Form(2.15),
-    custom_width: Optional[float] = Form(0.85),
-    bike_model: Optional[str] = Form("Royal Enfield Classic 350"),
-    scenario_key: Optional[str] = Form(None),
-    map_lot_id: Optional[str] = Form(None),
-    map_is_known: Optional[bool] = Form(False),
-    parking_mode: Optional[str] = Form("auto")
-):
+async def scan_multiframe_endpoint(request: Request):
     """
     Multi-Frame Burst Inference Endpoint (Sections 13, 14, 15).
-    Captures a sequence of consecutive frames (e.g. 3-5 frames) after the user
+    Captures a sequence of consecutive frames (e.g. 2-4 frames) after the user
     safely stops the vehicle, analyzes consistency across all frames, and produces
     a temporally-stabilized decision:
       🟢 SUITABLE
@@ -3301,12 +3348,33 @@ async def scan_multiframe_endpoint(
 
     Enforces the Core Principle: EMPTY SPACE != PARKING SPACE.
     """
+    payload = await extract_cv_payload(request)
+    frames_input = payload.get("frames") or payload.get("frames_json")
+    image_base64 = payload.get("image_base64")
+    vehicle_type = str(payload.get("vehicle_type", "bike_cruiser"))
+    try:
+        custom_length = float(payload.get("custom_length", 2.15) or 2.15)
+    except Exception:
+        custom_length = 2.15
+    try:
+        custom_width = float(payload.get("custom_width", 0.85) or 0.85)
+    except Exception:
+        custom_width = 0.85
+    bike_model = payload.get("bike_model", "Royal Enfield Classic 350")
+    scenario_key = payload.get("scenario_key")
+    map_lot_id = payload.get("map_lot_id")
+    map_is_known = bool(payload.get("map_is_known", False))
+    parking_mode = payload.get("parking_mode", "auto")
+
     raw_frames = []
-    if frames_json:
-        try:
-            raw_frames = json.loads(frames_json)
-        except Exception:
-            raw_frames = []
+    if frames_input:
+        if isinstance(frames_input, list):
+            raw_frames = frames_input
+        elif isinstance(frames_input, str):
+            try:
+                raw_frames = json.loads(frames_input)
+            except Exception:
+                raw_frames = [frames_input]
     elif image_base64:
         raw_frames = [image_base64]
 
@@ -3329,6 +3397,10 @@ async def scan_multiframe_endpoint(
     if not decoded_images:
         raise HTTPException(status_code=400, detail="Failed to decode any valid camera frames.")
 
+    # Keep burst to latest 3 frames for instant responsiveness
+    if len(decoded_images) > 3:
+        decoded_images = decoded_images[-3:]
+
     veh_specs = matcher.get_vehicle_specs(
         vehicle_type=vehicle_type,
         custom_length=custom_length,
@@ -3346,7 +3418,7 @@ async def scan_multiframe_endpoint(
         }
 
     # Burst Temporal Tracker for this specific scan
-    burst_tracker = TemporalParkingTracker(window_size=max(len(decoded_images), 4), min_consistent_ratio=0.70)
+    burst_tracker = TemporalParkingTracker(window_size=max(len(decoded_images), 3), min_consistent_ratio=0.70)
     frame_evals = []
     latest_slots = []
     latest_detections = []
@@ -3356,7 +3428,20 @@ async def scan_multiframe_endpoint(
 
     for idx, img in enumerate(decoded_images):
         h, w = img.shape[:2]
-        detections = detector.detect(img, conf_threshold=0.20)
+        max_dim = max(h, w)
+        if max_dim > 720:
+            scale = 720.0 / float(max_dim)
+            proc_img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            raw_dets = detector.detect(proc_img, conf_threshold=0.20)
+            inv_scale = 1.0 / scale
+            detections = []
+            for rd in raw_dets:
+                rb = rd["bbox"]
+                rd["bbox"] = [rb[0] * inv_scale, rb[1] * inv_scale, rb[2] * inv_scale, rb[3] * inv_scale]
+                detections.append(rd)
+        else:
+            detections = detector.detect(img, conf_threshold=0.20)
+
         zone_result = zone_validator.validate_zone(
             image=img,
             detections=detections,

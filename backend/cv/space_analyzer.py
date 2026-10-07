@@ -56,7 +56,11 @@ class ParkingSpaceAnalyzer:
         h, w = image_shape[:2]
         veh_specs = vehicle_specs or self.vehicle_matcher.get_vehicle_specs("bike_cruiser")
         is_zone_valid = zone_info.get("is_valid", False)
-        zone_class = str(zone_info.get("zone_class", "unknown_area"))
+        raw_zc = zone_info.get("zone_class", "unknown_area")
+        zc_str = raw_zc.value if hasattr(raw_zc, "value") else str(raw_zc)
+        if "." in zc_str:
+            zc_str = zc_str.split(".", 1)[-1]
+        zone_class = zc_str.lower()
 
         # Determine slot candidate polygons
         candidate_slots: List[Dict[str, Any]] = []

@@ -246,7 +246,7 @@ class ParkingZoneValidator:
                     "evidence_negative": ["Sidewalk paver geometry", "Pedestrian right-of-way"]
                 }
 
-            if surface_type == "indoor_flooring":
+            if surface_type == "indoor_flooring" and len(vehicles) == 0 and not is_known_parking:
                 return {
                     "status": ZoneStatus.INVALID,
                     "zone_class": ZoneClass.HOUSE_FLOOR,
@@ -298,16 +298,16 @@ class ParkingZoneValidator:
                 "evidence_negative": evidence_negative
             }
 
-        # C) Parked vehicles in row with road infrastructure (Unmarked roadside cluster)
-        if len(vehicles) >= 2 and len(road_infra_items) >= 1:
+        # C) Parked vehicles in row or designated parking lot cluster
+        if len(vehicles) >= 2:
             return {
                 "status": ZoneStatus.VALID,
-                "zone_class": ZoneClass.DESIGNATED_ROADSIDE,
-                "confidence": 0.82,
+                "zone_class": ZoneClass.PARKING_LOT if is_known_parking else ZoneClass.DESIGNATED_ROADSIDE,
+                "confidence": 0.85,
                 "is_valid": True,
-                "headline": "DESIGNATED ROADSIDE PARKING AREA",
-                "reason": "Curbside parking row corroborated by street infrastructure and parked vehicles.",
-                "evidence_positive": evidence_positive + [f"{len(vehicles)} parked vehicles aligned along road margin"],
+                "headline": "DESIGNATED PARKING AREA" if not is_known_parking else "KNOWN PUBLIC PARKING AREA",
+                "reason": f"Cluster of {len(vehicles)} parked vehicles detected in parking formation.",
+                "evidence_positive": evidence_positive + [f"{len(vehicles)} parked vehicles aligned along parking row"],
                 "evidence_negative": evidence_negative
             }
 
@@ -389,20 +389,20 @@ class ParkingZoneValidator:
 
         # 4. Domestic Indoor Flooring Detection (Enforces home floor rejection)
         # 4a. High-saturation domestic flooring (hardwood, terracotta, warm laminate, rugs)
-        if mean_s > 45.0 and green_ratio < 0.15 and brown_ratio < 0.35:
+        if mean_s > 80.0 and green_ratio < 0.15 and brown_ratio < 0.35:
             return {"surface_type": "indoor_flooring", "has_parking_lines": False}
 
         # 4b. Light-colored ceramic tile, porcelain, marble, or polished interior floor
         # Road asphalt is charcoal/dark gray (mean_v between 35 and 130).
-        # Indoor tiled floors are typically bright (mean_v >= 150) with low saturation.
-        if mean_v >= 150.0 and mean_s < 45.0:
+        # Indoor tiled floors are typically bright (mean_v >= 170) with low saturation.
+        if mean_v >= 170.0 and mean_s < 45.0:
             return {"surface_type": "indoor_flooring", "has_parking_lines": False}
 
         # 4c. Uniform smooth indoor surfaces with negligible aggregate texture
         laplacian = cv2.Laplacian(gray, cv2.CV_64F)
         lap_var = float(laplacian.var())
         # Glossy indoor surface with high reflections and low granular roughness
-        if lap_var < 10.0 and mean_v > 120.0:
+        if lap_var < 10.0 and mean_v > 150.0:
             return {"surface_type": "indoor_flooring", "has_parking_lines": False}
 
         # 5. Authenticated Painted Parking Bay Lines on Outdoor Asphalt

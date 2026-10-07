@@ -1852,36 +1852,85 @@ async function startCameraStream() {
   }
 }
 
+let simulatedImgElement = null;
+
+function startSimulatedCamera() {
+  const permOverlay = document.getElementById('cam-permission-card');
+  const statusLabel = document.getElementById('cam-status-label');
+  const video = document.getElementById('mobile-cam-video');
+
+  state.camera.isSimulated = true;
+  if (state.camera.stream) {
+    state.camera.stream.getTracks().forEach(t => t.stop());
+    state.camera.stream = null;
+  }
+
+  if (!simulatedImgElement) {
+    simulatedImgElement = new Image();
+    simulatedImgElement.crossOrigin = 'anonymous';
+    simulatedImgElement.src = '/static/scenarios/scenario_2_driver.jpg';
+  }
+
+  if (video) {
+    video.style.display = 'block';
+  }
+
+  if (permOverlay) permOverlay.classList.add('hidden');
+  if (statusLabel) statusLabel.textContent = '🟢 Demo Parking Feed Active (Driver View)';
+  const lblToggle = document.getElementById('lbl-cam-toggle');
+  if (lblToggle) lblToggle.textContent = 'Stop Feed';
+  const iconToggle = document.getElementById('icon-cam-toggle');
+  if (iconToggle) iconToggle.textContent = '⏹️';
+
+  resizeARCanvas();
+  setTimeout(() => captureAndScanFrame(), 300);
+  if (state.camera.isAutoScanning) {
+    startAutoScanLoop();
+  }
+}
+
 function stopCamera() {
   if (state.camera.stream) {
     state.camera.stream.getTracks().forEach(t => t.stop());
     state.camera.stream = null;
   }
+  state.camera.isSimulated = false;
   const video = document.getElementById('mobile-cam-video');
   if (video) {
     video.srcObject = null;
   }
-  state.camera.isSimulated = false;
   stopAutoScanLoop();
 
-  document.getElementById('cam-permission-card').classList.remove('hidden');
-  document.getElementById('cam-status-label').textContent = 'Camera Stopped';
-  document.getElementById('lbl-cam-toggle').textContent = 'Start Feed';
-  document.getElementById('icon-cam-toggle').textContent = '▶️';
+  const permCard = document.getElementById('cam-permission-card');
+  if (permCard) permCard.classList.remove('hidden');
+  const statusLabel = document.getElementById('cam-status-label');
+  if (statusLabel) statusLabel.textContent = 'Camera Stopped';
+  const lblToggle = document.getElementById('lbl-cam-toggle');
+  if (lblToggle) lblToggle.textContent = 'Start Feed';
+  const iconToggle = document.getElementById('icon-cam-toggle');
+  if (iconToggle) iconToggle.textContent = '▶️';
   clearARCanvas();
+}
+
+function scheduleNextAutoScan() {
+  if (state.camera.isAutoScanning && state.currentTab === 'camera-scan' && (state.camera.stream || state.camera.isSimulated)) {
+    if (state.camera.scanTimeout) clearTimeout(state.camera.scanTimeout);
+    state.camera.scanTimeout = setTimeout(() => {
+      captureAndScanFrame();
+    }, 1500);
+  }
 }
 
 function startAutoScanLoop() {
   stopAutoScanLoop();
-  // Live scan every 1.1 seconds
-  state.camera.scanInterval = setInterval(() => {
-    if (state.currentTab === 'camera-scan' && state.camera.stream) {
-      captureAndScanFrame();
-    }
-  }, 1100);
+  scheduleNextAutoScan();
 }
 
 function stopAutoScanLoop() {
+  if (state.camera.scanTimeout) {
+    clearTimeout(state.camera.scanTimeout);
+    state.camera.scanTimeout = null;
+  }
   if (state.camera.scanInterval) {
     clearInterval(state.camera.scanInterval);
     state.camera.scanInterval = null;
@@ -1901,9 +1950,16 @@ function resizeARCanvas() {
 async function captureAndScanFrame() {
   if (state.camera.isScanningNow) return;
   const video = document.getElementById('mobile-cam-video');
-  if (!video || !state.camera.stream) return;
+  const isSim = state.camera.isSimulated;
 
-  if (video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < 2) {
+  if (!isSim && (!video || !state.camera.stream)) {
+    // If camera not yet started, prompt user
+    showToast('📷 Starting camera for frame scan...');
+    await startCameraStream();
+    return;
+  }
+
+  if (!isSim && video && (video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < 2)) {
     setTimeout(captureAndScanFrame, 200);
     return;
   }
@@ -1916,39 +1972,54 @@ async function captureAndScanFrame() {
   const scanSafety = setTimeout(() => {
     state.camera.isScanningNow = false;
     if (spinner) spinner.classList.add('hidden');
-  }, 3500);
+  }, 22000);
 
   try {
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    const maxDim = 640;
-    let cw = vw, ch = vh;
-    if (cw > maxDim || ch > maxDim) {
-      if (cw > ch) { ch = Math.round((ch * maxDim) / cw); cw = maxDim; }
-      else { cw = Math.round((cw * maxDim) / ch); ch = maxDim; }
-    }
-
     const tempCanvas = document.createElement('canvas');
+    let cw = 640, ch = 480;
     tempCanvas.width = cw;
     tempCanvas.height = ch;
     const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.drawImage(video, 0, 0, cw, ch);
-    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.65);
+
+    if (isSim && simulatedImgElement && simulatedImgElement.complete) {
+      tempCtx.drawImage(simulatedImgElement, 0, 0, cw, ch);
+    } else if (video && video.videoWidth > 0) {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const maxDim = 640;
+      cw = vw; ch = vh;
+      if (cw > maxDim || ch > maxDim) {
+        if (cw > ch) { ch = Math.round((ch * maxDim) / cw); cw = maxDim; }
+        else { cw = Math.round((cw * maxDim) / ch); ch = maxDim; }
+      }
+      tempCanvas.width = cw;
+      tempCanvas.height = ch;
+      tempCtx.drawImage(video, 0, 0, cw, ch);
+    } else {
+      tempCtx.fillStyle = '#1e293b';
+      tempCtx.fillRect(0, 0, cw, ch);
+    }
+
+    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.70);
 
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
-    const formData = new FormData();
-    formData.append('vehicle_type', p.bikeType || 'bike_cruiser');
-    formData.append('custom_length', p.length || 2.14);
-    formData.append('custom_width', p.width || 0.84);
-    formData.append('bike_model', p.bikeModel || 'Vehicle');
-    formData.append('image_base64', dataUrl);
+    const payload = {
+      vehicle_type: p.bikeType || 'bike_cruiser',
+      custom_length: p.length || 2.14,
+      custom_width: p.width || 0.84,
+      bike_model: p.bikeModel || 'Vehicle',
+      image_base64: dataUrl,
+      map_is_known: Boolean(wz.selectedLot || isSim),
+      map_lot_id: wz.selectedLot?.name || (isSim ? 'Demo Curbside Parking Row' : 'Public Parking Facility')
+    };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     const response = await fetch(`${API_BASE}/api/cv/analyze-live-frame`, {
       method: 'POST',
-      body: formData,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
       signal: controller.signal
     });
     clearTimeout(timeoutId);
@@ -1976,6 +2047,7 @@ async function captureAndScanFrame() {
     clearTimeout(scanSafety);
     state.camera.isScanningNow = false;
     if (spinner) spinner.classList.add('hidden');
+    scheduleNextAutoScan();
   }
 }
 
@@ -4657,11 +4729,41 @@ function wzInitStep5() {
     bikeNameEl.textContent = state.userProfile.bikeModel || 'bike';
   }
 
+  const sampleCamBtn = document.getElementById('wz-use-sample-cam');
+  if (sampleCamBtn) sampleCamBtn.addEventListener('click', () => wzStartSimulatedCamera());
+
   // Hook up automated 11-scenario verification test button
   const scenarioBtn = document.getElementById('btn-run-scenario-tests');
   if (scenarioBtn) {
     scenarioBtn.addEventListener('click', () => wzRunScenarioTests());
   }
+}
+
+function wzStartSimulatedCamera() {
+  const permOverlay = document.getElementById('wz-cam-perm-overlay');
+  const statusEl = document.getElementById('wz-cam-status');
+  const video = document.getElementById('wz-cam-video');
+
+  wz.cam.isSimulated = true;
+  if (wz.cam.stream) {
+    wz.cam.stream.getTracks().forEach(t => t.stop());
+    wz.cam.stream = null;
+  }
+
+  if (!simulatedImgElement) {
+    simulatedImgElement = new Image();
+    simulatedImgElement.crossOrigin = 'anonymous';
+    simulatedImgElement.src = '/static/scenarios/scenario_2_driver.jpg';
+  }
+
+  if (video) video.style.display = 'block';
+  if (permOverlay) permOverlay.classList.add('hidden');
+  const camHud = document.getElementById('wz-cam-hud');
+  if (camHud) camHud.classList.remove('hidden');
+  if (statusEl) statusEl.textContent = '🟢 Demo Camera Active (Driver View) — Press "Scan Parking Area"';
+
+  wzResizeARCanvas();
+  setTimeout(() => wzCaptureAndScan(), 300);
 }
 
 async function wzStartCamera() {
@@ -4804,13 +4906,16 @@ function wzStartAutoScan() {
 async function wzCaptureAndScan() {
   if (wz.cam.isScanningNow) return;
   const video = document.getElementById('wz-cam-video');
-  if (!video || (!wz.cam.stream && !wz.cam.isSimulated)) {
-    showToast('⚠️ Please allow camera access before scanning.');
+  const isSim = wz.cam.isSimulated;
+
+  if (!isSim && (!video || !wz.cam.stream)) {
+    showToast('📷 Opening camera for parking scan...');
+    await wzStartCamera();
     return;
   }
 
   // If video hasn't loaded frame yet, retry quickly
-  if (video.videoWidth === 0 || video.videoHeight === 0) {
+  if (!isSim && video && (video.videoWidth === 0 || video.videoHeight === 0)) {
     setTimeout(wzCaptureAndScan, 200);
     return;
   }
@@ -4830,36 +4935,51 @@ async function wzCaptureAndScan() {
     wz.cam.isScanningNow = false;
     if (spinner) spinner.classList.add('hidden');
     if (viewport) viewport.classList.remove('scanning-active');
-  }, 9000);
+  }, 27000);
 
   try {
-    // Requirement 13 & 14: Multi-frame capture sequence (4 frames, spaced 200ms apart)
+    // Multi-frame capture sequence (2 frames spaced 150ms apart for rapid temporal consistency)
     const frames = [];
-    const maxFrames = 4;
+    const maxFrames = 2;
     const maxDim = 640;
 
     for (let f = 0; f < maxFrames; f++) {
       if (spinnerText) spinnerText.textContent = `Capturing Frame ${f + 1} of ${maxFrames}...`;
       if (statusEl) statusEl.textContent = `📸 Multi-frame scan: Frame ${f + 1} of ${maxFrames}...`;
 
-      const cw = video.videoWidth || 640;
-      const ch = video.videoHeight || 480;
-      let targetW = cw, targetH = ch;
-      if (targetW > maxDim || targetH > maxDim) {
-        if (targetW > targetH) { targetH = Math.round((targetH * maxDim) / targetW); targetW = maxDim; }
-        else { targetW = Math.round((targetW * maxDim) / targetH); targetH = maxDim; }
+      const tmpCanvas = document.createElement('canvas');
+      let targetW = 640, targetH = 480;
+
+      if (isSim && simulatedImgElement && simulatedImgElement.complete) {
+        tmpCanvas.width = targetW;
+        tmpCanvas.height = targetH;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        tmpCtx.drawImage(simulatedImgElement, 0, 0, targetW, targetH);
+      } else if (video && video.videoWidth > 0) {
+        const cw = video.videoWidth || 640;
+        const ch = video.videoHeight || 480;
+        targetW = cw; targetH = ch;
+        if (targetW > maxDim || targetH > maxDim) {
+          if (targetW > targetH) { targetH = Math.round((targetH * maxDim) / targetW); targetW = maxDim; }
+          else { targetW = Math.round((targetW * maxDim) / targetH); targetH = maxDim; }
+        }
+        tmpCanvas.width = targetW;
+        tmpCanvas.height = targetH;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        tmpCtx.drawImage(video, 0, 0, targetW, targetH);
+      } else {
+        tmpCanvas.width = targetW;
+        tmpCanvas.height = targetH;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        tmpCtx.fillStyle = '#1e293b';
+        tmpCtx.fillRect(0, 0, targetW, targetH);
       }
 
-      const tmpCanvas = document.createElement('canvas');
-      tmpCanvas.width = targetW;
-      tmpCanvas.height = targetH;
-      const tmpCtx = tmpCanvas.getContext('2d');
-      tmpCtx.drawImage(video, 0, 0, targetW, targetH);
-      const b64 = tmpCanvas.toDataURL('image/jpeg', 0.65);
+      const b64 = tmpCanvas.toDataURL('image/jpeg', 0.70);
       frames.push(b64);
 
       if (f < maxFrames - 1) {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 150));
       }
     }
 
@@ -4867,19 +4987,23 @@ async function wzCaptureAndScan() {
     if (statusEl) statusEl.textContent = '⚡ Evaluating zone validity, obstacles & vehicle fit...';
 
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
-    const formData = new FormData();
-    formData.append('vehicle_type', p.bikeType || 'bike_cruiser');
-    formData.append('custom_length', p.length || 2.14);
-    formData.append('custom_width', p.width || 0.84);
-    formData.append('bike_model', p.bikeModel || 'Vehicle');
-    formData.append('frames_json', JSON.stringify(frames));
+    const payload = {
+      vehicle_type: p.bikeType || 'bike_cruiser',
+      custom_length: p.length || 2.14,
+      custom_width: p.width || 0.84,
+      bike_model: p.bikeModel || 'Vehicle',
+      frames: frames,
+      map_is_known: Boolean(wz.selectedLot || isSim),
+      map_lot_id: wz.selectedLot?.name || (isSim ? 'Demo Parking Facility' : 'Public Parking Facility')
+    };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7500);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     const res = await fetch(`${API_BASE}/api/cv/scan-multiframe`, {
       method: 'POST',
-      body: formData,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
       signal: controller.signal
     });
     clearTimeout(timeoutId);
@@ -4888,7 +5012,7 @@ async function wzCaptureAndScan() {
     const data = await res.json();
     wzRenderScanResults(data);
   } catch (err) {
-    console.warn('Multi-frame scan fallback:', err.message);
+    console.warn('Multi-frame scan notice:', err.message);
     wzFallbackClientScan(video);
   } finally {
     clearTimeout(scanSafety);
