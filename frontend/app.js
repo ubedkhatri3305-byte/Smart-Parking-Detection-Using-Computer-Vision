@@ -953,6 +953,7 @@ function initProfileUI() {
   const logoutBtn = document.getElementById('btn-nav-logout');
   const wzUserPill = document.getElementById('wz-user-pill');
   const wzLogoutBtn = document.getElementById('btn-wz-logout');
+  const wzLoginBtn = document.getElementById('btn-wz-login');
 
   if (p && p.name && (p.bikeModel || p.vehicleModel)) {
     if (pill) pill.classList.remove('hidden');
@@ -960,6 +961,7 @@ function initProfileUI() {
     if (authOpenBtn) authOpenBtn.classList.add('hidden');
     if (wzUserPill) wzUserPill.classList.remove('hidden');
     if (wzLogoutBtn) wzLogoutBtn.classList.remove('hidden');
+    if (wzLoginBtn) wzLoginBtn.classList.add('hidden');
 
     const vIcon = p.icon || (p.wheels === 4 ? '🚗' : (p.wheels === 3 ? '🛺' : '🏍️'));
     const vModel = p.bikeModel || p.vehicleModel || 'Vehicle';
@@ -996,6 +998,7 @@ function initProfileUI() {
     if (authOpenBtn) authOpenBtn.classList.remove('hidden');
     if (wzUserPill) wzUserPill.classList.add('hidden');
     if (wzLogoutBtn) wzLogoutBtn.classList.add('hidden');
+    if (wzLoginBtn) wzLoginBtn.classList.remove('hidden');
 
     const camBikeTag = document.getElementById('cam-active-bike-tag');
     if (camBikeTag) {
@@ -1068,6 +1071,13 @@ function closeAuthPortal() {
     if (typeof wzShowRegisteredBanner === 'function') {
       wzShowRegisteredBanner(state.userProfile);
     }
+    // If on Step 1, smoothly advance to Step 2 (Location)
+    if (typeof wz !== 'undefined' && wz.step <= 1 && typeof wzGoToStep === 'function') {
+      wzGoToStep(2);
+      if (typeof wzDetectGPS === 'function') {
+        setTimeout(() => wzDetectGPS(), 350);
+      }
+    }
   }
 }
 
@@ -1118,6 +1128,8 @@ function hideAuthAlert() {
 
 // User Logout handler (used by navbar and wizard header)
 async function handleUserLogout() {
+  if (typeof wzStopCamera === 'function') wzStopCamera();
+  if (typeof stopCamera === 'function') stopCamera();
   try {
     await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
   } catch (e) {
@@ -1136,6 +1148,8 @@ function initRegistrationModal() {
   const navAuthOpenBtn = document.getElementById('btn-nav-auth-open');
   const navLogoutBtn = document.getElementById('btn-nav-logout');
   const wzLogoutBtn = document.getElementById('btn-wz-logout');
+  const wzLoginBtn = document.getElementById('btn-wz-login');
+  const wzUserPill = document.getElementById('wz-user-pill');
   const closeBtn = document.getElementById('btn-close-reg-modal');
   const jumpRegBtn = document.getElementById('btn-jump-reg');
   const wzEditBtn = document.getElementById('wz-edit-profile');
@@ -1177,10 +1191,33 @@ function initRegistrationModal() {
 
   // Open modal/portal triggers
   if (openPill) openPill.addEventListener('click', () => openAuthPortal('register', true));
+  if (wzUserPill) wzUserPill.addEventListener('click', () => openAuthPortal('register', true));
   if (navAuthOpenBtn) navAuthOpenBtn.addEventListener('click', () => openAuthPortal('login', false));
+  if (wzLoginBtn) wzLoginBtn.addEventListener('click', () => openAuthPortal('login', false));
   if (jumpRegBtn) jumpRegBtn.addEventListener('click', () => openAuthPortal('register', true));
   if (wzEditBtn) wzEditBtn.addEventListener('click', () => openAuthPortal('register', true));
-  if (closeBtn) closeBtn.addEventListener('click', closeAuthPortal);
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      if (!state.userProfile) {
+        const guestProfile = {
+          name: 'Guest Rider',
+          email: 'guest@parkvision.local',
+          phone: '',
+          licensePlate: 'MH-02-GT-2026',
+          bikeModel: 'Honda Activa 6G',
+          bikeType: 'bike_scooter',
+          wheels: 2,
+          category: 'Scooter',
+          icon: '🛵',
+          length: 1.83,
+          width: 0.69,
+          clearance: 0.15
+        };
+        saveUserProfile(guestProfile);
+      }
+      closeAuthPortal();
+    });
+  }
 
   // Logout triggers
   if (navLogoutBtn) navLogoutBtn.addEventListener('click', handleUserLogout);
@@ -3202,7 +3239,7 @@ function renderFlowStage(stepNum) {
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
           <button class="action-btn glow-btn" onclick="setFlowStep(2)">Proceed to Step 2: Live Location →</button>
-          <button class="action-btn btn-secondary" onclick="document.getElementById('modal-registration').classList.remove('hidden')">Edit Bike Info ✏️</button>
+          <button class="action-btn btn-secondary" onclick="openAuthPortal('register', true)">Edit Bike Info ✏️</button>
         </div>
       ` : `
         <div style="background:var(--bg-surface);border:1px dashed var(--border-subtle);padding:1.4rem;border-radius:var(--radius-md);display:flex;gap:1.2rem;align-items:center;">
@@ -3213,7 +3250,7 @@ function renderFlowStage(stepNum) {
           </div>
         </div>
         <div style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-          <button class="action-btn glow-btn" onclick="document.getElementById('modal-registration').classList.remove('hidden')">🔐 Register / Login Now</button>
+          <button class="action-btn glow-btn" onclick="openAuthPortal('login', false)">🔐 Register / Login Now</button>
           <button class="action-btn btn-secondary" onclick="setFlowStep(2)">Continue as Guest Rider →</button>
         </div>
       `
@@ -5704,51 +5741,6 @@ function wzFallbackClientScan(video, tmpCanvas) {
       breakdown: { parking_zone: 0.10, space_free: 0.20, obstacle_free: 0.80, vehicle_fit: 0.10, permission: 0.10 },
       guidance_banner: '🔴 NOT SUITABLE FOR PARKING • Indoor domestic setting detected',
       speech_text: 'Indoor domestic area detected. Please point camera outside at an authorized parking area.'
-    };
-    wzRenderScanResults(resultData);
-    return;
-  }
-
-  // C. UNVERIFIED SURFACE (ROAD WITHOUT MARKINGS / EMPTY AIR / DIRT)
-  const entities = feats.detected_entities || [];
-  const hasPerson = entities.some(e => e.is_person);
-  const hasHazard = entities.some(e => e.is_obstacle);
-
-  if (hasPerson || hasHazard) {
-    const obsLabel = hasPerson ? 'PEDESTRIAN' : 'GROUND OBSTACLE';
-    const resultData = {
-      success: true,
-      status_code: 'NOT_SUITABLE',
-      final_decision: 'NOT_SUITABLE',
-      decision_color: 'red',
-      decision_icon: '🔴',
-      headline: `SPACE BLOCKED BY ${obsLabel}`,
-      reason: `Obstacle or hazard (${obsLabel}) detected in the camera view. Area is not clear for parking.`,
-      can_recommend: false,
-      recommended_slot: null,
-      ar_slots: [],
-      detections: entities,
-      vehicles_count: feats.vehicles_count || 0,
-      persons_count: hasPerson ? 1 : 0,
-      obstacles_count: hasHazard ? 1 : 0,
-      confidence_score: 0.94,
-      confidence_percent: 94,
-      checklist: {
-        zone: { status_icon: '✓', label: 'Ground Surface' },
-        space: { status_icon: '✗', label: 'Blocked by Hazard' },
-        obstacles: { status_icon: '⚠️', label: `${obsLabel} Detected` },
-        vehicle_fit: { status_icon: '✗', label: 'Obstructed' },
-        permission: { status_icon: '?', label: 'Unverified' }
-      },
-      breakdown: {
-        parking_zone: 0.50,
-        space_free: 0.10,
-        obstacle_free: 0.15,
-        vehicle_fit: 0.10,
-        permission: 0.40
-      },
-      guidance_banner: `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`,
-      speech_text: `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`
     };
     wzRenderScanResults(resultData);
     return;
