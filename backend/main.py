@@ -3118,7 +3118,7 @@ async def analyze_live_frame(request: Request):
 
     # 2. Database / Map Context
     map_context = {}
-    if map_is_known or scenario_key or map_lot_id:
+    if (map_is_known and map_lot_id) or scenario_key:
         map_context = {
             "is_known_parking": True,
             "type": "public",
@@ -3306,35 +3306,38 @@ async def analyze_live_frame(request: Request):
 
     # Build normalized AR overlay coordinates (0.0 to 1.0)
     ar_slots = []
-    for s in analyzed_slots:
-        norm_poly = [[round(pt[0] / w, 4), round(pt[1] / h, 4)] for pt in s["polygon"]]
-        is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
-        cx = sum(p[0] for p in norm_poly) / len(norm_poly)
-        cy = sum(p[1] for p in norm_poly) / len(norm_poly)
+    if final_decision == DecisionState.SUITABLE:
+        for s in analyzed_slots:
+            norm_poly = [[round(pt[0] / w, 4), round(pt[1] / h, 4)] for pt in s["polygon"]]
+            is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
+            cx = sum(p[0] for p in norm_poly) / len(norm_poly)
+            cy = sum(p[1] for p in norm_poly) / len(norm_poly)
 
-        ar_slots.append({
-            "id": s["id"],
-            "label": s["label"],
-            "status": s["status"],
-            "is_recommended": is_rec,
-            "is_suitable": s["vehicle_fit"]["is_suitable"],
-            "fit_status": s["vehicle_fit"]["fit_status"],
-            "normalized_polygon": norm_poly,
-            "center": [round(cx, 4), round(cy, 4)],
-            "fit_badge": s["vehicle_fit"]["fit_badge"],
-            "width_m": s["metrics"]["width_m"],
-            "length_m": s["metrics"]["length_m"],
-            "width_ft": s["metrics"]["width_ft"],
-            "length_ft": s["metrics"]["length_ft"],
-            "margin_m": s["vehicle_fit"]["width_margin_m"],
-            "margin_ft": s["vehicle_fit"]["width_margin_ft"],
-            "dims_ft": s["metrics"]["dims_ft"],
-            "dims_m": s["metrics"]["dims_m"],
-            "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
-            "blocked_reason": s.get("blocked_reason"),
-            "message": s["vehicle_fit"]["message"],
-            "vehicle_fit": s["vehicle_fit"]
-        })
+            ar_slots.append({
+                "id": s["id"],
+                "label": s["label"],
+                "status": s["status"],
+                "is_recommended": is_rec,
+                "is_suitable": s["vehicle_fit"]["is_suitable"],
+                "fit_status": s["vehicle_fit"]["fit_status"],
+                "normalized_polygon": norm_poly,
+                "center": [round(cx, 4), round(cy, 4)],
+                "fit_badge": s["vehicle_fit"]["fit_badge"],
+                "width_m": s["metrics"]["width_m"],
+                "length_m": s["metrics"]["length_m"],
+                "width_ft": s["metrics"]["width_ft"],
+                "length_ft": s["metrics"]["length_ft"],
+                "margin_m": s["vehicle_fit"]["width_margin_m"],
+                "margin_ft": s["vehicle_fit"]["width_margin_ft"],
+                "dims_ft": s["metrics"]["dims_ft"],
+                "dims_m": s["metrics"]["dims_m"],
+                "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
+                "blocked_reason": s.get("blocked_reason"),
+                "message": s["vehicle_fit"]["message"],
+                "vehicle_fit": s["vehicle_fit"]
+            })
+    else:
+        analyzed_slots = []
 
     # Guidance speech & banners
     if final_decision == DecisionState.SUITABLE and recommended_slot:
@@ -3350,8 +3353,8 @@ async def analyze_live_frame(request: Request):
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     elif final_decision == DecisionState.UNCERTAIN:
-        speech_text = "Parking status uncertain. The area appears physically open, but parking status or permission could not be verified."
-        guidance_banner = f"🟡 PARKING STATUS UNCERTAIN • {reason}"
+        speech_text = "No parking space detected. Please point camera at an authorized parking bay or road surface."
+        guidance_banner = f"🟡 NO PARKING SPACE DETECTED • {reason}"
     else:
         any_avail = any(s["status"] == "AVAILABLE" for s in analyzed_slots)
         if any_avail:
@@ -3488,7 +3491,7 @@ async def scan_multiframe_endpoint(request: Request):
     bike_display_name = bike_model or veh_specs["name"]
 
     map_context = {}
-    if map_is_known or scenario_key or map_lot_id:
+    if (map_is_known and map_lot_id) or scenario_key:
         map_context = {
             "is_known_parking": True,
             "type": "public",
@@ -3691,9 +3694,10 @@ async def scan_multiframe_endpoint(request: Request):
         headline = "NOT SUITABLE FOR PARKING"
         reason = "A non-parking surface (indoor floor, traffic lane, or private boundary) was detected during multi-frame scan."
 
-    # Identify recommended / candidate slot to project on screen
+    # Identify recommended / candidate slot to project on screen ONLY if final decision is SUITABLE
     recommended_slot = None
-    if latest_slots:
+    ar_slots = []
+    if final_decision == DecisionState.SUITABLE and latest_slots:
         for s in latest_slots:
             if s["status"] == "AVAILABLE" and s["vehicle_fit"].get("is_suitable", True):
                 recommended_slot = s
@@ -3701,36 +3705,37 @@ async def scan_multiframe_endpoint(request: Request):
         if not recommended_slot and latest_slots:
             recommended_slot = latest_slots[0]
 
-    h_best, w_best = best_img.shape[:2]
-    ar_slots = []
-    for s in latest_slots:
-        norm_poly = [[round(pt[0] / w_best, 4), round(pt[1] / h_best, 4)] for pt in s["polygon"]]
-        is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
-        cx = sum(p[0] for p in norm_poly) / len(norm_poly)
-        cy = sum(p[1] for p in norm_poly) / len(norm_poly)
-        ar_slots.append({
-            "id": s["id"],
-            "label": s["label"],
-            "status": s["status"],
-            "is_recommended": is_rec,
-            "is_suitable": s["vehicle_fit"]["is_suitable"],
-            "fit_status": s["vehicle_fit"]["fit_status"],
-            "normalized_polygon": norm_poly,
-            "center": [round(cx, 4), round(cy, 4)],
-            "fit_badge": s["vehicle_fit"]["fit_badge"],
-            "width_m": s["metrics"]["width_m"],
-            "length_m": s["metrics"]["length_m"],
-            "width_ft": s["metrics"]["width_ft"],
-            "length_ft": s["metrics"]["length_ft"],
-            "margin_m": s["vehicle_fit"]["width_margin_m"],
-            "margin_ft": s["vehicle_fit"]["width_margin_ft"],
-            "dims_ft": s["metrics"]["dims_ft"],
-            "dims_m": s["metrics"]["dims_m"],
-            "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
-            "blocked_reason": s.get("blocked_reason"),
-            "message": s["vehicle_fit"]["message"],
-            "vehicle_fit": s["vehicle_fit"]
-        })
+        h_best, w_best = best_img.shape[:2]
+        for s in latest_slots:
+            norm_poly = [[round(pt[0] / w_best, 4), round(pt[1] / h_best, 4)] for pt in s["polygon"]]
+            is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
+            cx = sum(p[0] for p in norm_poly) / len(norm_poly)
+            cy = sum(p[1] for p in norm_poly) / len(norm_poly)
+            ar_slots.append({
+                "id": s["id"],
+                "label": s["label"],
+                "status": s["status"],
+                "is_recommended": is_rec,
+                "is_suitable": s["vehicle_fit"]["is_suitable"],
+                "fit_status": s["vehicle_fit"]["fit_status"],
+                "normalized_polygon": norm_poly,
+                "center": [round(cx, 4), round(cy, 4)],
+                "fit_badge": s["vehicle_fit"]["fit_badge"],
+                "width_m": s["metrics"]["width_m"],
+                "length_m": s["metrics"]["length_m"],
+                "width_ft": s["metrics"]["width_ft"],
+                "length_ft": s["metrics"]["length_ft"],
+                "margin_m": s["vehicle_fit"]["width_margin_m"],
+                "margin_ft": s["vehicle_fit"]["width_margin_ft"],
+                "dims_ft": s["metrics"]["dims_ft"],
+                "dims_m": s["metrics"]["dims_m"],
+                "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
+                "blocked_reason": s.get("blocked_reason"),
+                "message": s["vehicle_fit"]["message"],
+                "vehicle_fit": s["vehicle_fit"]
+            })
+    else:
+        latest_slots = []
 
     # Guidance banner & speech
     if final_decision == DecisionState.SUITABLE and recommended_slot:
@@ -3744,8 +3749,8 @@ async def scan_multiframe_endpoint(request: Request):
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     elif final_decision == DecisionState.UNCERTAIN:
-        speech_text = "Parking status uncertain. The area appears physically open, but parking status or permission could not be verified."
-        guidance_banner = f"🟡 PARKING STATUS UNCERTAIN • {reason}"
+        speech_text = "No parking space detected. Please point camera at an authorized parking bay or road surface."
+        guidance_banner = f"🟡 NO PARKING SPACE DETECTED • {reason}"
     else:
         speech_text = f"Not suitable for parking. {reason}"
         guidance_banner = f"🔴 NOT SUITABLE FOR PARKING • {reason}"

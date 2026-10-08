@@ -70,10 +70,11 @@ class ParkingZoneValidator:
     geometry, and contextual signals.
     """
 
-    # Indoor domestic items (COCO classes)
+    # Indoor domestic items & digital displays (COCO classes)
     INDOOR_OBJECTS = {
         "chair", "couch", "bed", "dining table", "toilet",
         "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+        "monitor", "screen", "computer", "display",
         "microwave", "oven", "toaster", "sink", "refrigerator",
         "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
         "cup", "fork", "knife", "spoon", "bowl", "wine glass", "potted plant", "bottle"
@@ -258,6 +259,18 @@ class ParkingZoneValidator:
                     "evidence_negative": ["High saturation indoor floor reflection", "Absence of road asphalt"]
                 }
 
+            if surface_type == "wall_or_screen" and len(vehicles) == 0:
+                return {
+                    "status": ZoneStatus.INVALID,
+                    "zone_class": ZoneClass.HOUSE_FLOOR,
+                    "confidence": 0.96,
+                    "is_valid": False,
+                    "headline": "WALL OR COMPUTER SCREEN DETECTED",
+                    "reason": "Vertical wall, computer display, or indoor flat surface detected. Point camera outdoors at an authentic parking space or road.",
+                    "evidence_positive": [],
+                    "evidence_negative": ["Smooth indoor/vertical plane", "Zero vehicular roadway texture"]
+                }
+
             if surface_type == "road_lane":
                 evidence_negative.append("Active vehicular traffic lane texture")
 
@@ -324,14 +337,14 @@ class ParkingZoneValidator:
                 "evidence_negative": ["Active carriageway asphalt", "No parking bay demarcations", "Traffic lane"]
             }
 
-        # E) Default: UNKNOWN EMPTY AREA (Must NOT recommend parking!)
+        # E) Default: UNKNOWN EMPTY AREA / NO PARKING DETECTED (Must NOT recommend parking!)
         return {
             "status": ZoneStatus.UNKNOWN,
             "zone_class": ZoneClass.UNKNOWN,
             "confidence": 0.50,
             "is_valid": False,
-            "headline": "UNVERIFIED / UNKNOWN AREA",
-            "reason": "An open area is visible, but valid parking status and permission could not be verified.",
+            "headline": "NO PARKING SPACE DETECTED",
+            "reason": "No designated parking bay markings, road asphalt, or parked vehicles detected in camera view.",
             "evidence_positive": evidence_positive,
             "evidence_negative": ["Absence of parking demarcations", "Location not in public parking database", "Permission unknown"]
         }
@@ -387,7 +400,7 @@ class ParkingZoneValidator:
         if edge_density > 0.14 and mean_s < 40.0:
             return {"surface_type": "footpath", "has_parking_lines": False}
 
-        # 4. Domestic Indoor Flooring Detection (Enforces home floor rejection)
+        # 4. Domestic Indoor Flooring & Wall / Screen Detection
         # 4a. High-saturation domestic flooring (hardwood, terracotta, warm laminate, rugs)
         if mean_s > 80.0 and green_ratio < 0.15 and brown_ratio < 0.35:
             return {"surface_type": "indoor_flooring", "has_parking_lines": False}
@@ -398,28 +411,36 @@ class ParkingZoneValidator:
         if mean_v >= 170.0 and mean_s < 45.0:
             return {"surface_type": "indoor_flooring", "has_parking_lines": False}
 
-        # 4c. Uniform smooth indoor surfaces with negligible aggregate texture
+        # 4c. Uniform smooth surfaces with negligible aggregate texture (wall, whiteboard, laptop screen)
         laplacian = cv2.Laplacian(gray, cv2.CV_64F)
         lap_var = float(laplacian.var())
-        # Glossy indoor surface with high reflections and low granular roughness
-        if lap_var < 10.0 and mean_v > 150.0:
-            return {"surface_type": "indoor_flooring", "has_parking_lines": False}
+        # Glossy or smooth vertical wall / digital screen with low granular roughness
+        if lap_var < 35.0:
+            return {"surface_type": "wall_or_screen", "has_parking_lines": False}
+
+        # 4d. Light painted wall or indoor surface without road asphalt aggregate
+        if mean_v >= 135.0 and mean_s < 45.0 and lap_var < 80.0:
+            return {"surface_type": "wall_or_screen", "has_parking_lines": False}
 
         # 5. Authenticated Painted Parking Bay Lines on Outdoor Asphalt
         # True parking bay lines require:
         # a) Dark asphalt background (mean_v <= 140, mean_s < 55)
-        # b) High-contrast bright painted stripes (white or yellow)
-        # c) Longitudinal structural line geometry (significant length, not an orthogonal tile grid)
+        # b) Significant aggregate roughness / texture (lap_var >= 50.0)
+        # c) High-contrast bright painted stripes (white or yellow)
+        # d) Longitudinal structural line geometry (significant length, not an orthogonal tile grid)
         has_parking_lines = False
 
-        if mean_v <= 140.0 and mean_s < 55.0:
+        if mean_v <= 140.0 and mean_s < 55.0 and lap_var >= 50.0:
             white_lines_mask = (s_ch < 40) & (v_ch > 180)
             yellow_lines_mask = (h_ch >= 15) & (h_ch <= 38) & (s_ch > 80) & (v_ch > 140)
             lines_mask = cv2.bitwise_or(white_lines_mask.astype(np.uint8), yellow_lines_mask.astype(np.uint8)) * 255
 
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            lines_mask = cv2.morphologyEx(lines_mask, cv2.MORPH_OPEN, kernel)
+
             edges_line = cv2.Canny(lines_mask, 50, 150)
-            min_len = int(ground_roi.shape[0] * 0.20)
-            lines = cv2.HoughLinesP(edges_line, 1, np.pi / 180, threshold=30, minLineLength=min_len, maxLineGap=20)
+            min_len = int(ground_roi.shape[0] * 0.25)
+            lines = cv2.HoughLinesP(edges_line, 1, np.pi / 180, threshold=40, minLineLength=min_len, maxLineGap=15)
 
             if lines is not None and len(lines) >= 2:
                 # Analyze line angles to ensure they are longitudinal parking stall stripes
@@ -438,10 +459,9 @@ class ParkingZoneValidator:
                 if len(steep_lines) >= 2:
                     has_parking_lines = True
 
-            # Require that candidate line pixels represent between 0.8% and 25% of surface (lines, not flood of white)
+            # Require that candidate line pixels represent between 0.3% and 25% of surface (lines, not flood of white)
             line_pixels = float(np.count_nonzero(lines_mask)) / float(ground_roi.shape[0] * ground_roi.shape[1])
-            if line_pixels > 0.25:
-                # Too much bright area (likely bright floor or overexposure, not thin bay stripes)
+            if line_pixels > 0.25 or line_pixels < 0.003:
                 has_parking_lines = False
 
         # 6. Asphalt Roadway vs Marked Slot

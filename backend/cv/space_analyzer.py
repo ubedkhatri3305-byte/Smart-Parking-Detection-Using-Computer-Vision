@@ -106,26 +106,22 @@ class ParkingSpaceAnalyzer:
             ]
             candidate_slots = self._segment_corridors(w, h, y_top, y_bot, cleaned_ground)
         else:
-            # Mode C: Synthesize candidate perspective bay for vehicle alignment
+            # Mode C: When zone is NOT verified/valid (wall, screen, domestic floor, field, unclassified area)
+            # NEVER synthesize a fake slot! Only segment corridors if genuine parked vehicles are visible in the scene!
             y_top = int(h * 0.45)
             y_bot = int(h * 0.94)
             cleaned_ground = [
                 d for d in detections
                 if d["bbox"][3] >= y_top
+                and not d.get("is_indoor", False)
                 and not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.40 * h)
                 and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
             ]
-            if cleaned_ground:
+            veh_count = len([d for d in cleaned_ground if d.get("is_vehicle") or d.get("class_name", "").lower() in ("car", "motorcycle", "bus", "truck", "van")])
+            if is_zone_valid and veh_count >= 2:
                 candidate_slots = self._segment_corridors(w, h, y_top, y_bot, cleaned_ground)
-            if not candidate_slots:
-                candidate_slots = [
-                    {
-                        "id": "Target Bay 1",
-                        "label": "Candidate Alignment Bay",
-                        "polygon": [[int(w * 0.22), y_top], [int(w * 0.78), y_top], [int(w * 0.88), y_bot], [int(w * 0.12), y_bot]],
-                        "rule_zone": "unconfirmed"
-                    }
-                ]
+            else:
+                candidate_slots = []
 
         # Filter out ego-vehicle hood from detections passed to occupancy evaluation
         cleaned_detections = [
@@ -133,6 +129,9 @@ class ParkingSpaceAnalyzer:
             if not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.40 * h)
             and not (d.get("confidence", 1.0) < 0.30 and d["bbox"][1] > 0.50 * h)
         ]
+
+        if not candidate_slots:
+            return []
 
         # Calibrate real camera pinhole homography and photogrammetry scale
         self.geom.calibrate_from_camera_and_detections(image_shape, cleaned_detections)

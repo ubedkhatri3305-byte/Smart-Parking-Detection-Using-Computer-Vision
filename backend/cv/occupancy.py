@@ -42,14 +42,18 @@ class ParkingOccupancyAnalyzer:
         :return: Analyzed slot list with status and diagnostic metadata
         """
         analyzed_slots = []
+        if not slots:
+            return analyzed_slots
 
         # Convert detections to Shapely polygons and bottom contact points
         det_objects = []
         for det in detections:
             x1, y1, x2, y2 = det["bbox"]
             poly = box(x1, y1, x2, y2)
-            bottom_pt = Point(det["bottom_center"][0], det["bottom_center"][1])
-            center_pt = Point(det["center"][0], det["center"][1])
+            bc = det.get("bottom_center") or ((x1 + x2) / 2.0, float(y2))
+            c = det.get("center") or ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+            bottom_pt = Point(bc[0], bc[1])
+            center_pt = Point(c[0], c[1])
             det_objects.append({
                 "det": det,
                 "poly": poly,

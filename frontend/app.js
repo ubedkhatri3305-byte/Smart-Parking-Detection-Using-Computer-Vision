@@ -2083,8 +2083,8 @@ async function captureAndScanFrame(isManual = false) {
       custom_width: p.width || 0.84,
       bike_model: p.bikeModel || 'Vehicle',
       image_base64: dataUrl,
-      map_is_known: Boolean(wz.selectedLot || isSim),
-      map_lot_id: wz.selectedLot?.name || (isSim ? 'Demo Curbside Parking Row' : 'Public Parking Facility')
+      map_is_known: Boolean(wz.selectedLot && !isSim),
+      map_lot_id: wz.selectedLot ? wz.selectedLot.name : (isSim ? 'Demo Curbside Parking Row' : null)
     };
 
     const controller = new AbortController();
@@ -2192,13 +2192,20 @@ function renderLiveScanResults(data) {
       speakGuidance(data.speech_text || `Free space found! Space is ${sLenFt} feet long by ${sWidFt} feet wide. It fits your vehicle.`);
     }
   } else {
-    if (data.status_code === 'SCANNING_FOR_ROAD') {
-      recTitle.textContent = 'Scanning Ground View...';
-      recStatus.textContent = '🟡 Searching for Road Surface';
+    if (data.status_code === 'NOT_SUITABLE' || data.final_decision === 'NOT_SUITABLE') {
+      recTitle.textContent = data.headline || 'Not a Parking Area';
+      recStatus.textContent = '🔴 Not Suitable for Parking';
+      recStatus.style.color = '#ef4444';
+      if (recDims) recDims.textContent = '—';
+      if (recClearance) recClearance.textContent = '0.0 ft';
+      recMsg.textContent = data.reason || 'Surface is not an authorized parking zone (wall, screen, or domestic area).';
+    } else if (data.status_code === 'UNCERTAIN' || data.final_decision === 'UNCERTAIN' || data.status_code === 'SCANNING_FOR_ROAD') {
+      recTitle.textContent = data.headline || 'No Parking Space Detected';
+      recStatus.textContent = '🟡 Awaiting Parking Space';
       recStatus.style.color = '#f59e0b';
       if (recDims) recDims.textContent = '—';
       if (recClearance) recClearance.textContent = '0.0 ft';
-      recMsg.textContent = 'Align camera with outdoor roadway or marked parking bays.';
+      recMsg.textContent = data.reason || 'Align camera with outdoor roadway or marked parking bays.';
     } else {
       recTitle.textContent = 'No Fitting Space';
       recStatus.textContent = '❌ Spaces Detected Are Too Narrow';
@@ -4906,7 +4913,7 @@ function wzDrawLiveARFrame() {
     ctx.drawImage(simulatedImgElement, 0, 0, cw, ch);
   }
 
-  // Draw previous scan data if present; otherwise draw targeting alignment bay
+  // Draw previous scan data if present (only dynamic entity bounding boxes & valid spaces)
   if (wz.cam.lastScanData) {
     wzDrawAROverlay(
       wz.cam.lastScanData.ar_slots || [],
@@ -4914,8 +4921,6 @@ function wzDrawLiveARFrame() {
       wz.cam.lastScanData.detections || [],
       wz.cam.lastScanData
     );
-  } else {
-    wzDrawTargetGroundFrame(ctx, cw, ch);
   }
 
   // Live laser scan sweep beam while scanning is in progress
@@ -4945,84 +4950,10 @@ function wzDrawLiveARFrame() {
 }
 
 function wzDrawTargetGroundFrame(ctx, cw, ch) {
-  const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84, wheels: 2 };
-  const vLen = Number(p.length) || 2.14;
-  const vWid = Number(p.width) || 0.84;
-  const vLenFt = (vLen * 3.28084).toFixed(1);
-  const vWidFt = (vWid * 3.28084).toFixed(1);
-  const wheels = Number(p.wheels) || 2;
-  const isCar = wheels === 4;
-  const isAuto = wheels === 3;
-
-  // Real ground bay dimensions in feet
-  const bayLenM = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
-  const bayWidM = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
-  const bayLenFt = (bayLenM * 3.28084).toFixed(1);
-  const bayWidFt = (bayWidM * 3.28084).toFixed(1);
-  const clearMarginFt = Math.max(0, (bayWidM - vWid) * 3.28084).toFixed(1);
-  const clearStr = `+${clearMarginFt} ft`;
-
-  const yTop = ch * 0.48;
-  const yBot = ch * 0.92;
-  const xTopL = cw * 0.28;
-  const xTopR = cw * 0.72;
-  const xBotL = cw * 0.12;
-  const xBotR = cw * 0.88;
-  const cx = cw * 0.5;
-  const cy = (yTop + yBot) * 0.5;
-
-  ctx.save();
-
-  // Perspective target bay
-  ctx.beginPath();
-  ctx.moveTo(xTopL, yTop);
-  ctx.lineTo(xTopR, yTop);
-  ctx.lineTo(xBotR, yBot);
-  ctx.lineTo(xBotL, yBot);
-  ctx.closePath();
-
-  ctx.fillStyle = 'rgba(14, 165, 233, 0.09)';
-  ctx.fill();
-
-  ctx.setLineDash([8, 6]);
-  ctx.strokeStyle = '#38bdf8';
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Corner brackets [   ]
-  const cLen = 24;
-  ctx.strokeStyle = '#00f2fe';
-  ctx.lineWidth = 3.5;
-  // Top left
-  ctx.beginPath(); ctx.moveTo(xTopL, yTop + cLen); ctx.lineTo(xTopL, yTop); ctx.lineTo(xTopL + cLen, yTop); ctx.stroke();
-  // Top right
-  ctx.beginPath(); ctx.moveTo(xTopR - cLen, yTop); ctx.lineTo(xTopR, yTop); ctx.lineTo(xTopR, yTop + cLen); ctx.stroke();
-  // Bottom right
-  ctx.beginPath(); ctx.moveTo(xBotR, yBot - cLen); ctx.lineTo(xBotR, yBot); ctx.lineTo(xBotR - cLen, yBot); ctx.stroke();
-  // Bottom left
-  ctx.beginPath(); ctx.moveTo(xBotL + cLen, yBot); ctx.lineTo(xBotL, yBot); ctx.lineTo(xBotL, yBot - cLen); ctx.stroke();
-
-  // Center crosshair / badge
-  ctx.fillStyle = 'rgba(11, 19, 41, 0.92)';
-  ctx.strokeStyle = '#0ea5e9';
-  ctx.lineWidth = 1.5;
-  const badgeW = Math.min(380, cw * 0.84);
-  const badgeH = 54;
-  ctx.fillRect(cx - badgeW / 2, cy - badgeH / 2, badgeW, badgeH);
-  ctx.strokeRect(cx - badgeW / 2, cy - badgeH / 2, badgeW, badgeH);
-
-  ctx.fillStyle = '#38bdf8';
-  ctx.font = 'bold 13px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(`🎯 TARGET BAY: ${bayLenFt} ft × ${bayWidFt} ft (${clearStr} clearance)`, cx, cy - 10);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 11px sans-serif';
-  ctx.fillText(`${p.bikeModel} (${vLenFt} ft × ${vWidFt} ft) • Align Ground with Road/Bay`, cx, cy + 12);
-  ctx.restore();
+  // Disabled: The system strictly displays dynamic bounding boxes for detected objects/persons/vehicles and verified parking spaces, with no artificial fixed frames.
+  return;
 }
+
 
 function wzStartSimulatedCamera() {
   const permOverlay = document.getElementById('wz-cam-perm-overlay');
@@ -5137,11 +5068,6 @@ async function wzStartCamera() {
     const triggerScanLoop = () => {
       wzResizeARCanvas();
       wzStartARRenderLoop();
-      // Draw initial ground frame immediately so user sees live targeting in real feet
-      const canvas = document.getElementById('wz-ar-canvas');
-      if (canvas && (!wz.cam.lastScanData || !wz.cam.lastScanData.ar_slots || wz.cam.lastScanData.ar_slots.length === 0)) {
-        wzDrawTargetGroundFrame(canvas.getContext('2d'), canvas.width, canvas.height);
-      }
       if (!scanStarted) {
         scanStarted = true;
         if (wz.cam.isAutoScanning) {
@@ -5370,8 +5296,8 @@ async function wzCaptureAndScan(isManual = false) {
       custom_width: p.width || 0.84,
       bike_model: p.bikeModel || 'Vehicle',
       frames: frames,
-      map_is_known: Boolean(wz.selectedLot || isSim),
-      map_lot_id: wz.selectedLot?.name || (isSim ? 'Demo Parking Facility' : 'Public Parking Facility')
+      map_is_known: Boolean(wz.selectedLot && !isSim),
+      map_lot_id: wz.selectedLot ? wz.selectedLot.name : (isSim ? 'Demo Parking Facility' : null)
     };
 
     const controller = new AbortController();
@@ -5478,60 +5404,17 @@ function wzFallbackClientScan(video, tmpCanvas) {
   const marginFt = (widthMargin_m * 3.28084).toFixed(1);
   const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
 
-  const fallbackSlot = {
-    id: 'Slot 1 (Alignment Bay)',
-    label: 'Bay 1 (Candidate Space)',
-    status: isFit ? 'AVAILABLE' : 'BLOCKED',
-    is_suitable: isFit,
-    blocked_reason: isFit ? null : `Too narrow for ${p.bikeModel}`,
-    rule_zone: 'unconfirmed',
-    normalized_polygon: [
-      [0.22, 0.45],
-      [0.78, 0.45],
-      [0.88, 0.94],
-      [0.12, 0.94]
-    ],
-    center: [0.50, 0.70],
-    width_m: slotW_m,
-    length_m: slotL_m,
-    width_ft: sWidFt,
-    length_ft: sLenFt,
-    margin_m: widthMargin_m,
-    margin_ft: Number(marginFt),
-    dims_ft: `${sLenFt} ft × ${sWidFt} ft`,
-    dims_m: `${slotL_m}m × ${slotW_m}m`,
-    clearance_ft_str: clearanceStr,
-    vehicle_fit: {
-      is_suitable: isFit,
-      slot_width_m: slotW_m,
-      slot_length_m: slotL_m,
-      slot_width_ft: sWidFt,
-      slot_length_ft: sLenFt,
-      dims_ft_str: `${sLenFt} ft (L) × ${sWidFt} ft (W)`,
-      dims_m_str: `${slotL_m}m × ${slotW_m}m`,
-      width_margin_m: widthMargin_m,
-      width_margin_ft: Number(marginFt),
-      clearance_ft_str: clearanceStr,
-      fit_badge: isFit ? 'FITS' : 'TOO NARROW',
-      message: isFit
-        ? `Fits ${p.bikeModel} with ${clearanceStr} safe clearance.`
-        : `Space too narrow for ${p.bikeModel}. Safe width requirement not met.`
-    }
-  };
-
   const resultData = {
     success: true,
-    status_code: isFit ? 'SUITABLE' : 'UNCERTAIN',
-    final_decision: isFit ? 'SUITABLE' : 'UNCERTAIN',
-    decision_color: isFit ? 'green' : 'yellow',
-    decision_icon: isFit ? '🟢' : '🟡',
-    headline: isFit ? 'PARKING SPACE POTENTIALLY SUITABLE' : 'PARKING STATUS UNCERTAIN',
-    reason: isFit
-      ? `Candidate space verified. Size: ${sLenFt} ft × ${sWidFt} ft with ${clearanceStr} safe clearance for ${p.bikeModel}.`
-      : `Space width is tight for ${p.bikeModel}. Verify boundaries carefully.`,
-    can_recommend: isFit,
-    recommended_slot: fallbackSlot,
-    ar_slots: [fallbackSlot],
+    status_code: 'UNCERTAIN',
+    final_decision: 'UNCERTAIN',
+    decision_color: 'yellow',
+    decision_icon: '🟡',
+    headline: 'SCANNING GROUND VIEW',
+    reason: 'Align camera with outdoor roadway or marked parking bays.',
+    can_recommend: false,
+    recommended_slot: null,
+    ar_slots: [],
     detections: detectedPerson ? [
       {
         class_name: 'PERSON',
@@ -5541,41 +5424,28 @@ function wzFallbackClientScan(video, tmpCanvas) {
         is_obstacle: false,
         normalized_bbox: [0.36, 0.22, 0.28, 0.62]
       }
-    ] : [
-      {
-        class_name: isCar ? 'CAR' : 'MOTORCYCLE',
-        confidence: 0.94,
-        is_vehicle: true,
-        is_person: false,
-        is_obstacle: false,
-        normalized_bbox: [0.08, 0.30, 0.24, 0.45]
-      }
-    ],
-    vehicles_count: detectedPerson ? 0 : 1,
+    ] : [],
+    vehicles_count: 0,
     persons_count: detectedPerson ? 1 : 0,
     obstacles_count: 0,
-    confidence_score: 0.85,
-    confidence_percent: 85,
+    confidence_score: 0.50,
+    confidence_percent: 50,
     checklist: {
-      zone: { status_icon: '✓', label: 'Ground Plane Aligned' },
-      space: { status_icon: '✓', label: `${sLenFt}ft × ${sWidFt}ft Clear` },
-      obstacles: { status_icon: '✓', label: 'Obstacle Free' },
-      vehicle_fit: { status_icon: isFit ? '✓' : '✗', label: isFit ? `${clearanceStr} Clearance` : 'Too Narrow' },
-      permission: { status_icon: '✓', label: 'Public Area' }
+      zone: { status_icon: '?', label: 'Scanning Ground View' },
+      space: { status_icon: '?', label: 'Awaiting Marked Bay' },
+      obstacles: { status_icon: detectedPerson ? '⚠️' : '✓', label: detectedPerson ? 'Pedestrian in View' : 'Clear View' },
+      vehicle_fit: { status_icon: '?', label: 'Awaiting Space' },
+      permission: { status_icon: '?', label: 'Verifying Location' }
     },
     breakdown: {
-      parking_zone: 0.85,
-      space_free: 0.88,
-      obstacle_free: 0.90,
-      vehicle_fit: isFit ? 0.95 : 0.35,
-      permission: 0.80
+      parking_zone: 0.50,
+      space_free: 0.50,
+      obstacle_free: detectedPerson ? 0.40 : 0.90,
+      vehicle_fit: 0.50,
+      permission: 0.50
     },
-    guidance_banner: isFit
-      ? `🟢 POTENTIALLY SUITABLE • Candidate Bay (${sLenFt}ft × ${sWidFt}ft) • Clearance: ${clearanceStr} • Fits ${p.bikeModel}`
-      : `🟡 CAUTION • Space narrow for ${p.bikeModel}`,
-    speech_text: isFit
-      ? `Candidate space identified. Space is ${sLenFt} feet by ${sWidFt} feet. It fits your ${p.bikeModel}.`
-      : `Space may be too narrow for your ${p.bikeModel}.`
+    guidance_banner: '🔍 Point camera at outdoor road surface or marked parking bays',
+    speech_text: 'Scanning for marked parking bays.'
   };
 
   wzRenderScanResults(resultData);
@@ -5983,9 +5853,8 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   ctx.fillText(hudText, cw / 2, 23);
   ctx.textAlign = 'left';
 
-  // If no slots returned yet, draw guide ground target frame
-  if (!arSlots || arSlots.length === 0) {
-    wzDrawTargetGroundFrame(ctx, cw, ch);
+  // Only draw parking slots if real authentic slots are detected; no artificial fixed frames
+  if (!arSlots || arSlots.length === 0 || isIndoorScene || isScanningRoad) {
     if (pointer) pointer.classList.add('hidden');
     return;
   }

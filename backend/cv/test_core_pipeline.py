@@ -314,6 +314,51 @@ class TestCoreParkingPipeline(unittest.TestCase):
         self.assertEqual(r2["decision"], "UNCERTAIN")
         self.assertFalse(r2["temporal_stable"])
 
+    # -------------------------------------------------------------
+    # 13. Camera Pointed at Wall -> NO PARKING / 0 SLOTS
+    # -------------------------------------------------------------
+    def test_13_camera_on_wall_no_parking(self):
+        """Camera pointed at a painted wall must NOT detect parking and must produce 0 slots."""
+        wall_white = np.full((480, 640, 3), 215, dtype=np.uint8)
+        zone = self.validator.validate_zone(wall_white, [])
+        self.assertIn(zone["status"], (ZoneStatus.INVALID, ZoneStatus.UNKNOWN))
+
+        slots = self.space_analyzer.analyze_spaces((480, 640), [], zone, None, self.bike_specs)
+        self.assertEqual(len(slots), 0, "No parking bays should be synthesized on a wall.")
+
+        result = ParkingConfidenceScorer.evaluate(
+            zone_result=zone,
+            occupancy_status="AVAILABLE",
+            obstacle_detected=False,
+            vehicle_fit={"is_suitable": False, "message": "No delineated slots found."},
+            permission_info={"can_park_legally": False, "is_unknown": True}
+        )
+        self.assertIn(result["decision"], (DecisionState.NOT_SUITABLE, DecisionState.UNCERTAIN))
+        self.assertFalse(result["can_recommend"])
+
+    # -------------------------------------------------------------
+    # 14. Camera Pointed at Laptop Screen -> NO PARKING / 0 SLOTS
+    # -------------------------------------------------------------
+    def test_14_camera_on_laptop_screen_no_parking(self):
+        """Camera pointed at a laptop or monitor screen must NOT detect parking and must produce 0 slots."""
+        # 14a. Computer display image
+        screen_img = np.zeros((480, 640, 3), dtype=np.uint8)
+        screen_img[:] = (190, 110, 45)  # Screen background color
+        zone_screen = self.validator.validate_zone(screen_img, [])
+        self.assertIn(zone_screen["status"], (ZoneStatus.INVALID, ZoneStatus.UNKNOWN))
+        slots_screen = self.space_analyzer.analyze_spaces((480, 640), [], zone_screen, None, self.bike_specs)
+        self.assertEqual(len(slots_screen), 0, "No parking bays should be synthesized on a laptop display.")
+
+        # 14b. Laptop detected by YOLO
+        dets_laptop = [
+            {"class_name": "laptop", "confidence": 0.95, "bbox": [80, 60, 560, 420], "is_indoor": True}
+        ]
+        zone_laptop = self.validator.validate_zone(None, dets_laptop)
+        self.assertEqual(zone_laptop["status"], ZoneStatus.INVALID)
+        self.assertEqual(zone_laptop["zone_class"], ZoneClass.HOUSE_FLOOR)
+        slots_laptop = self.space_analyzer.analyze_spaces((480, 640), dets_laptop, zone_laptop, None, self.bike_specs)
+        self.assertEqual(len(slots_laptop), 0, "No parking bays should be created when laptop is in view.")
+
 
 class CoreScenarioRunner:
     """
