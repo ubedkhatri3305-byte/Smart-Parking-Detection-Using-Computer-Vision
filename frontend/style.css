@@ -10503,3 +10503,109 @@ select.custom-select:focus {
   color: #fff;
   transform: translateY(-1px);
 }
+
+/* ==========================================================================
+   Section 17 & 18 Dedicated Parking Analysis & Vehicle Fit Card
+   ========================================================================== */
+.wz-analysis-card {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: var(--radius-md, 12px);
+  padding: 1rem 1.15rem;
+  margin: 0.95rem 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.wz-analysis-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wz-analysis-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.wz-analysis-margin-badge {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+}
+
+.wz-analysis-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.wz-analysis-row,
+.wz-analysis-check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+
+.wz-analysis-lbl {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.wz-analysis-val {
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.wz-analysis-check {
+  font-weight: 700;
+}
+
+.wz-analysis-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.2);
+  margin: 0.4rem 0;
+}
+
+.wz-analysis-verdict {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.88rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #f8fafc;
+  transition: all 0.2s ease;
+}
+
+.wz-analysis-verdict.state-pass {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.wz-analysis-verdict.state-fail {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.wz-analysis-verdict.state-warn {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}

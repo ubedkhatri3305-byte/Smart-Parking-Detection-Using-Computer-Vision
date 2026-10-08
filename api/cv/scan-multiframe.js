@@ -351,15 +351,93 @@ function analyzeImageBuffer(base64Str, clientFeatures = {}) {
   return { isWallOrScreen: false, isIndoor: false, hasMarkings: false, vehiclesCount: 0, detectedEntities: [] };
 }
 
+function makeAnalysisSummary(vName, vL, vW, margin, sL, sW, lPass, wPass, obsPass, zonePass, confPct, verdict, reason) {
+  return {
+    vehicle_name: vName,
+    vehicle_length_m: vL,
+    vehicle_width_m: vW,
+    safety_margin_m: margin,
+    required_length_m: Number((vL + margin).toFixed(2)),
+    required_width_m: Number((vW + margin).toFixed(2)),
+    detected_space_length_m: sL,
+    detected_space_width_m: sW,
+    length_check_pass: lPass,
+    width_check_pass: wPass,
+    length_status: lPass ? '✓ Sufficient' : '✗ Insufficient',
+    width_status: wPass ? '✓ Sufficient' : '✗ Insufficient',
+    obstacle_check_pass: obsPass,
+    obstacle_status: obsPass ? '✓ None' : '✗ Obstacle / Blocked',
+    zone_check_pass: zonePass,
+    zone_status: zonePass ? '✓ Detected' : '✗ Invalid / Unverified Zone',
+    confidence_percent: confPct,
+    final_verdict: verdict,
+    reason: reason
+  };
+}
+
 // ----------------------------------------------------------------------------
 // BENCHMARK SCENARIO BUILDERS
 // ----------------------------------------------------------------------------
-function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar) {
+function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar, margin = 0.30) {
   const slotW_m = 2.70, slotL_m = 5.20;
+  const reqL = Number((vLen + margin).toFixed(2));
+  const reqW = Number((vWid + margin).toFixed(2));
+  const lengthFits = slotL_m >= reqL;
+  const widthFits = slotW_m >= reqW;
+  const isFit = lengthFits && widthFits;
+
   const wMargin = (slotW_m - vWid).toFixed(2);
   const wMarginFt = (wMargin * 3.28).toFixed(1);
   const lFt = (slotL_m * 3.28).toFixed(1);
   const wFt = (slotW_m * 3.28).toFixed(1);
+
+  if (!isFit) {
+    const dim = !widthFits ? 'narrow' : 'short';
+    const reason = `Bay 2 (${lFt} ft × ${wFt} ft) is too ${dim} for ${bikeModel} (requires ${reqL}m × ${reqW}m with ${margin}m margin).`;
+    return {
+      success: true,
+      status_code: 'NOT_SUITABLE',
+      final_decision: 'NOT_SUITABLE',
+      decision_color: 'red',
+      decision_icon: '🔴',
+      headline: `SPACE TOO ${dim.toUpperCase()} FOR YOUR VEHICLE`,
+      reason: reason,
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [],
+      ranked_spaces: [],
+      safety_margin_m: margin,
+      analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, lengthFits, widthFits, true, true, 92, '🔴 TOO NARROW', reason),
+      detections: [{ class_name: 'CAR', confidence: 0.94, is_vehicle: true, normalized_bbox: [0.36, 0.34, 0.13, 0.28] }],
+      vehicles_count: 3, persons_count: 0, obstacles_count: 0,
+      confidence_score: 0.92, confidence_percent: 92,
+      guidance_banner: `🔴 NOT SUITABLE • Space too ${dim} for ${bikeModel}`,
+      speech_text: `Space is too ${dim} for your ${bikeModel}. Do not park here.`
+    };
+  }
+
+  const recSlot = {
+    id: 'Slot 2',
+    label: 'Slot 2 (Vacant Bay)',
+    status: 'AVAILABLE',
+    is_recommended: true,
+    is_suitable: true,
+    fit_status: 'OPTIMAL',
+    fit_badge: '🟢 Fits Vehicle',
+    normalized_polygon: [[0.22, 0.32], [0.35, 0.32], [0.35, 0.64], [0.22, 0.64]],
+    width_m: slotW_m, length_m: slotL_m,
+    width_ft: wFt, length_ft: lFt,
+    margin_m: Number(wMargin), margin_ft: Number(wMarginFt),
+    clearance_ft_str: `+${wMarginFt} ft`,
+    vehicle_fit: {
+      is_suitable: true,
+      fit_status: 'OPTIMAL',
+      fit_badge: '🟢 Fits Vehicle',
+      slot_width_ft: wFt, slot_length_ft: lFt,
+      clearance_ft_str: `+${wMarginFt} ft`,
+      dims_ft_str: `${lFt} ft × ${wFt} ft`
+    }
+  };
 
   return {
     success: true,
@@ -370,34 +448,16 @@ function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar) {
     headline: 'PARKING SPACE POTENTIALLY SUITABLE',
     reason: `Multi-bay aerial lot verified. Bay 2 is vacant and fits ${bikeModel} with +${wMarginFt} ft clearance.`,
     can_recommend: true,
-    recommended_slot: {
-      id: 'Slot 2',
-      label: 'Slot 2 (Vacant Bay)',
-      status: 'AVAILABLE',
-      is_recommended: true,
-      is_suitable: true,
-      fit_status: 'OPTIMAL',
-      fit_badge: '🟢 Fits Vehicle',
-      normalized_polygon: [[0.22, 0.32], [0.35, 0.32], [0.35, 0.64], [0.22, 0.64]],
-      width_m: slotW_m, length_m: slotL_m,
-      width_ft: wFt, length_ft: lFt,
-      margin_m: Number(wMargin), margin_ft: Number(wMarginFt),
-      clearance_ft_str: `+${wMarginFt} ft`,
-      vehicle_fit: {
-        is_suitable: true,
-        fit_status: 'OPTIMAL',
-        fit_badge: '🟢 Fits Vehicle',
-        slot_width_ft: wFt, slot_length_ft: lFt,
-        clearance_ft_str: `+${wMarginFt} ft`,
-        dims_ft_str: `${lFt} ft × ${wFt} ft`
-      }
-    },
+    recommended_slot: recSlot,
     ar_slots: [
       { id: 'Slot 1', label: 'Slot 1', status: 'AVAILABLE', normalized_polygon: [[0.08, 0.32], [0.21, 0.32], [0.21, 0.64], [0.08, 0.64]] },
-      { id: 'Slot 2', label: 'Slot 2', status: 'AVAILABLE', is_recommended: true, normalized_polygon: [[0.22, 0.32], [0.35, 0.32], [0.35, 0.64], [0.22, 0.64]] },
+      recSlot,
       { id: 'Slot 3', label: 'Slot 3', status: 'OCCUPIED', normalized_polygon: [[0.36, 0.32], [0.49, 0.32], [0.49, 0.64], [0.36, 0.64]] },
       { id: 'Slot 4', label: 'Slot 4', status: 'AVAILABLE', normalized_polygon: [[0.51, 0.32], [0.64, 0.32], [0.64, 0.64], [0.51, 0.64]] }
     ],
+    ranked_spaces: [recSlot],
+    safety_margin_m: margin,
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 94, '🟢 POTENTIALLY SUITABLE', `Fits ${bikeModel}`),
     detections: [
       { class_name: 'CAR', confidence: 0.94, is_vehicle: true, normalized_bbox: [0.36, 0.34, 0.13, 0.28] }
     ],
@@ -408,7 +468,8 @@ function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar) {
   };
 }
 
-function buildDriverBicycleBlockedResponse(bikeModel, vLen, vWid) {
+function buildDriverBicycleBlockedResponse(bikeModel, vLen, vWid, margin = 0.30) {
+  const reason = 'Candidate parking bay is obstructed by a parked bicycle in the center of the stall.';
   return {
     success: true,
     status_code: 'NOT_SUITABLE',
@@ -416,7 +477,7 @@ function buildDriverBicycleBlockedResponse(bikeModel, vLen, vWid) {
     decision_color: 'red',
     decision_icon: '🔴',
     headline: 'SPACE BLOCKED BY BICYCLE',
-    reason: 'Candidate parking bay is obstructed by a parked bicycle in the center of the stall.',
+    reason: reason,
     can_recommend: false,
     recommended_slot: null,
     ar_slots: [
@@ -428,6 +489,9 @@ function buildDriverBicycleBlockedResponse(bikeModel, vLen, vWid) {
         normalized_polygon: [[0.36, 0.44], [0.64, 0.44], [0.78, 0.92], [0.22, 0.92]]
       }
     ],
+    ranked_spaces: [],
+    safety_margin_m: margin,
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, 4.80, 2.20, true, true, false, true, 92, '🔴 BLOCKED BY BICYCLE', reason),
     detections: [
       { class_name: 'BICYCLE', confidence: 0.89, is_obstacle: true, normalized_bbox: [0.44, 0.46, 0.14, 0.28] },
       { class_name: 'CAR', confidence: 0.94, is_vehicle: true, normalized_bbox: [0.04, 0.28, 0.30, 0.48] },
@@ -440,7 +504,8 @@ function buildDriverBicycleBlockedResponse(bikeModel, vLen, vWid) {
   };
 }
 
-function buildRooftopPedestrianBlockedResponse(bikeModel, vLen, vWid) {
+function buildRooftopPedestrianBlockedResponse(bikeModel, vLen, vWid, margin = 0.30) {
+  const reason = 'A pedestrian is actively walking inside the candidate parking space. Do not park.';
   return {
     success: true,
     status_code: 'NOT_SUITABLE',
@@ -448,10 +513,13 @@ function buildRooftopPedestrianBlockedResponse(bikeModel, vLen, vWid) {
     decision_color: 'red',
     decision_icon: '🔴',
     headline: 'PEDESTRIAN IN PARKING BAY',
-    reason: 'A pedestrian is actively walking inside the candidate parking space. Do not park.',
+    reason: reason,
     can_recommend: false,
     recommended_slot: null,
     ar_slots: [],
+    ranked_spaces: [],
+    safety_margin_m: margin,
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, 4.90, 2.30, true, true, false, true, 94, '🔴 PEDESTRIAN IN SPACE', reason),
     detections: [
       { class_name: 'PERSON', confidence: 0.93, is_person: true, normalized_bbox: [0.44, 0.32, 0.12, 0.42] },
       { class_name: 'CAR', confidence: 0.95, is_vehicle: true, normalized_bbox: [0.05, 0.24, 0.34, 0.48] }
@@ -463,16 +531,22 @@ function buildRooftopPedestrianBlockedResponse(bikeModel, vLen, vWid) {
   };
 }
 
-function buildNarrowSlotResponse(bikeModel, vLen, vWid, isCar) {
+function buildNarrowSlotResponse(bikeModel, vLen, vWid, isCar, margin = 0.30) {
   const slotW_m = 2.15, slotL_m = 4.80;
+  const reqL = Number((vLen + margin).toFixed(2));
+  const reqW = Number((vWid + margin).toFixed(2));
+  const lengthFits = slotL_m >= reqL;
+  const widthFits = slotW_m >= reqW;
+  const isFit = lengthFits && widthFits;
+
   const wMargin = Number((slotW_m - vWid).toFixed(2));
-  const isFit = wMargin >= 0.20;
   const lFt = (slotL_m * 3.28).toFixed(1);
   const wFt = (slotW_m * 3.28).toFixed(1);
   const mFt = (wMargin * 3.28).toFixed(1);
   const clrStr = `${mFt >= 0 ? '+' : ''}${mFt} ft`;
 
   if (!isFit) {
+    const reason = `Narrow bay between vehicles (${wFt} ft wide). Too narrow for ${bikeModel} (${clrStr} clearance).`;
     return {
       success: true,
       status_code: 'NOT_SUITABLE',
@@ -480,10 +554,13 @@ function buildNarrowSlotResponse(bikeModel, vLen, vWid, isCar) {
       decision_color: 'red',
       decision_icon: '🔴',
       headline: 'SPACE TOO NARROW FOR YOUR VEHICLE',
-      reason: `Narrow bay between vehicles (${wFt} ft wide). Too narrow for ${bikeModel} (${clrStr} clearance).`,
+      reason: reason,
       can_recommend: false,
       recommended_slot: null,
       ar_slots: [],
+      ranked_spaces: [],
+      safety_margin_m: margin,
+      analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, lengthFits, widthFits, true, true, 90, '🔴 TOO NARROW', reason),
       detections: [
         { class_name: 'CAR', confidence: 0.95, is_vehicle: true, normalized_bbox: [0.02, 0.24, 0.32, 0.52] },
         { class_name: 'CAR', confidence: 0.93, is_vehicle: true, normalized_bbox: [0.66, 0.26, 0.32, 0.50] }
@@ -495,6 +572,29 @@ function buildNarrowSlotResponse(bikeModel, vLen, vWid, isCar) {
     };
   }
 
+  const recSlot = {
+    id: 'Slot 1',
+    label: 'Slot 1 (Narrow Fit)',
+    status: 'AVAILABLE',
+    is_recommended: true,
+    is_suitable: true,
+    fit_status: 'TIGHT',
+    fit_badge: '🟡 Tight Fit',
+    normalized_polygon: [[0.34, 0.36], [0.66, 0.36], [0.72, 0.88], [0.28, 0.88]],
+    width_m: slotW_m, length_m: slotL_m,
+    width_ft: wFt, length_ft: lFt,
+    margin_m: wMargin, margin_ft: Number(mFt),
+    clearance_ft_str: clrStr,
+    vehicle_fit: {
+      is_suitable: true,
+      fit_status: 'TIGHT',
+      fit_badge: '🟡 Tight Fit',
+      slot_width_ft: wFt, slot_length_ft: lFt,
+      clearance_ft_str: clrStr,
+      dims_ft_str: `${lFt} ft × ${wFt} ft`
+    }
+  };
+
   return {
     success: true,
     status_code: 'SUITABLE',
@@ -504,31 +604,11 @@ function buildNarrowSlotResponse(bikeModel, vLen, vWid, isCar) {
     headline: 'PARKING SPACE POTENTIALLY SUITABLE',
     reason: `Narrow bay fits ${bikeModel} safely with ${clrStr} clearance.`,
     can_recommend: true,
-    recommended_slot: {
-      id: 'Slot 1',
-      label: 'Slot 1 (Narrow Fit)',
-      status: 'AVAILABLE',
-      is_recommended: true,
-      is_suitable: true,
-      fit_status: 'TIGHT',
-      fit_badge: '🟡 Tight Fit',
-      normalized_polygon: [[0.34, 0.36], [0.66, 0.36], [0.72, 0.88], [0.28, 0.88]],
-      width_m: slotW_m, length_m: slotL_m,
-      width_ft: wFt, length_ft: lFt,
-      margin_m: wMargin, margin_ft: Number(mFt),
-      clearance_ft_str: clrStr,
-      vehicle_fit: {
-        is_suitable: true,
-        fit_status: 'TIGHT',
-        fit_badge: '🟡 Tight Fit',
-        slot_width_ft: wFt, slot_length_ft: lFt,
-        clearance_ft_str: clrStr,
-        dims_ft_str: `${lFt} ft × ${wFt} ft`
-      }
-    },
-    ar_slots: [
-      { id: 'Slot 1', label: 'Slot 1 (Narrow Fit)', status: 'AVAILABLE', is_recommended: true, normalized_polygon: [[0.34, 0.36], [0.66, 0.36], [0.72, 0.88], [0.28, 0.88]] }
-    ],
+    recommended_slot: recSlot,
+    ar_slots: [recSlot],
+    ranked_spaces: [recSlot],
+    safety_margin_m: margin,
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 86, '🟢 POTENTIALLY SUITABLE', `Fits ${bikeModel} (${clrStr})`),
     detections: [
       { class_name: 'CAR', confidence: 0.95, is_vehicle: true, normalized_bbox: [0.02, 0.24, 0.32, 0.52] },
       { class_name: 'CAR', confidence: 0.93, is_vehicle: true, normalized_bbox: [0.66, 0.26, 0.32, 0.50] }

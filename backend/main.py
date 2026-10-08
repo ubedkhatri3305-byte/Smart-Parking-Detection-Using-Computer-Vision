@@ -40,6 +40,7 @@ from backend.cv.confidence_scorer import ParkingConfidenceScorer, DecisionState
 from backend.cv.temporal_tracker import TemporalParkingTracker
 from backend.cv.test_core_pipeline import CoreScenarioRunner
 from backend.rules.rule_engine import RuleEngine
+from backend.cv.decision_engine import ParkingDecisionEngine
 
 app = FastAPI(
     title="Smart Parking Detection API",
@@ -117,6 +118,7 @@ zone_validator = ParkingZoneValidator()
 space_analyzer = ParkingSpaceAnalyzer(occupancy_analyzer=analyzer, vehicle_matcher=matcher)
 confidence_scorer = ParkingConfidenceScorer()
 temporal_tracker = TemporalParkingTracker(window_size=5)
+decision_engine = ParkingDecisionEngine(default_safety_margin_m=0.30)
 
 # Mount scenario images and generated output visualizations
 app.mount("/static/scenarios", StaticFiles(directory=SCENARIOS_DIR), name="scenarios")
@@ -2853,12 +2855,13 @@ async def analyze_parking(request: Request):
     elif scenario_data and "slots" in scenario_data:
         slot_definitions = scenario_data["slots"]
     else:
-        # Delineate candidate spaces using ParkingSpaceAnalyzer (Mode A marked slots or Mode B roadside corridor)
+        # Delineate candidate spaces dynamically using ParkingSpaceAnalyzer (Zero hardcoded defaults)
         slot_definitions = space_analyzer.analyze_spaces(
             image_shape=(h, w),
             detections=detections,
             zone_info=zone_result,
-            vehicle_specs=veh_specs
+            vehicle_specs=veh_specs,
+            image=image
         )
 
     # 7. Occupancy & Dimensions Analysis
@@ -2872,12 +2875,18 @@ async def analyze_parking(request: Request):
             rule_zone = s.get("custom_metadata", {}).get("rule_zone") or s.get("rule_zone", "registered")
             s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
 
-    # 8. Recommendation Selection (Only recommend if space is genuinely suitable and legal)
-    recommended_slot = None
-    for s in analyzed_slots:
-        if s["status"] == "AVAILABLE" and s.get("vehicle_fit", {}).get("is_suitable") and s.get("rules", {}).get("can_park_legally"):
-            recommended_slot = s
-            break
+    # 8. Decision Engine Evaluation (Vehicle Fit, Obstacle Checks, Ranking & Analysis Summary)
+    decision_eval = decision_engine.evaluate_decision(
+        vehicle_specs=veh_specs,
+        candidate_spaces=analyzed_slots,
+        detected_objects=detections,
+        zone_info=zone_result,
+        permission_status="VERIFIED" if scenario_data else ("PROHIBITED" if zone_result["status"] == ZoneStatus.INVALID else "UNKNOWN"),
+        safety_margin_m=0.30
+    )
+
+    recommended_slot = decision_eval["recommended_space"]
+    ranked_spaces = decision_eval["ranked_spaces"]
 
     # 9. Compute Confidence & Checklist
     if recommended_slot:
@@ -2915,7 +2924,7 @@ async def analyze_parking(request: Request):
     # 10. Render Visual Annotations
     annotated_img = ParkingVisualizer.annotate_frame(
         image=image,
-        analyzed_slots=analyzed_slots,
+        analyzed_slots=ranked_spaces if ranked_spaces else analyzed_slots,
         detections=detections,
         vehicle_name=veh_specs["name"],
         selected_slot_id=recommended_slot["id"] if recommended_slot else None
@@ -2948,25 +2957,25 @@ async def analyze_parking(request: Request):
 
     return {
         "success": True,
-        "is_suitable_space_found": (recommended_slot is not None and conf_eval["decision"] == DecisionState.SUITABLE),
-        "final_decision": conf_eval["decision"],
-        "decision_color": conf_eval["decision_color"],
-        "decision_icon": conf_eval["decision_icon"],
-        "headline": conf_eval["headline"],
-        "reason": conf_eval["reason"],
+        "is_suitable_space_found": (recommended_slot is not None and decision_eval["decision"] == DecisionState.SUITABLE),
+        "final_decision": decision_eval["decision"],
+        "decision_color": decision_eval["color"],
+        "decision_icon": decision_eval["icon"],
+        "headline": decision_eval["headline"],
+        "reason": decision_eval["reason"],
         "checklist": conf_eval["checklist"],
-        "confidence_score": conf_eval["confidence_score"],
-        "confidence_percent": conf_eval["confidence_percent"],
+        "confidence_score": decision_eval["confidence_score"],
+        "confidence_percent": decision_eval["confidence_percent"],
         "breakdown": conf_eval["breakdown"],
-        "can_recommend": (conf_eval["decision"] == DecisionState.SUITABLE),
-        "result_status": "POTENTIALLY_SUITABLE" if (recommended_slot and conf_eval["decision"] == DecisionState.SUITABLE) else conf_eval["decision"],
+        "can_recommend": (decision_eval["decision"] == DecisionState.SUITABLE),
+        "result_status": "POTENTIALLY_SUITABLE" if (recommended_slot and decision_eval["decision"] == DecisionState.SUITABLE) else decision_eval["decision"],
         "result_message": (
             f"🟢 POTENTIALLY SUITABLE • {recommended_slot['label']} fits your {veh_specs['name']} with safe clearance."
-            if (recommended_slot and conf_eval["decision"] == DecisionState.SUITABLE) else
-            f"{conf_eval['decision_icon']} {conf_eval['headline']} • {conf_eval['reason']}"
+            if (recommended_slot and decision_eval["decision"] == DecisionState.SUITABLE) else
+            f"{decision_eval['icon']} {decision_eval['headline']} • {decision_eval['reason']}"
         ),
         "legal_disclaimer": "This is an AI-assisted estimate and not a guarantee of legal parking permission.",
-        "architectural_note": "EMPTY SPACE ≠ PARKING SPACE. Multi-factor validation required for suitability.",
+        "architectural_note": "EMPTY SPACE ≠ PARKING SPACE. Dynamic candidate generation and multi-factor validation enforced.",
         "safety_warning": "Stop safely before scanning. Do not operate the phone while driving.",
         "estimation_label": "Estimated suitable space",
         "summary": {
@@ -2976,9 +2985,12 @@ async def analyze_parking(request: Request):
             "blocked": block_count
         },
         "vehicle": veh_specs,
-        "recommended_slot": recommended_slot if conf_eval["decision"] == DecisionState.SUITABLE else None,
+        "recommended_slot": recommended_slot if decision_eval["decision"] == DecisionState.SUITABLE else None,
         "alternatives": alternatives,
         "slots": analyzed_slots,
+        "ranked_spaces": ranked_spaces,
+        "analysis_summary": decision_eval["analysis_summary"],
+        "safety_margin_m": 0.30,
         "detections_count": len(detections),
         "detections": detections,
         "homography_matrix": h_matrix_list,
@@ -3107,7 +3119,12 @@ async def analyze_live_frame(request: Request):
             "raw_bbox": [round(float(v), 1) for v in [xmin, ymin, xmax, ymax]]
         })
 
-    # Retrieve vehicle specs
+    # Retrieve vehicle specs & safety margin
+    try:
+        safety_margin = float(payload.get("safety_margin", 0.30) or 0.30)
+    except Exception:
+        safety_margin = 0.30
+
     veh_specs = matcher.get_vehicle_specs(
         vehicle_type=vehicle_type,
         custom_length=custom_length,
@@ -3149,6 +3166,14 @@ async def analyze_live_frame(request: Request):
 
     # 4. HANDLE INVALID ZONES (Home floor, private house driveway, garden, field, footpath, active road lane)
     if zone_result["status"] == ZoneStatus.INVALID:
+        decision_eval = decision_engine.evaluate_decision(
+            vehicle_specs=veh_specs,
+            candidate_spaces=[],
+            detected_objects=detections,
+            zone_info=zone_result,
+            permission_status="PROHIBITED",
+            safety_margin_m=safety_margin
+        )
         confidence_res = confidence_scorer.evaluate(
             zone_result=zone_result,
             occupancy_status="BLOCKED",
@@ -3184,6 +3209,9 @@ async def analyze_live_frame(request: Request):
             "zone_class": zone_result["zone_class"],
             "recommended_slot": None,
             "ar_slots": [],
+            "ranked_spaces": [],
+            "analysis_summary": decision_eval["analysis_summary"],
+            "safety_margin_m": safety_margin,
             "vehicles_count": vehicles_count,
             "obstacles_count": obstacles_count,
             "detections": norm_detections,
@@ -3198,6 +3226,14 @@ async def analyze_live_frame(request: Request):
 
     # 5. HANDLE UNKNOWN / UNVERIFIED SURFACES (Open ground with no parking markings, signs, or database records)
     if zone_result["status"] == ZoneStatus.UNKNOWN:
+        decision_eval = decision_engine.evaluate_decision(
+            vehicle_specs=veh_specs,
+            candidate_spaces=[],
+            detected_objects=detections,
+            zone_info=zone_result,
+            permission_status="UNKNOWN",
+            safety_margin_m=safety_margin
+        )
         confidence_res = confidence_scorer.evaluate(
             zone_result=zone_result,
             occupancy_status="AVAILABLE",
@@ -3232,6 +3268,9 @@ async def analyze_live_frame(request: Request):
             "zone_class": zone_result["zone_class"],
             "recommended_slot": None,
             "ar_slots": [],
+            "ranked_spaces": [],
+            "analysis_summary": decision_eval["analysis_summary"],
+            "safety_margin_m": safety_margin,
             "vehicles_count": vehicles_count,
             "obstacles_count": obstacles_count,
             "detections": norm_detections,
@@ -3249,14 +3288,15 @@ async def analyze_live_frame(request: Request):
     scenario_data = scenarios.get(scenario_key) if scenario_key in scenarios else None
     predefined_slots = scenario_data.get("slots") if scenario_data else None
 
-    # Analyze parking spaces
+    # Analyze candidate spaces dynamically from camera image
     analyzed_slots = space_analyzer.analyze_spaces(
         image_shape=(h, w),
         detections=detections,
         zone_info=zone_result,
         predefined_slots=predefined_slots,
         vehicle_specs=veh_specs,
-        parking_mode=parking_mode
+        parking_mode=parking_mode,
+        image=image
     )
 
     # Verify legal rules for each candidate space
@@ -3264,15 +3304,20 @@ async def analyze_live_frame(request: Request):
         rule_zone = s.get("rule_zone", "registered")
         s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
 
-    # Find the best suitable and legal candidate slot
-    recommended_slot = None
-    for s in analyzed_slots:
-        if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
-            recommended_slot = s
-            break
+    # Run holistic Decision Engine: ranks multiple spaces, checks vehicle fit + safety margin
+    decision_eval = decision_engine.evaluate_decision(
+        vehicle_specs=veh_specs,
+        candidate_spaces=analyzed_slots,
+        detected_objects=detections,
+        zone_info=zone_result,
+        permission_status="VERIFIED" if (map_is_known or scenario_key) else "UNKNOWN",
+        safety_margin_m=safety_margin
+    )
+
+    recommended_slot = decision_eval["recommended_space"]
+    ranked_spaces = decision_eval["ranked_spaces"]
 
     # 7. Evaluate Holistic Multi-Factor Confidence Score
-    best_slot = recommended_slot or (analyzed_slots[0] if analyzed_slots else None)
     if recommended_slot:
         occ_status = "AVAILABLE"
         has_obs = False
@@ -3308,50 +3353,51 @@ async def analyze_live_frame(request: Request):
     # 8. Temporal Stability Filter across buffered frames
     temporal_res = temporal_tracker.add_frame_result(confidence_res)
 
-    final_decision = temporal_res.get("decision", confidence_res["decision"])
-    decision_color = temporal_res.get("decision_color", confidence_res["decision_color"])
-    decision_icon = temporal_res.get("decision_icon", confidence_res["decision_icon"])
-    headline = temporal_res.get("headline", confidence_res["headline"])
-    reason = temporal_res.get("reason", confidence_res["reason"])
+    final_decision = decision_eval["decision"]
+    if temporal_res.get("decision") == DecisionState.UNCERTAIN and final_decision == DecisionState.SUITABLE:
+        final_decision = DecisionState.UNCERTAIN
+    decision_color = "green" if final_decision == DecisionState.SUITABLE else ("yellow" if final_decision == DecisionState.UNCERTAIN else "red")
+    decision_icon = "🟢" if final_decision == DecisionState.SUITABLE else ("🟡" if final_decision == DecisionState.UNCERTAIN else "🔴")
+    headline = decision_eval["headline"]
+    reason = decision_eval["reason"]
 
-    # If temporal tracker detected instability or space is occupied/blocked, do not recommend
+    # If temporal tracker detected instability or space is not suitable, do not recommend
     if final_decision != DecisionState.SUITABLE:
         recommended_slot = None
 
-    # Build normalized AR overlay coordinates (0.0 to 1.0)
+    # Build normalized AR overlay coordinates (0.0 to 1.0) for all candidate slots
     ar_slots = []
-    if final_decision == DecisionState.SUITABLE:
-        for s in analyzed_slots:
-            norm_poly = [[round(pt[0] / w, 4), round(pt[1] / h, 4)] for pt in s["polygon"]]
-            is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
-            cx = sum(p[0] for p in norm_poly) / len(norm_poly)
-            cy = sum(p[1] for p in norm_poly) / len(norm_poly)
+    display_slots = ranked_spaces if ranked_spaces else analyzed_slots
+    for s in display_slots:
+        norm_poly = [[round(pt[0] / w, 4), round(pt[1] / h, 4)] for pt in s["polygon"]]
+        is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
+        cx = sum(p[0] for p in norm_poly) / len(norm_poly)
+        cy = sum(p[1] for p in norm_poly) / len(norm_poly)
+        v_fit = s.get("vehicle_fit", {})
 
-            ar_slots.append({
-                "id": s["id"],
-                "label": s["label"],
-                "status": s["status"],
-                "is_recommended": is_rec,
-                "is_suitable": s["vehicle_fit"]["is_suitable"],
-                "fit_status": s["vehicle_fit"]["fit_status"],
-                "normalized_polygon": norm_poly,
-                "center": [round(cx, 4), round(cy, 4)],
-                "fit_badge": s["vehicle_fit"]["fit_badge"],
-                "width_m": s["metrics"]["width_m"],
-                "length_m": s["metrics"]["length_m"],
-                "width_ft": s["metrics"]["width_ft"],
-                "length_ft": s["metrics"]["length_ft"],
-                "margin_m": s["vehicle_fit"]["width_margin_m"],
-                "margin_ft": s["vehicle_fit"]["width_margin_ft"],
-                "dims_ft": s["metrics"]["dims_ft"],
-                "dims_m": s["metrics"]["dims_m"],
-                "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
-                "blocked_reason": s.get("blocked_reason"),
-                "message": s["vehicle_fit"]["message"],
-                "vehicle_fit": s["vehicle_fit"]
-            })
-    else:
-        analyzed_slots = []
+        ar_slots.append({
+            "id": s["id"],
+            "label": s["label"],
+            "status": s["status"],
+            "is_recommended": is_rec,
+            "is_suitable": v_fit.get("is_suitable", False),
+            "fit_status": v_fit.get("fit_status", "UNKNOWN"),
+            "normalized_polygon": norm_poly,
+            "center": [round(cx, 4), round(cy, 4)],
+            "fit_badge": v_fit.get("fit_badge", "Candidate Space"),
+            "width_m": s["metrics"]["width_m"],
+            "length_m": s["metrics"]["length_m"],
+            "width_ft": s["metrics"]["width_ft"],
+            "length_ft": s["metrics"]["length_ft"],
+            "margin_m": v_fit.get("width_margin_m", 0.0),
+            "margin_ft": v_fit.get("width_margin_ft", 0.0),
+            "dims_ft": s["metrics"]["dims_ft"],
+            "dims_m": s["metrics"]["dims_m"],
+            "clearance_ft_str": v_fit.get("clearance_ft_str", ""),
+            "blocked_reason": s.get("blocked_reason"),
+            "message": v_fit.get("message", ""),
+            "vehicle_fit": v_fit
+        })
 
     # Guidance speech & banners
     if final_decision == DecisionState.SUITABLE and recommended_slot:
@@ -3375,7 +3421,7 @@ async def analyze_live_frame(request: Request):
             speech_text = f"Spaces in view are too narrow for your {bike_display_name}. Do not park here."
             guidance_banner = f"🔴 NOT SUITABLE • Bays do not fit {bike_display_name} safely"
         else:
-            speech_text = "Not suitable for parking. All spaces are currently occupied or obstructed."
+            speech_text = f"Not suitable for parking. {reason}"
             guidance_banner = f"🔴 NOT SUITABLE FOR PARKING • {reason}"
 
     avail_count = sum(1 for s in analyzed_slots if s["status"] == "AVAILABLE")
@@ -3385,7 +3431,7 @@ async def analyze_live_frame(request: Request):
     # Generate high-contrast Computer Vision annotated image
     annotated_frame = ParkingVisualizer.annotate_frame(
         image,
-        analyzed_slots,
+        display_slots,
         detections,
         vehicle_name=veh_specs.get("name", "Vehicle"),
         selected_slot_id=recommended_slot["id"] if recommended_slot else None
@@ -3402,14 +3448,17 @@ async def analyze_live_frame(request: Request):
         "headline": headline,
         "reason": reason,
         "checklist": confidence_res["checklist"],
-        "confidence_score": temporal_res.get("confidence_score", confidence_res["confidence_score"]),
-        "confidence_percent": temporal_res.get("confidence_percent", confidence_res["confidence_percent"]),
+        "confidence_score": decision_eval["confidence_score"],
+        "confidence_percent": decision_eval["confidence_percent"],
         "breakdown": confidence_res["breakdown"],
         "can_recommend": (final_decision == DecisionState.SUITABLE),
         "is_parking_scene": True,
         "is_indoor": False,
         "zone_class": zone_result["zone_class"],
         "recommended_slot": recommended_slot,
+        "ranked_spaces": ranked_spaces,
+        "analysis_summary": decision_eval["analysis_summary"],
+        "safety_margin_m": safety_margin,
         "guidance_banner": guidance_banner,
         "speech_text": speech_text,
         "ar_slots": ar_slots,
@@ -3456,6 +3505,10 @@ async def scan_multiframe_endpoint(request: Request):
     except Exception:
         custom_width = 0.85
     bike_model = payload.get("bike_model", "Royal Enfield Classic 350")
+    try:
+        safety_margin = float(payload.get("safety_margin", 0.30) or 0.30)
+    except Exception:
+        safety_margin = 0.30
     scenario_key = payload.get("scenario_key")
     map_lot_id = payload.get("map_lot_id")
     map_is_known = bool(payload.get("map_is_known", False))
@@ -3474,24 +3527,30 @@ async def scan_multiframe_endpoint(request: Request):
     elif image_base64:
         raw_frames = [image_base64]
 
-    if not raw_frames:
-        raise HTTPException(status_code=400, detail="No camera frames provided for multi-frame scan.")
-
-    # Decode all image frames
     decoded_images = []
-    for b64 in raw_frames:
-        clean_b64 = b64.split(",", 1)[1] if "," in b64 else b64
-        try:
-            raw_bytes = base64.b64decode(clean_b64)
-            nparr = np.frombuffer(raw_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is not None:
-                decoded_images.append(img)
-        except Exception:
-            continue
+    if raw_frames:
+        for b64 in raw_frames:
+            clean_b64 = b64.split(",", 1)[1] if "," in b64 else b64
+            try:
+                raw_bytes = base64.b64decode(clean_b64)
+                nparr = np.frombuffer(raw_bytes, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if img is not None:
+                    decoded_images.append(img)
+            except Exception:
+                continue
+    elif scenario_key:
+        scenarios = load_scenarios()
+        if scenario_key in scenarios:
+            img_path = scenarios[scenario_key]["image_path"]
+            if not os.path.isabs(img_path):
+                img_path = os.path.join(BASE_DIR, "..", img_path)
+            sc_img = cv2.imread(img_path)
+            if sc_img is not None:
+                decoded_images = [sc_img]
 
     if not decoded_images:
-        raise HTTPException(status_code=400, detail="Failed to decode any valid camera frames.")
+        raise HTTPException(status_code=400, detail="No valid camera frames or scenario image provided.")
 
     # Keep burst to latest 3 frames for instant responsiveness
     if len(decoded_images) > 3:
@@ -3604,7 +3663,8 @@ async def scan_multiframe_endpoint(request: Request):
                 zone_info=zone_result,
                 predefined_slots=None,
                 vehicle_specs=veh_specs,
-                parking_mode="unmarked"
+                parking_mode="unmarked",
+                image=img
             )
             for s in analyzed_slots:
                 s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": "unconfirmed"})
@@ -3625,7 +3685,8 @@ async def scan_multiframe_endpoint(request: Request):
                 zone_info=zone_result,
                 predefined_slots=None,
                 vehicle_specs=veh_specs,
-                parking_mode="unmarked"
+                parking_mode="unmarked",
+                image=img
             )
             for s in analyzed_slots:
                 s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": "unconfirmed"})
@@ -3650,7 +3711,8 @@ async def scan_multiframe_endpoint(request: Request):
                 zone_info=zone_result,
                 predefined_slots=predefined_slots,
                 vehicle_specs=veh_specs,
-                parking_mode=parking_mode
+                parking_mode=parking_mode,
+                image=img
             )
             for s in analyzed_slots:
                 rule_zone = s.get("rule_zone", "registered")
@@ -3703,66 +3765,77 @@ async def scan_multiframe_endpoint(request: Request):
             "headline": conf_res["headline"]
         })
 
+    # Run decision engine on latest frame slots & vehicle profile
+    decision_eval = decision_engine.evaluate_decision(
+        vehicle_specs=veh_specs,
+        candidate_spaces=latest_slots,
+        detected_objects=latest_detections,
+        zone_info=last_zone_result or {"status": ZoneStatus.UNKNOWN, "zone_class": "unknown_area"},
+        permission_status="VERIFIED" if (map_is_known or scenario_key) else ("PROHIBITED" if last_zone_result and last_zone_result["status"] == ZoneStatus.INVALID else "UNKNOWN"),
+        safety_margin_m=safety_margin
+    )
+    ranked_spaces = decision_eval["ranked_spaces"]
+    recommended_slot = decision_eval["recommended_space"]
+
     # Evaluate multi-frame consistency from burst tracker
     stabilized = burst_tracker.evaluate_stability(conf_res)
-    final_decision = stabilized.get("decision", conf_res["decision"])
-    decision_color = stabilized.get("decision_color", conf_res["decision_color"])
-    decision_icon = stabilized.get("decision_icon", conf_res["decision_icon"])
-    headline = stabilized.get("headline", conf_res["headline"])
-    reason = stabilized.get("reason", conf_res["reason"])
+    final_decision = decision_eval["decision"]
+    if stabilized.get("decision") == DecisionState.UNCERTAIN and final_decision == DecisionState.SUITABLE:
+        final_decision = DecisionState.UNCERTAIN
+    decision_color = "green" if final_decision == DecisionState.SUITABLE else ("yellow" if final_decision == DecisionState.UNCERTAIN else "red")
+    decision_icon = "🟢" if final_decision == DecisionState.SUITABLE else ("🟡" if final_decision == DecisionState.UNCERTAIN else "🔴")
+    headline = decision_eval["headline"]
+    reason = decision_eval["reason"]
     temporal_stable = stabilized.get("temporal_stable", True)
 
     # Any invalid zone across frames takes safety precedence
     any_invalid = any(fe["decision"] == DecisionState.NOT_SUITABLE and "INVALID" in str(fe.get("zone_class", "")) for fe in frame_evals)
-    if any_invalid and final_decision == DecisionState.SUITABLE:
+    if any_invalid:
         final_decision = DecisionState.NOT_SUITABLE
         decision_color = "red"
         decision_icon = "🔴"
         headline = "NOT SUITABLE FOR PARKING"
         reason = "A non-parking surface (indoor floor, traffic lane, or private boundary) was detected during multi-frame scan."
+        recommended_slot = None
 
-    # Identify recommended / candidate slot to project on screen ONLY if final decision is SUITABLE
-    recommended_slot = None
+    # If final decision is not suitable, do not recommend
+    if final_decision != DecisionState.SUITABLE:
+        recommended_slot = None
+
+    # Construct AR slots for candidate spaces
     ar_slots = []
-    if final_decision == DecisionState.SUITABLE and latest_slots:
-        for s in latest_slots:
-            if s["status"] == "AVAILABLE" and s["vehicle_fit"].get("is_suitable", True):
-                recommended_slot = s
-                break
-        if not recommended_slot and latest_slots:
-            recommended_slot = latest_slots[0]
+    display_slots = ranked_spaces if ranked_spaces else latest_slots
+    h_best, w_best = best_img.shape[:2]
+    for s in display_slots:
+        norm_poly = [[round(pt[0] / w_best, 4), round(pt[1] / h_best, 4)] for pt in s["polygon"]]
+        is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
+        cx = sum(p[0] for p in norm_poly) / len(norm_poly)
+        cy = sum(p[1] for p in norm_poly) / len(norm_poly)
+        v_fit = s.get("vehicle_fit", {})
 
-        h_best, w_best = best_img.shape[:2]
-        for s in latest_slots:
-            norm_poly = [[round(pt[0] / w_best, 4), round(pt[1] / h_best, 4)] for pt in s["polygon"]]
-            is_rec = (recommended_slot is not None and s["id"] == recommended_slot["id"])
-            cx = sum(p[0] for p in norm_poly) / len(norm_poly)
-            cy = sum(p[1] for p in norm_poly) / len(norm_poly)
-            ar_slots.append({
-                "id": s["id"],
-                "label": s["label"],
-                "status": s["status"],
-                "is_recommended": is_rec,
-                "is_suitable": s["vehicle_fit"]["is_suitable"],
-                "fit_status": s["vehicle_fit"]["fit_status"],
-                "normalized_polygon": norm_poly,
-                "center": [round(cx, 4), round(cy, 4)],
-                "fit_badge": s["vehicle_fit"]["fit_badge"],
-                "width_m": s["metrics"]["width_m"],
-                "length_m": s["metrics"]["length_m"],
-                "width_ft": s["metrics"]["width_ft"],
-                "length_ft": s["metrics"]["length_ft"],
-                "margin_m": s["vehicle_fit"]["width_margin_m"],
-                "margin_ft": s["vehicle_fit"]["width_margin_ft"],
-                "dims_ft": s["metrics"]["dims_ft"],
-                "dims_m": s["metrics"]["dims_m"],
-                "clearance_ft_str": s["vehicle_fit"]["clearance_ft_str"],
-                "blocked_reason": s.get("blocked_reason"),
-                "message": s["vehicle_fit"]["message"],
-                "vehicle_fit": s["vehicle_fit"]
-            })
-    else:
-        latest_slots = []
+        ar_slots.append({
+            "id": s["id"],
+            "label": s["label"],
+            "status": s["status"],
+            "is_recommended": is_rec,
+            "is_suitable": v_fit.get("is_suitable", False),
+            "fit_status": v_fit.get("fit_status", "UNKNOWN"),
+            "normalized_polygon": norm_poly,
+            "center": [round(cx, 4), round(cy, 4)],
+            "fit_badge": v_fit.get("fit_badge", "Candidate Space"),
+            "width_m": s["metrics"]["width_m"],
+            "length_m": s["metrics"]["length_m"],
+            "width_ft": s["metrics"]["width_ft"],
+            "length_ft": s["metrics"]["length_ft"],
+            "margin_m": v_fit.get("width_margin_m", 0.0),
+            "margin_ft": v_fit.get("width_margin_ft", 0.0),
+            "dims_ft": s["metrics"]["dims_ft"],
+            "dims_m": s["metrics"]["dims_m"],
+            "clearance_ft_str": v_fit.get("clearance_ft_str", ""),
+            "blocked_reason": s.get("blocked_reason"),
+            "message": v_fit.get("message", ""),
+            "vehicle_fit": v_fit
+        })
 
     # Guidance banner & speech
     if final_decision == DecisionState.SUITABLE and recommended_slot:
@@ -3785,7 +3858,7 @@ async def scan_multiframe_endpoint(request: Request):
     # Annotate frame
     annotated_frame = ParkingVisualizer.annotate_frame(
         best_img,
-        latest_slots,
+        display_slots,
         latest_detections,
         vehicle_name=veh_specs.get("name", "Vehicle"),
         selected_slot_id=recommended_slot["id"] if recommended_slot else None
@@ -3802,8 +3875,8 @@ async def scan_multiframe_endpoint(request: Request):
         "headline": headline,
         "reason": reason,
         "checklist": conf_res["checklist"],
-        "confidence_score": stabilized.get("confidence_score", conf_res["confidence_score"]),
-        "confidence_percent": stabilized.get("confidence_percent", conf_res["confidence_percent"]),
+        "confidence_score": decision_eval["confidence_score"],
+        "confidence_percent": decision_eval["confidence_percent"],
         "breakdown": conf_res["breakdown"],
         "temporal_samples": len(decoded_images),
         "temporal_stable": temporal_stable,
@@ -3812,6 +3885,9 @@ async def scan_multiframe_endpoint(request: Request):
         "is_parking_scene": (last_zone_result.get("is_valid", False) if last_zone_result else False),
         "zone_class": last_zone_result.get("zone_class", "unknown_area") if last_zone_result else "unknown_area",
         "recommended_slot": recommended_slot,
+        "ranked_spaces": ranked_spaces,
+        "analysis_summary": decision_eval["analysis_summary"],
+        "safety_margin_m": safety_margin,
         "guidance_banner": guidance_banner,
         "speech_text": speech_text,
         "ar_slots": ar_slots,

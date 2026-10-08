@@ -932,6 +932,56 @@
               </div>
             </div>
 
+            <!-- Dedicated Parking Analysis & Vehicle Fit Breakdown (Sections 17 & 18) -->
+            <div class="wz-analysis-card" id="wz-analysis-card">
+              <div class="wz-analysis-header">
+                <span class="wz-analysis-title">PARKING ANALYSIS &amp; FIT BREAKDOWN</span>
+                <span class="wz-analysis-margin-badge" id="wz-analysis-margin-badge">Safety Margin: +0.3m</span>
+              </div>
+              <div class="wz-analysis-grid">
+                <div class="wz-analysis-row">
+                  <span class="wz-analysis-lbl">Your Vehicle:</span>
+                  <span class="wz-analysis-val" id="an-vehicle-dims">—</span>
+                </div>
+                <div class="wz-analysis-row">
+                  <span class="wz-analysis-lbl">Detected Free Space:</span>
+                  <span class="wz-analysis-val" id="an-space-dims">—</span>
+                </div>
+                <div class="wz-analysis-row">
+                  <span class="wz-analysis-lbl">Safety Margin Used:</span>
+                  <span class="wz-analysis-val" id="an-safety-margin">+0.30 m</span>
+                </div>
+                <div class="wz-analysis-row">
+                  <span class="wz-analysis-lbl">Required Space (Vehicle + Margin):</span>
+                  <span class="wz-analysis-val" id="an-required-dims">—</span>
+                </div>
+                <div class="wz-analysis-divider"></div>
+                <div class="wz-analysis-check-row">
+                  <span class="wz-analysis-lbl">Length Fit:</span>
+                  <span class="wz-analysis-check" id="an-length-status">—</span>
+                </div>
+                <div class="wz-analysis-check-row">
+                  <span class="wz-analysis-lbl">Width Fit:</span>
+                  <span class="wz-analysis-check" id="an-width-status">—</span>
+                </div>
+                <div class="wz-analysis-check-row">
+                  <span class="wz-analysis-lbl">Obstacles / People:</span>
+                  <span class="wz-analysis-check" id="an-obstacle-status">—</span>
+                </div>
+                <div class="wz-analysis-check-row">
+                  <span class="wz-analysis-lbl">Parking Zone Context:</span>
+                  <span class="wz-analysis-check" id="an-zone-status">—</span>
+                </div>
+                <div class="wz-analysis-check-row">
+                  <span class="wz-analysis-lbl">System Confidence:</span>
+                  <span class="wz-analysis-check" id="an-conf-status">—</span>
+                </div>
+                <div class="wz-analysis-verdict" id="an-final-verdict">
+                  <span id="an-verdict-text">Awaiting live scan...</span>
+                </div>
+              </div>
+            </div>
+
             <p class="wz-rec-msg" id="wz-rec-msg" data-i18n="rec_aim_msg">Aim your camera at the parking row to detect available spaces.</p>
             <button class="wz-btn-primary" id="wz-confirm-parked">
               <span data-i18n="btn_parked_done">✅ Bike Parked — Done!</span>

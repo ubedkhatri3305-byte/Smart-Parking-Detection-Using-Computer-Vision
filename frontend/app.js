@@ -2083,6 +2083,7 @@ async function captureAndScanFrame(isManual = false) {
       custom_length: p.length || 2.14,
       custom_width: p.width || 0.84,
       bike_model: p.bikeModel || 'Vehicle',
+      safety_margin: 0.30,
       image_base64: dataUrl,
       scenario_key: isSim ? 'scenario_2_driver' : null,
       client_features: clientFeats,
@@ -5320,6 +5321,7 @@ async function wzCaptureAndScan(isManual = false) {
       custom_length: p.length || 2.14,
       custom_width: p.width || 0.84,
       bike_model: p.bikeModel || 'Vehicle',
+      safety_margin: 0.30,
       frames: frames,
       scenario_key: isSim ? 'scenario_2_driver' : null,
       client_features: clientFeats,
@@ -5826,6 +5828,73 @@ function wzRenderScanResults(data) {
     if (pointer) pointer.classList.add('hidden');
   }
 
+  // 5. Update Dedicated Section 17 & 18 Parking Analysis Card
+  const anVehDims = document.getElementById('an-vehicle-dims');
+  const anSpaceDims = document.getElementById('an-space-dims');
+  const anMarginVal = document.getElementById('an-safety-margin');
+  const anReqDims = document.getElementById('an-required-dims');
+  const anLenStatus = document.getElementById('an-length-status');
+  const anWidStatus = document.getElementById('an-width-status');
+  const anObsStatus = document.getElementById('an-obstacle-status');
+  const anZoneStatus = document.getElementById('an-zone-status');
+  const anConfStatus = document.getElementById('an-conf-status');
+  const anVerdict = document.getElementById('an-final-verdict');
+  const anVerdictText = document.getElementById('an-verdict-text');
+  const anMarginBadge = document.getElementById('wz-analysis-margin-badge');
+
+  const summary = data.analysis_summary || {};
+  const vLenM = summary.vehicle_length_m !== undefined ? summary.vehicle_length_m : (p.length || 2.14);
+  const vWidM = summary.vehicle_width_m !== undefined ? summary.vehicle_width_m : (p.width || 0.84);
+  const marginM = summary.safety_margin_m !== undefined ? summary.safety_margin_m : 0.30;
+  const reqLenM = summary.required_length_m !== undefined ? summary.required_length_m : Number((vLenM + marginM).toFixed(2));
+  const reqWidM = summary.required_width_m !== undefined ? summary.required_width_m : Number((vWidM + marginM).toFixed(2));
+  const spLenM = summary.detected_space_length_m !== undefined ? summary.detected_space_length_m : (rec?.metrics?.length_m || rec?.length_m || 0.0);
+  const spWidM = summary.detected_space_width_m !== undefined ? summary.detected_space_width_m : (rec?.metrics?.width_m || rec?.width_m || 0.0);
+
+  if (anMarginBadge) anMarginBadge.textContent = `Safety Margin: +${marginM}m`;
+  if (anVehDims) anVehDims.innerHTML = `<strong>${vLenM}m (L) × ${vWidM}m (W)</strong> <span style="font-size:0.75rem;color:var(--text-muted);">(${p.bikeModel})</span>`;
+  if (anSpaceDims) {
+    if (spLenM > 0 && spWidM > 0) {
+      anSpaceDims.innerHTML = `<strong>${spLenM}m (L) × ${spWidM}m (W)</strong>`;
+    } else {
+      anSpaceDims.innerHTML = `<span style="color:#ef4444;">None detected / Rejected</span>`;
+    }
+  }
+  if (anMarginVal) anMarginVal.textContent = `+${marginM} m`;
+  if (anReqDims) anReqDims.innerHTML = `<strong>${reqLenM}m (L) × ${reqWidM}m (W)</strong>`;
+
+  if (anLenStatus) {
+    const isLenPass = summary.length_check_pass !== undefined ? summary.length_check_pass : (spLenM >= reqLenM);
+    anLenStatus.innerHTML = isLenPass ? `<span style="color:#10b981;font-weight:700;">✓ Sufficient</span>` : `<span style="color:#ef4444;font-weight:700;">✗ Insufficient</span>`;
+  }
+  if (anWidStatus) {
+    const isWidPass = summary.width_check_pass !== undefined ? summary.width_check_pass : (spWidM >= reqWidM);
+    anWidStatus.innerHTML = isWidPass ? `<span style="color:#10b981;font-weight:700;">✓ Sufficient</span>` : `<span style="color:#ef4444;font-weight:700;">✗ Insufficient</span>`;
+  }
+  if (anObsStatus) {
+    const isObsPass = summary.obstacle_check_pass !== undefined ? summary.obstacle_check_pass : (data.obstacles_count === 0 && data.persons_count === 0 && !rec?.blocked_reason);
+    anObsStatus.innerHTML = isObsPass ? `<span style="color:#10b981;font-weight:700;">✓ None</span>` : `<span style="color:#ef4444;font-weight:700;">✗ Detected / Blocked</span>`;
+  }
+  if (anZoneStatus) {
+    const isZonePass = summary.zone_check_pass !== undefined ? summary.zone_check_pass : (data.is_parking_scene !== false && decision !== 'NOT_SUITABLE');
+    anZoneStatus.innerHTML = isZonePass ? `<span style="color:#10b981;font-weight:700;">✓ Detected</span>` : `<span style="color:${decision === 'UNCERTAIN' ? '#f59e0b' : '#ef4444'};font-weight:700;">✗ ${data.zone_class || 'Invalid Surface'}</span>`;
+  }
+  if (anConfStatus) {
+    anConfStatus.innerHTML = `<span style="color:#38bdf8;font-weight:700;">${pVal}%</span>`;
+  }
+  if (anVerdict && anVerdictText) {
+    if (decision === 'SUITABLE' && rec) {
+      anVerdict.className = 'wz-analysis-verdict state-pass';
+      anVerdictText.textContent = `🟢 VEHICLE CAN POTENTIALLY FIT HERE (${p.bikeModel} fits with +${marginM}m safety clearance)`;
+    } else if (decision === 'UNCERTAIN') {
+      anVerdict.className = 'wz-analysis-verdict state-warn';
+      anVerdictText.textContent = `🟡 PARKING SPACE UNCERTAIN (${data.reason || 'Surface lacks verified parking markings'})`;
+    } else {
+      anVerdict.className = 'wz-analysis-verdict state-fail';
+      anVerdictText.textContent = `🔴 ${summary.reason || data.reason || 'VEHICLE DOES NOT FIT OR SPACE OCCUPIED'}`;
+    }
+  }
+
   // Update Status HUD
   const wzStatus = document.getElementById('wz-cam-status');
   if (wzStatus) {
@@ -5838,12 +5907,13 @@ function wzRenderScanResults(data) {
   // Draw AR overlay with clean text
   wzDrawAROverlay(data.ar_slots || [], rec, data.detections || [], data);
 
-  // Populate bays list
+  // Populate bays list (displaying all ranked candidates)
   const baysList = document.getElementById('wz-bays-list');
   if (baysList) {
     baysList.innerHTML = '';
-    if (data.ar_slots && data.ar_slots.length > 0) {
-      data.ar_slots.forEach(s => {
+    const slotsToRender = (data.ranked_spaces && data.ranked_spaces.length > 0) ? data.ranked_spaces : (data.ar_slots || []);
+    if (slotsToRender.length > 0) {
+      slotsToRender.forEach((s, idx) => {
         const isRec = rec && s.id === rec.id;
         const isFit = s.is_suitable !== false && s.vehicle_fit?.is_suitable !== false;
         const item = document.createElement('div');
