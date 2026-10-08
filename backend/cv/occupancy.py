@@ -96,7 +96,8 @@ class ParkingOccupancyAnalyzer:
                             if slot_overlap > max_overlap_ratio:
                                 max_overlap_ratio = slot_overlap
                                 status = SlotStatus.OCCUPIED
-                                occupied_by = f"{cls_name.capitalize()} ({det['confidence']*100:.0f}%)"
+                                conf_pct = float(det.get("confidence", 0.85)) * 100
+                                occupied_by = f"{cls_name.capitalize()} ({conf_pct:.0f}%)"
                                 matched_detection = det
 
             # Second priority check: Obstacles (people, bikes, traffic cones) blocking the slot
@@ -118,14 +119,17 @@ class ParkingOccupancyAnalyzer:
                         if slot_shapely.intersects(obj["poly"]):
                             intersection_area = slot_shapely.intersection(obj["poly"]).area
                             slot_overlap = intersection_area / slot_area
+                            obj_inside_ratio = intersection_area / max(1.0, obj["area"])
                             contact_inside = slot_shapely.contains(obj["bottom_pt"]) or slot_shapely.contains(obj["center_pt"])
 
-                            if slot_overlap > self.obstacle_iou_threshold or contact_inside:
+                            # Any physical intersection (>0.5% slot overlap or >10% of object inside slot or ground contact inside)
+                            if slot_overlap > 0.005 or contact_inside or obj_inside_ratio > 0.10:
                                 status = SlotStatus.BLOCKED
+                                conf_pct = float(det.get("confidence", 0.85)) * 100
                                 if is_pers:
-                                    blocked_reason = f"Pedestrian / Person ({det['confidence']*100:.0f}%)"
+                                    blocked_reason = f"Pedestrian / Person ({conf_pct:.0f}%)"
                                 else:
-                                    blocked_reason = f"{cls_name.capitalize()} ({det['confidence']*100:.0f}%)"
+                                    blocked_reason = f"{cls_name.capitalize()} ({conf_pct:.0f}%)"
                                 matched_detection = det
                                 max_overlap_ratio = max(max_overlap_ratio, slot_overlap)
                                 break

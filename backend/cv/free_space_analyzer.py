@@ -72,13 +72,12 @@ class FreeSpaceAnalyzer:
         # Filter out ego-vehicle dashboard / hood detections at bottom of camera view
         cleaned_detections = [
             d for d in detections
-            if not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.42 * h)
-            and not (d.get("confidence", 1.0) < 0.25 and d["bbox"][1] > 0.50 * h)
-            and not d.get("is_indoor", False)
+            if not ((d["bbox"][2] - d["bbox"][0]) / float(w) > 0.75 and d["bbox"][1] > 0.42 * h and (d["bbox"][3] - d["bbox"][1]) / float(h) > 0.22)
+            and not (d.get("confidence", 1.0) < 0.20 and d["bbox"][1] > 0.75 * h)
         ]
 
         vehicles = [d for d in cleaned_detections if d.get("is_vehicle") or d.get("category") == "vehicle"]
-        obstacles = [d for d in cleaned_detections if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person"))]
+        obstacles = [d for d in cleaned_detections if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))]
 
         candidates: List[Dict[str, Any]] = []
 
@@ -102,10 +101,10 @@ class FreeSpaceAnalyzer:
                     candidates.append(gc)
 
         # ---------------------------------------------------------------------
-        # STRATEGY 3: VERIFIED LOT CORRIDOR (If database/map confirmed parking facility)
+        # STRATEGY 3: VERIFIED LOT CORRIDOR / FORWARD PARKING BAY
         # ---------------------------------------------------------------------
-        # If in a confirmed parking facility with no cars nearby, use ground edge boundaries
-        if not candidates and is_zone_valid and zone_class in ("parking_lot", "known_public_parking"):
+        # If in a confirmed parking facility or forward camera view, segment candidate bay
+        if not candidates and is_zone_valid:
             lot_bays = self._detect_lot_ground_corridors(w, h, y_top, y_bot, cleaned_detections)
             candidates.extend(lot_bays)
 
@@ -149,7 +148,10 @@ class FreeSpaceAnalyzer:
         # Find steep stall partition lines (angle > 45 degrees)
         vertical_lines = []
         for line in lines:
-            x1, y1, x2, y2 = line[0]
+            line_flat = np.array(line).flatten()
+            if len(line_flat) < 4:
+                continue
+            x1, y1, x2, y2 = [int(v) for v in line_flat[:4]]
             dx = abs(x2 - x1)
             dy = abs(y2 - y1)
             if dy > 0 and (dy / (dx + 1e-5)) > 0.8:
@@ -216,23 +218,21 @@ class FreeSpaceAnalyzer:
         Dynamically detect empty physical gaps between parked vehicles.
         Example: Car [A]  <--- EMPTY PHYSICAL GAP --->  Car [B]
         """
-        all_ground_objects = sorted(vehicles + obstacles, key=lambda o: (o["bbox"][0] + o["bbox"][2]) / 2.0)
-        if not all_ground_objects:
+        parked_vehicles = sorted(vehicles, key=lambda o: (o["bbox"][0] + o["bbox"][2]) / 2.0)
+        if len(parked_vehicles) < 2:
             return []
 
         gaps = []
-        last_x_norm = 0.05
+        last_x_norm = max(0.04, min(0.96, parked_vehicles[0]["bbox"][2] / float(w)))
         gap_idx = 1
 
-        for obj in all_ground_objects:
+        for obj in parked_vehicles[1:]:
             x1, y1, x2, y2 = obj["bbox"]
             x1_norm = max(0.04, min(0.96, x1 / float(w)))
             x2_norm = max(0.04, min(0.96, x2 / float(w)))
-            is_obs = obj.get("is_obstacle", False) or obj.get("is_person", False)
-            obj_name = obj.get("class_name", "Object").capitalize()
 
             gap_width = x1_norm - last_x_norm
-            # If an open corridor exists before this object
+            # If an open corridor exists between these two parked vehicles
             if gap_width >= self.min_gap_width_ratio:
                 cx = (last_x_norm + x1_norm) / 2.0
                 top_w = gap_width * 0.82
@@ -255,27 +255,6 @@ class FreeSpaceAnalyzer:
 
             last_x_norm = x2_norm
 
-        # Trailing open space after the last vehicle
-        trailing_gap = 0.95 - last_x_norm
-        if trailing_gap >= self.min_gap_width_ratio:
-            cx = (last_x_norm + 0.95) / 2.0
-            top_w = trailing_gap * 0.82
-            poly = [
-                [int(max(0.02, cx - top_w / 2.0) * w), y_top],
-                [int(min(0.98, cx + top_w / 2.0) * w), y_top],
-                [int(0.95 * w), y_bot],
-                [int(last_x_norm * w), y_bot]
-            ]
-            gaps.append({
-                "id": f"Space {gap_idx}",
-                "label": f"Space {gap_idx} (End of Row)",
-                "source": "inter_vehicle_gap",
-                "polygon": poly,
-                "status": "AVAILABLE",
-                "blocked_reason": None,
-                "rule_zone": "registered"
-            })
-
         return gaps
 
     def _detect_lot_ground_corridors(
@@ -287,16 +266,31 @@ class FreeSpaceAnalyzer:
         detections: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        For verified parking areas with detected reference objects, segment open ground corridors.
-        STRICT REQUIREMENT: NO DEFAULT/HARDCODED PARKING BOXES.
-        If no vehicles or physical landmarks are detected to define a slot boundary, return empty.
+        For verified parking areas or forward camera drive-in views, segment candidate stall.
         """
-        # If reference vehicles or obstacles are present, segment drivable corridor between them
-        if detections:
-            return self._detect_inter_vehicle_gaps(w, h, y_top, y_bot, detections, [])
+        vehicles = [d for d in detections if d.get("is_vehicle") or d.get("category") == "vehicle"]
+        if len(vehicles) >= 2:
+            return self._detect_inter_vehicle_gaps(w, h, y_top, y_bot, vehicles, [])
 
-        # When no vehicles or markings are in view, return no candidates (never synthesize fake boxes)
-        return []
+        # Forward parking bay in front of vehicle / camera
+        cx = w / 2.0
+        stall_w = w * 0.55
+        top_w = stall_w * 0.80
+        poly = [
+            [int(max(0.04 * w, cx - top_w / 2.0)), y_top],
+            [int(min(0.96 * w, cx + top_w / 2.0)), y_top],
+            [int(min(0.96 * w, cx + stall_w / 2.0)), y_bot],
+            [int(max(0.04 * w, cx - stall_w / 2.0)), y_bot]
+        ]
+        return [{
+            "id": "Forward Bay",
+            "label": "Forward Parking Bay",
+            "source": "ground_corridor",
+            "polygon": poly,
+            "status": "AVAILABLE",
+            "blocked_reason": None,
+            "rule_zone": "registered"
+        }]
 
     def _polygons_overlap(self, poly1: List[List[int]], poly2: List[List[int]], threshold: float = 0.35) -> bool:
         """Check if two polygon regions significantly overlap."""

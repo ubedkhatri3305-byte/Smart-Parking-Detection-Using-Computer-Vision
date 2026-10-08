@@ -140,8 +140,71 @@ class ParkingDecisionEngine:
                 "guidance_banner": f"🔴 NOT SUITABLE • {headline}"
             }
 
+        # Collect physical obstacle hazards in view
+        frame_obstacles = [
+            d for d in detections
+            if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard")
+                or str(d.get("class_name", "")).lower() in ("person", "bicycle", "debris", "box", "chair", "cone", "traffic cone", "ground obstacle"))
+            and not d.get("is_vehicle", False)
+        ]
+
         # REJECTION 2: No candidate spaces discovered in camera frame
         if not candidate_spaces:
+            if frame_obstacles:
+                first_obs = frame_obstacles[0]
+                obs_name = first_obs.get("class_name", "Obstacle").capitalize()
+                obs_conf = first_obs.get("confidence", 0.85)
+                headline = f"SPACE BLOCKED: {obs_name.upper()}"
+                reason = f"Ground obstruction ({obs_name} {int(obs_conf*100)}%) detected in camera view. Area is not clear for parking."
+                return {
+                    "decision": DecisionState.NOT_SUITABLE,
+                    "final_decision": DecisionState.NOT_SUITABLE,
+                    "status_code": "NOT_SUITABLE",
+                    "color": "red",
+                    "decision_color": "red",
+                    "icon": "🔴",
+                    "decision_icon": "🔴",
+                    "headline": headline,
+                    "reason": reason,
+                    "confidence_score": 0.94,
+                    "confidence_percent": 94,
+                    "can_recommend": False,
+                    "recommended_space": None,
+                    "ranked_spaces": [],
+                    "analysis_summary": {
+                        "vehicle_name": v_name,
+                        "vehicle_length_m": v_len,
+                        "vehicle_width_m": v_wid,
+                        "safety_margin_m": margin_m,
+                        "required_length_m": required_len,
+                        "required_width_m": required_wid,
+                        "detected_space_length_m": 0.0,
+                        "detected_space_width_m": 0.0,
+                        "length_check_pass": False,
+                        "width_check_pass": False,
+                        "length_status": "— Obstructed",
+                        "width_status": "— Obstructed",
+                        "obstacle_check_pass": False,
+                        "obstacle_status": f"✗ Blocked ({obs_name})",
+                        "zone_check_pass": is_zone_valid,
+                        "zone_status": "✓ Ground Corridor" if is_zone_valid else "🟡 Awaiting Demarcations",
+                        "confidence_percent": 94,
+                        "final_verdict": f"🔴 {headline}",
+                        "reason": reason,
+                        "vehicle": f"{v_name} ({round(v_len*3.28, 1)}ft × {round(v_wid*3.28, 1)}ft)",
+                        "detected_free_space": "None (Obstructed)",
+                        "safety_margin": f"{margin_m}m ({round(margin_m*3.28, 1)}ft)",
+                        "required_space": f"{required_len}m × {required_wid}m",
+                        "length_check": "— Obstructed",
+                        "width_check": "— Obstructed",
+                        "obstacles": f"✗ Blocked: {obs_name}",
+                        "parking_zone": "✓ Ground Corridor" if is_zone_valid else "🟡 Awaiting Demarcations",
+                        "confidence": "94%"
+                    },
+                    "speech_text": f"Not suitable for parking. Space is blocked by {obs_name}.",
+                    "guidance_banner": f"🔴 NOT SUITABLE • Blocked by {obs_name}"
+                }
+
             headline = "NO PARKING SPACE DETECTED"
             reason = "No designated parking bay markings, road asphalt corridors, or vacant bays in view."
             return {
@@ -193,15 +256,35 @@ class ParkingDecisionEngine:
                 "guidance_banner": "🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays"
             }
 
-        # ---------------------------------------------------------------------
+        # -------------------------------------------------------------
         # EVALUATE EACH CANDIDATE SPACE AGAINST USER VEHICLE + SAFETY MARGIN
-        # ---------------------------------------------------------------------
+        # -------------------------------------------------------------
+        from shapely.geometry import Polygon as ShapelyPoly, box as shapely_box
+
         evaluated_candidates = []
         for space in candidate_spaces:
             s_len = float(space.get("length_m", 0.0))
             s_wid = float(space.get("width_m", 0.0))
             s_status = space.get("status", "AVAILABLE")
             blocked_reason = space.get("blocked_reason")
+
+            # Validate intersection with any detected obstacles
+            if "polygon" in space and frame_obstacles:
+                try:
+                    sp_poly = ShapelyPoly(space["polygon"])
+                    for obs in frame_obstacles:
+                        ob_box = obs.get("bbox", [0, 0, 0, 0])
+                        ob_poly = shapely_box(*ob_box)
+                        if sp_poly.intersects(ob_poly):
+                            s_status = "BLOCKED"
+                            obs_name = obs.get("class_name", "Obstacle").capitalize()
+                            obs_conf = obs.get("confidence", 0.85)
+                            blocked_reason = blocked_reason or f"{obs_name} ({int(obs_conf*100)}%)"
+                            space["status"] = "BLOCKED"
+                            space["blocked_reason"] = blocked_reason
+                            break
+                except Exception:
+                    pass
 
             len_diff = round(s_len - required_len, 2)
             wid_diff = round(s_wid - required_wid, 2)

@@ -3099,8 +3099,8 @@ async def analyze_live_frame(request: Request):
         bw_norm = (xmax - xmin) / float(w)
         bh_norm = (ymax - ymin) / float(h)
         yn_norm = ymin / float(h)
-        # Filter out ego-vehicle interior (dashboard at bottom, rearview mirror / windshield header at top)
-        if (bw_norm > 0.65 and yn_norm > 0.40) or yn_norm > 0.65:
+        # Filter out ego-vehicle interior dashboard only if an ultra-wide detection spans across the bottom
+        if bw_norm > 0.75 and yn_norm > 0.70 and bh_norm > 0.22:
             continue
         if yn_norm < 0.15 and bw_norm > 0.25 and (yn_norm + bh_norm) < 0.32:
             continue
@@ -3327,7 +3327,13 @@ async def analyze_live_frame(request: Request):
     ranked_spaces = decision_eval["ranked_spaces"]
 
     # 7. Evaluate Holistic Multi-Factor Confidence Score
-    if recommended_slot:
+    any_obstacle_in_scene = any(
+        (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))
+        and not d.get("is_vehicle", False)
+        for d in detections
+    )
+
+    if recommended_slot and not any_obstacle_in_scene:
         occ_status = "AVAILABLE"
         has_obs = False
         fit_data = recommended_slot["vehicle_fit"]
@@ -3336,17 +3342,29 @@ async def analyze_live_frame(request: Request):
     elif analyzed_slots:
         any_blocked = any(s["status"] == "BLOCKED" for s in analyzed_slots)
         any_occupied = any(s["status"] == "OCCUPIED" for s in analyzed_slots)
-        occ_status = "BLOCKED" if any_blocked else ("OCCUPIED" if any_occupied else "AVAILABLE")
-        has_obs = any_blocked
+        has_obs = any_blocked or any_obstacle_in_scene
+        occ_status = "BLOCKED" if has_obs else ("OCCUPIED" if any_occupied else "AVAILABLE")
         fit_data = analyzed_slots[0]["vehicle_fit"]
         perm_data = {"can_park_legally": analyzed_slots[0]["rules"]["can_park_legally"], "is_unknown": False}
-        blocked_msg = analyzed_slots[0].get("blocked_reason") or "Space is occupied or obstructed."
+        if any_blocked:
+            first_blk = next(s for s in analyzed_slots if s["status"] == "BLOCKED")
+            blocked_msg = first_blk.get("blocked_reason") or "Space is obstructed."
+        elif any_obstacle_in_scene:
+            first_obs = next(
+                d for d in detections
+                if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))
+                and not d.get("is_vehicle", False)
+            )
+            obs_n = first_obs.get("class_name", "Obstacle").capitalize()
+            blocked_msg = f"Obstacle ({obs_n}) detected in parking area."
+        else:
+            blocked_msg = "Space is occupied or obstructed."
     else:
-        occ_status = "AVAILABLE"
-        has_obs = False
+        occ_status = "BLOCKED" if any_obstacle_in_scene else "AVAILABLE"
+        has_obs = any_obstacle_in_scene
         fit_data = {"is_suitable": False, "message": "No delineated slots found."}
         perm_data = {"can_park_legally": True, "is_unknown": False}
-        blocked_msg = None
+        blocked_msg = "Obstacle detected in camera view." if any_obstacle_in_scene else None
 
     mean_det_conf = float(np.mean([d["confidence"] for d in detections])) if detections else 0.85
     confidence_res = confidence_scorer.evaluate(
@@ -3642,8 +3660,8 @@ async def scan_multiframe_endpoint(request: Request):
             bw_norm = (xmax - xmin) / float(w)
             bh_norm = (ymax - ymin) / float(h)
             yn_norm = ymin / float(h)
-            # Filter out ego-vehicle interior (dashboard at bottom, rearview mirror / windshield header at top)
-            if (bw_norm > 0.65 and yn_norm > 0.40) or yn_norm > 0.65:
+            # Filter out ego-vehicle interior dashboard only if an ultra-wide detection spans across the bottom
+            if bw_norm > 0.75 and yn_norm > 0.70 and bh_norm > 0.22:
                 continue
             if yn_norm < 0.15 and bw_norm > 0.25 and (yn_norm + bh_norm) < 0.32:
                 continue
@@ -3736,11 +3754,21 @@ async def scan_multiframe_endpoint(request: Request):
                 rule_zone = s.get("rule_zone", "registered")
                 s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
 
+            any_obs_in_scene = any(
+                (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))
+                and not d.get("is_vehicle", False)
+                for d in detections
+            )
+            any_b = any(s["status"] == "BLOCKED" for s in analyzed_slots)
+            any_o = any(s["status"] == "OCCUPIED" for s in analyzed_slots)
+            obs_d = any_b or any_obs_in_scene
+
             rec_slot = None
-            for s in analyzed_slots:
-                if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
-                    rec_slot = s
-                    break
+            if not obs_d:
+                for s in analyzed_slots:
+                    if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
+                        rec_slot = s
+                        break
 
             if rec_slot:
                 occ_s = "AVAILABLE"
@@ -3749,19 +3777,27 @@ async def scan_multiframe_endpoint(request: Request):
                 p_data = {"can_park_legally": True, "is_unknown": False}
                 b_reason = None
             elif analyzed_slots:
-                any_b = any(s["status"] == "BLOCKED" for s in analyzed_slots)
-                any_o = any(s["status"] == "OCCUPIED" for s in analyzed_slots)
-                occ_s = "BLOCKED" if any_b else ("OCCUPIED" if any_o else "AVAILABLE")
-                obs_d = any_b
+                occ_s = "BLOCKED" if obs_d else ("OCCUPIED" if any_o else "AVAILABLE")
                 f_data = analyzed_slots[0]["vehicle_fit"]
                 p_data = {"can_park_legally": analyzed_slots[0]["rules"]["can_park_legally"], "is_unknown": False}
-                b_reason = analyzed_slots[0].get("blocked_reason") or "Space is occupied or obstructed."
+                if any_b:
+                    first_blk = next(s for s in analyzed_slots if s["status"] == "BLOCKED")
+                    b_reason = first_blk.get("blocked_reason") or "Parking space obstructed."
+                elif any_obs_in_scene:
+                    first_obs = next(
+                        d for d in detections
+                        if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))
+                        and not d.get("is_vehicle", False)
+                    )
+                    obs_n = first_obs.get("class_name", "Obstacle").capitalize()
+                    b_reason = f"Obstacle ({obs_n}) detected in parking area."
+                else:
+                    b_reason = "Space is occupied or obstructed."
             else:
-                occ_s = "AVAILABLE"
-                obs_d = False
+                occ_s = "BLOCKED" if obs_d else "AVAILABLE"
                 f_data = {"is_suitable": False, "message": "No delineated slots found."}
                 p_data = {"can_park_legally": True, "is_unknown": False}
-                b_reason = None
+                b_reason = "Obstacle detected in camera view." if obs_d else None
 
             conf_res = confidence_scorer.evaluate(
                 zone_result=zone_result,

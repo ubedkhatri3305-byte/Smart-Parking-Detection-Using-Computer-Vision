@@ -2298,8 +2298,8 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
-      // Filter out ego-vehicle interior (dashboard at bottom, rearview mirror / windshield header at top)
-      if ((wNorm > 0.65 && yNorm > 0.40) || yNorm > 0.65) return;
+      // Filter out ego-vehicle interior dashboard only if an ultra-wide detection spans across the bottom
+      if (wNorm > 0.75 && yNorm > 0.70 && hNorm > 0.22) return;
       if (yNorm < 0.15 && wNorm > 0.25 && (yNorm + hNorm) < 0.32) return;
 
       const cNameUpper = (det.class_name || '').toUpperCase();
@@ -5466,7 +5466,7 @@ function extractClientImageFeatures(canvas) {
       }
 
       const clusterRatio = clusterPoints / sampleCount;
-      if (clusterRatio > 0.08 && clusterRatio < 0.55 && (maxRow - minRow) >= 4 && (maxCol - minCol) >= 3) {
+      if (clusterRatio > 0.02 && clusterRatio < 0.65 && (maxRow - minRow) >= 2 && (maxCol - minCol) >= 2) {
         const bx = Math.max(0.06, (minCol * stepX) / cw);
         const by = Math.max(0.12, (minRow * stepY) / ch);
         const bw = Math.min(0.88 - bx, ((maxCol - minCol + 1) * stepX) / cw);
@@ -5647,6 +5647,46 @@ function wzFallbackClientScan(video, tmpCanvas) {
   const entities = feats.detected_entities || [];
   const hasPerson = entities.some(e => e.is_person);
   const hasHazard = entities.some(e => e.is_obstacle);
+
+  if (hasPerson || hasHazard) {
+    const obsLabel = hasPerson ? 'PEDESTRIAN' : 'GROUND OBSTACLE';
+    const resultData = {
+      success: true,
+      status_code: 'NOT_SUITABLE',
+      final_decision: 'NOT_SUITABLE',
+      decision_color: 'red',
+      decision_icon: '🔴',
+      headline: `SPACE BLOCKED BY ${obsLabel}`,
+      reason: `Obstacle or hazard (${obsLabel}) detected in the camera view. Area is not clear for parking.`,
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [],
+      detections: entities,
+      vehicles_count: feats.vehicles_count || 0,
+      persons_count: hasPerson ? 1 : 0,
+      obstacles_count: hasHazard ? 1 : 0,
+      confidence_score: 0.94,
+      confidence_percent: 94,
+      checklist: {
+        zone: { status_icon: '✓', label: 'Ground Surface' },
+        space: { status_icon: '✗', label: 'Blocked by Hazard' },
+        obstacles: { status_icon: '⚠️', label: `${obsLabel} Detected` },
+        vehicle_fit: { status_icon: '✗', label: 'Obstructed' },
+        permission: { status_icon: '?', label: 'Unverified' }
+      },
+      breakdown: {
+        parking_zone: 0.50,
+        space_free: 0.10,
+        obstacle_free: 0.15,
+        vehicle_fit: 0.10,
+        permission: 0.40
+      },
+      guidance_banner: `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`,
+      speech_text: `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
 
   const resultData = {
     success: true,

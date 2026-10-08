@@ -175,12 +175,15 @@ class ParkingYOLODetector:
 
         contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         hazards: List[Dict[str, Any]] = []
-        min_area = (w * h) * 0.015  # At least 1.5% of frame area
+        min_area = (w * h) * 0.003  # Detect compact ground obstacles (cones, boxes, debris >= 0.3% frame area)
 
         for cnt in contours:
             rx, ry, rw, rh = cv2.boundingRect(cnt)
             box_area = rw * rh
-            if box_area < min_area or rw < 25 or rh < 25:
+            if box_area < min_area or rw < 18 or rh < 18:
+                continue
+            # Physical obstacles are localized hazards (cones, boxes, debris), not the entire asphalt plane
+            if rw > 0.65 * w or rh > 0.65 * h or box_area > (w * h) * 0.35:
                 continue
 
             abs_y1 = float(y_ground + ry)
@@ -258,16 +261,17 @@ class ParkingYOLODetector:
                 is_vehicle = cls_name in self.VEHICLE_CLASSES
                 is_indoor = cls_name in self.INDOOR_CLASSES
                 is_road_object = cls_name in self.OUTDOOR_ROAD_OBJECTS
-                is_obstacle = not is_vehicle and not is_indoor
+                # Physical entities on ground that are not vehicles or traffic signs are obstacles
+                is_obstacle = not is_vehicle and not is_road_object
 
                 if is_person:
                     category = "person"
                 elif is_vehicle:
                     category = "vehicle"
-                elif is_indoor:
-                    category = "indoor_object"
-                else:
+                elif is_obstacle:
                     category = "obstacle"
+                else:
+                    category = "road_object"
 
                 # Compute key geometric references
                 center_x = (x1 + x2) / 2.0
@@ -301,14 +305,12 @@ class ParkingYOLODetector:
                 detections.append(det)
                 existing_bboxes.append([x1, y1, x2, y2])
 
-        # Detect physical ground hazards only if not in an indoor room
-        indoor_count = sum(1 for d in detections if d.get("is_indoor", False))
-        if indoor_count == 0:
-            try:
-                cv_hazards = self.detect_ground_hazards(image, existing_bboxes)
-                detections.extend(cv_hazards)
-            except Exception:
-                pass
+        # Run OpenCV ground hazard detection to complement YOLO
+        try:
+            cv_hazards = self.detect_ground_hazards(image, existing_bboxes)
+            detections.extend(cv_hazards)
+        except Exception:
+            pass
 
         return detections
 
