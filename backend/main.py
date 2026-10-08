@@ -3125,7 +3125,7 @@ async def analyze_live_frame(request: Request):
             "name": map_lot_id or "Public Parking Facility"
         }
 
-    client_features = payload.get("client_features") or {}
+    client_features = payload.get("client_features") if isinstance(payload.get("client_features"), dict) else {}
 
     # 3. ParkingZoneValidator: Determine if the area is a plausible parking zone
     if client_features.get("is_wall_or_screen") and not (scenario_key or (map_is_known and map_lot_id)):
@@ -3460,6 +3460,7 @@ async def scan_multiframe_endpoint(request: Request):
     map_lot_id = payload.get("map_lot_id")
     map_is_known = bool(payload.get("map_is_known", False))
     parking_mode = payload.get("parking_mode", "auto")
+    client_features = payload.get("client_features") if isinstance(payload.get("client_features"), dict) else {}
 
     raw_frames = []
     if frames_input:
