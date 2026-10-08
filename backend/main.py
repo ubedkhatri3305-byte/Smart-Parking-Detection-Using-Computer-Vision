@@ -3096,6 +3096,15 @@ async def analyze_live_frame(request: Request):
         is_veh = (cname in ("car", "motorcycle", "bus", "truck", "train", "bicycle", "auto", "rickshaw")) or d.get("is_vehicle", False)
         is_obs = (not is_veh and not is_pers) or is_indoor or d.get("is_obstacle", False)
 
+        bw_norm = (xmax - xmin) / float(w)
+        bh_norm = (ymax - ymin) / float(h)
+        yn_norm = ymin / float(h)
+        # Filter out ego-vehicle interior (dashboard at bottom, rearview mirror / windshield header at top)
+        if (bw_norm > 0.65 and yn_norm > 0.40) or yn_norm > 0.65:
+            continue
+        if yn_norm < 0.15 and bw_norm > 0.25 and (yn_norm + bh_norm) < 0.32:
+            continue
+
         if is_pers:
             persons_count += 1
         elif is_veh:
@@ -3629,6 +3638,15 @@ async def scan_multiframe_endpoint(request: Request):
             is_pers = (cname == "person") or d.get("is_person", False)
             is_veh = (cname in ("car", "motorcycle", "bus", "truck", "train", "bicycle", "auto", "rickshaw")) or d.get("is_vehicle", False)
             is_obs = (not is_veh and not is_pers) or is_indoor or d.get("is_obstacle", False)
+
+            bw_norm = (xmax - xmin) / float(w)
+            bh_norm = (ymax - ymin) / float(h)
+            yn_norm = ymin / float(h)
+            # Filter out ego-vehicle interior (dashboard at bottom, rearview mirror / windshield header at top)
+            if (bw_norm > 0.65 and yn_norm > 0.40) or yn_norm > 0.65:
+                continue
+            if yn_norm < 0.15 and bw_norm > 0.25 and (yn_norm + bh_norm) < 0.32:
+                continue
 
             if is_pers:
                 p_count += 1

@@ -287,51 +287,16 @@ class FreeSpaceAnalyzer:
         detections: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        For verified parking lots with zero or single vehicles, segment open drivable lane bays.
+        For verified parking areas with detected reference objects, segment open ground corridors.
+        STRICT REQUIREMENT: NO DEFAULT/HARDCODED PARKING BOXES.
+        If no vehicles or physical landmarks are detected to define a slot boundary, return empty.
         """
-        # If obstacles are present, segment around them
+        # If reference vehicles or obstacles are present, segment drivable corridor between them
         if detections:
             return self._detect_inter_vehicle_gaps(w, h, y_top, y_bot, detections, [])
 
-        # Pure vacant lot: provide standard center-left and center-right candidate bays
-        bay_w = int(w * 0.38)
-        cx1 = int(w * 0.28)
-        cx2 = int(w * 0.72)
-        top_w = int(bay_w * 0.80)
-
-        poly1 = [
-            [max(10, cx1 - top_w // 2), y_top],
-            [cx1 + top_w // 2, y_top],
-            [cx1 + bay_w // 2, y_bot],
-            [max(10, cx1 - bay_w // 2), y_bot]
-        ]
-        poly2 = [
-            [cx2 - top_w // 2, y_top],
-            [min(w - 10, cx2 + top_w // 2), y_top],
-            [min(w - 10, cx2 + bay_w // 2), y_bot],
-            [cx2 - bay_w // 2, y_bot]
-        ]
-
-        return [
-            {
-                "id": "Lot Bay 1",
-                "label": "Lot Bay 1 (Left)",
-                "source": "lot_corridor",
-                "polygon": poly1,
-                "status": "AVAILABLE",
-                "blocked_reason": None,
-                "rule_zone": "registered"
-            },
-            {
-                "id": "Lot Bay 2",
-                "label": "Lot Bay 2 (Right)",
-                "source": "lot_corridor",
-                "polygon": poly2,
-                "status": "AVAILABLE",
-                "blocked_reason": None,
-                "rule_zone": "registered"
-            }
-        ]
+        # When no vehicles or markings are in view, return no candidates (never synthesize fake boxes)
+        return []
 
     def _polygons_overlap(self, poly1: List[List[int]], poly2: List[List[int]], threshold: float = 0.35) -> bool:
         """Check if two polygon regions significantly overlap."""

@@ -2298,6 +2298,10 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
+      // Filter out ego-vehicle interior (dashboard at bottom, rearview mirror / windshield header at top)
+      if ((wNorm > 0.65 && yNorm > 0.40) || yNorm > 0.65) return;
+      if (yNorm < 0.15 && wNorm > 0.25 && (yNorm + hNorm) < 0.32) return;
+
       const cNameUpper = (det.class_name || '').toUpperCase();
       const isPerson = det.is_person || cNameUpper === 'PERSON' || cNameUpper === 'PEDESTRIAN';
 
@@ -4931,8 +4935,8 @@ function wzDrawLiveARFrame() {
 
   ctx.clearRect(0, 0, cw, ch);
 
-  // If in simulated mode, draw demo feed background directly on canvas
-  if (wz.cam.isSimulated && simulatedImgElement && simulatedImgElement.complete) {
+  // If in simulated mode and real camera is not active, draw demo feed background directly on canvas
+  if (wz.cam.isSimulated && !wz.cam.stream && simulatedImgElement && simulatedImgElement.complete) {
     ctx.drawImage(simulatedImgElement, 0, 0, cw, ch);
   }
 
@@ -5033,8 +5037,8 @@ async function wzStartCamera() {
   if (statusEl) statusEl.textContent = 'Requesting Camera Permission...';
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    showToast('📷 Live camera API unavailable — activating Demo Feed');
-    wzStartSimulatedCamera();
+    if (statusEl) statusEl.textContent = '⚠️ Camera API not supported in this browser.';
+    showToast('⚠️ Camera API unavailable. Ensure you are on https or localhost.');
     return;
   }
 
@@ -5118,9 +5122,10 @@ async function wzStartCamera() {
       hudVehicle.textContent = `${vIcon} ${state.userProfile.bikeModel || 'Vehicle'} (${vLenFt} ft)`;
     }
   } catch (err) {
-    console.warn('Camera access denied or unavailable, auto-switching to demo feed:', err.message);
-    showToast('📷 Camera not accessible — switched to High-Precision Demo Feed');
-    wzStartSimulatedCamera();
+    console.warn('Camera access denied or unavailable:', err.message);
+    if (statusEl) statusEl.textContent = '⚠️ Camera Access: ' + (err.message || 'Permission needed');
+    showToast('⚠️ Camera permission required — please allow camera access in browser');
+    if (permOverlay) permOverlay.classList.remove('hidden');
   }
 }
 
@@ -5197,19 +5202,11 @@ async function wzCaptureAndScan(isManual = false) {
   const video = document.getElementById('wz-cam-video');
   let isSim = wz.cam.isSimulated;
 
-  // If camera is not running, start it or fall back to demo mode without quitting
+  // If camera is not running, prompt user to allow camera
   if (!isSim && (!video || !wz.cam.stream)) {
-    showToast('📷 Activating camera for parking scan...');
-    try {
-      await wzStartCamera();
-    } catch (_) {
-      wzStartSimulatedCamera();
-    }
-    isSim = wz.cam.isSimulated;
-    if (!wz.cam.stream && !wz.cam.isSimulated) {
-      wzStartSimulatedCamera();
-      isSim = true;
-    }
+    showToast('📷 Please click "Allow & Open Camera" first.');
+    await wzStartCamera();
+    if (!wz.cam.stream) return;
   }
 
   // Ensure simulated image element is fully loaded if in demo mode
@@ -6034,8 +6031,9 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
-      // Filter out ego-vehicle hood full-width box at bottom of screen
-      if (wNorm > 0.75 && yNorm > 0.40) return;
+      // Filter out ego-vehicle interior (dashboard at bottom, rearview mirror / windshield header at top)
+      if ((wNorm > 0.65 && yNorm > 0.40) || yNorm > 0.65) return;
+      if (yNorm < 0.15 && wNorm > 0.25 && (yNorm + hNorm) < 0.32) return;
 
       const cNameUpper = (det.class_name || '').toUpperCase();
       const isPerson = det.is_person || cNameUpper === 'PERSON' || cNameUpper === 'PEDESTRIAN';

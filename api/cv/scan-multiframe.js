@@ -219,6 +219,42 @@ export default function handler(req, res) {
       });
     }
 
+    let dynPoly = clientFeatures.markings_polygon || null;
+    if (!dynPoly && analysis.detectedEntities && analysis.detectedEntities.length >= 2) {
+      // Find gap between first two vehicles
+      const vSorted = [...analysis.detectedEntities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
+      if (vSorted.length >= 2) {
+        const x1 = vSorted[0].normalized_bbox[0] + vSorted[0].normalized_bbox[2];
+        const x2 = vSorted[1].normalized_bbox[0];
+        if (x2 - x1 > 0.15) {
+          dynPoly = [[x1, 0.44], [x2, 0.44], [Math.min(0.95, x2 + 0.05), 0.90], [Math.max(0.05, x1 - 0.05), 0.90]];
+        }
+      }
+    }
+
+    if (!dynPoly) {
+      return res.status(200).json({
+        success: true,
+        status_code: 'UNCERTAIN',
+        final_decision: 'UNCERTAIN',
+        decision_color: 'yellow',
+        decision_icon: '🟡',
+        headline: 'NO PARKING SPACE DETECTED',
+        reason: 'Area lacks visible parking stall demarcations or reference parked vehicles.',
+        can_recommend: false,
+        recommended_slot: null,
+        ar_slots: [],
+        detections: analysis.detectedEntities || [],
+        vehicles_count: analysis.vehiclesCount || 0,
+        persons_count: 0,
+        obstacles_count: 0,
+        confidence_score: 0.50,
+        confidence_percent: 50,
+        guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking stalls',
+        speech_text: 'No parking space detected. Align camera with marked parking bays.'
+      });
+    }
+
     const recSlot = {
       id: 'Bay 1',
       label: 'Bay 1 (Verified Bay)',
@@ -227,13 +263,8 @@ export default function handler(req, res) {
       is_suitable: true,
       fit_status: 'OPTIMAL',
       fit_badge: '🟢 Fits Vehicle',
-      normalized_polygon: [
-        [0.26, 0.48],
-        [0.74, 0.48],
-        [0.86, 0.92],
-        [0.14, 0.92]
-      ],
-      center: [0.50, 0.70],
+      normalized_polygon: dynPoly,
+      center: [(dynPoly[0][0] + dynPoly[1][0]) / 2, (dynPoly[0][1] + dynPoly[2][1]) / 2],
       width_m: bayW_m,
       length_m: bayL_m,
       width_ft: bayWidFt,
