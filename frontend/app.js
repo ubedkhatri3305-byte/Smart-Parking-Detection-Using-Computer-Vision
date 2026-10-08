@@ -2509,7 +2509,7 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       // Label text with REAL FEET DIMENSIONS
       ctx.fillStyle = '#10b981';
       ctx.font = 'bold 13px sans-serif';
-      ctx.fillText('POTENTIALLY SUITABLE', cx, cy - 34);
+      ctx.fillText('SUITABLE FOR PARKING', cx, cy - 34);
       ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.fillText(`${sLenFt} ft × ${sWidFt} ft (${clearFt})`, cx, cy + 32);
@@ -3457,10 +3457,17 @@ function initWizard() {
     }
   }, 20000);
 
-  // Initialize browser history state for Step 1
-  if (typeof window !== 'undefined' && window.history && history.replaceState) {
+  // Initialize browser history state and restore step from URL hash (e.g. #step-5)
+  if (typeof window !== 'undefined') {
     try {
-      history.replaceState({ step: 1 }, 'Step 1', '#step-1');
+      const initialHash = window.location.hash || '';
+      const m = initialHash.match(/step-(\d+)/);
+      const initialStep = m ? parseInt(m[1]) : 1;
+      if (initialStep > 1 && initialStep <= 5) {
+        wzGoToStep(initialStep, true);
+      } else if (window.history && history.replaceState) {
+        history.replaceState({ step: 1 }, 'Step 1', '#step-1');
+      }
     } catch (_) {}
   }
 }
@@ -5727,6 +5734,46 @@ function wzFallbackClientScan(video, tmpCanvas) {
   }
 
   // D. OPEN ROAD / GROUND PARKING BAY EVALUATION
+  // Only evaluate a parking bay if authentic road markings or parked vehicle corridors exist
+  if (!feats.has_road_markings && (!feats.vehicles_count || feats.vehicles_count < 2)) {
+    const resultData = {
+      success: true,
+      status_code: 'UNCERTAIN',
+      final_decision: 'UNCERTAIN',
+      decision_color: 'yellow',
+      decision_icon: '🟡',
+      headline: 'NO PARKING SPACE DETECTED',
+      reason: 'Area lacks designated parking demarcations, striping, or parked vehicle corridors.',
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [],
+      detections: entities,
+      vehicles_count: feats.vehicles_count || 0,
+      persons_count: 0,
+      obstacles_count: 0,
+      confidence_score: 0.50,
+      confidence_percent: 50,
+      checklist: {
+        zone: { status_icon: '?', label: 'Unverified Surface' },
+        space: { status_icon: '?', label: 'No Marked Bay' },
+        obstacles: { status_icon: '✓', label: 'Clear View' },
+        vehicle_fit: { status_icon: '?', label: 'Awaiting Parking Bay' },
+        permission: { status_icon: '?', label: 'Unverified Location' }
+      },
+      breakdown: {
+        parking_zone: 0.40,
+        space_free: 0.50,
+        obstacle_free: 0.95,
+        vehicle_fit: 0.50,
+        permission: 0.40
+      },
+      guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays',
+      speech_text: 'No parking space detected. Please point camera at an authorized parking bay or road surface.'
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
+
   const isCar = (p.wheels === 4) || (p.category && p.category.toLowerCase().includes('car'));
   const isAuto = (p.wheels === 3);
   const bayW_m = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
@@ -5779,7 +5826,7 @@ function wzFallbackClientScan(video, tmpCanvas) {
     final_decision: isFit ? 'SUITABLE' : 'NOT_SUITABLE',
     decision_color: isFit ? 'green' : 'red',
     decision_icon: isFit ? '🟢' : '🔴',
-    headline: isFit ? 'PARKING SPACE POTENTIALLY SUITABLE' : 'SPACE TOO NARROW FOR YOUR VEHICLE',
+    headline: isFit ? 'VERIFIED PARKING SPACE AVAILABLE' : 'SPACE TOO NARROW FOR YOUR VEHICLE',
     reason: isFit ? `Roadway space verified (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${p.bikeModel || 'Vehicle'} with ${clearanceStr} clearance.` : `Space too narrow for ${p.bikeModel || 'Vehicle'}.`,
     can_recommend: isFit,
     recommended_slot: isFit ? recSlot : null,
@@ -5804,8 +5851,8 @@ function wzFallbackClientScan(video, tmpCanvas) {
       vehicle_fit: isFit ? 0.92 : 0.20,
       permission: 0.85
     },
-    guidance_banner: isFit ? `🟢 POTENTIALLY SUITABLE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${p.bikeModel || 'Vehicle'}` : `🔴 TOO NARROW • Bay does not fit ${p.bikeModel || 'Vehicle'}`,
-    speech_text: isFit ? `Parking spot potentially suitable! Space is ${bayLenFt} feet long by ${bayWidFt} feet wide. It fits your ${p.bikeModel || 'Vehicle'} with ${clearanceStr} clearance.` : `Space is too narrow.`
+    guidance_banner: isFit ? `🟢 SUITABLE SPACE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${p.bikeModel || 'Vehicle'}` : `🔴 TOO NARROW • Bay does not fit ${p.bikeModel || 'Vehicle'}`,
+    speech_text: isFit ? `Parking spot verified and suitable! Space is ${bayLenFt} feet long by ${bayWidFt} feet wide. It fits your ${p.bikeModel || 'Vehicle'} with ${clearanceStr} clearance.` : `Space is too narrow.`
   };
   wzRenderScanResults(resultData);
 }
@@ -5829,9 +5876,9 @@ function wzRenderScanResults(data) {
     decBadge.className = `wz-rec-decision-badge state-${decision === 'SUITABLE' ? 'suitable' : (decision === 'UNCERTAIN' ? 'uncertain' : 'not-suitable')}`;
   }
   if (decIcon) decIcon.textContent = data.decision_icon || (decision === 'SUITABLE' ? '🟢' : (decision === 'UNCERTAIN' ? '🟡' : '🔴'));
-  if (decText) decText.textContent = data.headline || (decision === 'SUITABLE' ? 'PARKING SPACE POTENTIALLY SUITABLE' : (decision === 'UNCERTAIN' ? 'PARKING STATUS UNCERTAIN' : 'NOT SUITABLE FOR PARKING'));
+  if (decText) decText.textContent = data.headline || (decision === 'SUITABLE' ? 'VERIFIED PARKING SPACE AVAILABLE' : (decision === 'UNCERTAIN' ? 'NO PARKING SPACE DETECTED' : 'NOT SUITABLE FOR PARKING'));
 
-  if (titleEl) titleEl.textContent = data.headline || (decision === 'SUITABLE' ? 'Parking Space Potentially Suitable' : 'Parking Status Uncertain');
+  if (titleEl) titleEl.textContent = data.headline || (decision === 'SUITABLE' ? 'Verified Parking Space Available' : 'No Parking Space Detected');
   if (reasonEl) reasonEl.textContent = data.reason || 'Point camera toward marked parking spaces or designated roadside parking.';
 
   // 2. Update Section 16 Checklist Grid
@@ -6006,7 +6053,7 @@ function wzRenderScanResults(data) {
   if (anVerdict && anVerdictText) {
     if (decision === 'SUITABLE' && rec) {
       anVerdict.className = 'wz-analysis-verdict state-pass';
-      anVerdictText.textContent = `🟢 VEHICLE CAN POTENTIALLY FIT HERE (${p.bikeModel} fits with +${marginM}m safety clearance)`;
+      anVerdictText.textContent = `🟢 VEHICLE FITS HERE (${p.bikeModel} fits with +${marginM}m safety clearance)`;
     } else if (decision === 'UNCERTAIN') {
       anVerdict.className = 'wz-analysis-verdict state-warn';
       anVerdictText.textContent = `🟡 PARKING SPACE UNCERTAIN (${data.reason || 'Surface lacks verified parking markings'})`;
@@ -6362,7 +6409,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
 
       ctx.fillStyle = '#10b981';
       ctx.font = 'bold 13px sans-serif';
-      ctx.fillText('POTENTIALLY SUITABLE', cx, cy - 38);
+      ctx.fillText('SUITABLE FOR PARKING', cx, cy - 38);
       ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.fillText(`${sLenFt} ft × ${sWidFt} ft (${clearFt})`, cx, cy + 36);

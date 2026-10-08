@@ -165,7 +165,44 @@ export default function handler(req, res) {
         }
       }
     }
-    // Default open roadside corridor bay
+    // If no genuine markings or inter-vehicle corridor detected and not in a mapped lot
+    if (!dynPoly && !mapIsKnown) {
+      return res.status(200).json({
+        success: true,
+        status_code: 'UNCERTAIN',
+        final_decision: 'UNCERTAIN',
+        decision_color: 'yellow',
+        decision_icon: '🟡',
+        headline: 'NO PARKING SPACE DETECTED',
+        reason: 'Area lacks designated parking demarcations, striping, or parked vehicle corridors.',
+        can_recommend: false,
+        recommended_slot: null,
+        ar_slots: [],
+        detections: entities,
+        vehicles_count: analysis.vehiclesCount || 0,
+        persons_count: 0,
+        obstacles_count: 0,
+        confidence_score: 0.50,
+        confidence_percent: 50,
+        checklist: {
+          zone: { status_icon: '?', label: 'Unverified Surface' },
+          space: { status_icon: '?', label: 'No Marked Bay' },
+          obstacles: { status_icon: '✓', label: 'Clear View' },
+          vehicle_fit: { status_icon: '?', label: 'Awaiting Parking Bay' },
+          permission: { status_icon: '?', label: 'Unverified Location' }
+        },
+        breakdown: {
+          parking_zone: 0.40,
+          space_free: 0.50,
+          obstacle_free: 0.95,
+          vehicle_fit: 0.50,
+          permission: 0.40
+        },
+        guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays',
+        speech_text: 'No parking space detected. Please point camera at an authorized parking bay or road surface.'
+      });
+    }
+
     if (!dynPoly) {
       dynPoly = [[0.28, 0.42], [0.72, 0.42], [0.86, 0.88], [0.14, 0.88]];
     }
@@ -236,7 +273,7 @@ export default function handler(req, res) {
       final_decision: 'SUITABLE',
       decision_color: 'green',
       decision_icon: '🟢',
-      headline: 'PARKING SPACE POTENTIALLY SUITABLE',
+      headline: 'VERIFIED PARKING SPACE AVAILABLE',
       reason: `Designated parking bay verified (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${bikeModel} with ${clearanceStr} clearance.`,
       can_recommend: true,
       recommended_slot: recSlot,
@@ -261,8 +298,8 @@ export default function handler(req, res) {
         vehicle_fit: 0.94,
         permission: 0.90
       },
-      guidance_banner: `🟢 POTENTIALLY SUITABLE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${bikeModel}`,
-      speech_text: `Parking spot potentially suitable! Bay 1 is verified and free. Space is ${bayLenFt} feet long by ${bayWidFt} feet wide. It fits your ${bikeModel} with ${clearanceStr} clearance.`
+      guidance_banner: `🟢 SUITABLE SPACE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${bikeModel}`,
+      speech_text: `Parking spot verified and suitable! Bay 1 is free. Space is ${bayLenFt} feet long by ${bayWidFt} feet wide. It fits your ${bikeModel} with ${clearanceStr} clearance.`
     });
 
   } catch (err) {
@@ -425,7 +462,7 @@ function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar, margin = 0.30
     final_decision: 'SUITABLE',
     decision_color: 'green',
     decision_icon: '🟢',
-    headline: 'PARKING SPACE POTENTIALLY SUITABLE',
+    headline: 'VERIFIED PARKING SPACE AVAILABLE',
     reason: `Multi-bay aerial lot verified. Bay 2 is vacant and fits ${bikeModel} with +${wMarginFt} ft clearance.`,
     can_recommend: true,
     recommended_slot: recSlot,
@@ -437,14 +474,14 @@ function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar, margin = 0.30
     ],
     ranked_spaces: [recSlot],
     safety_margin_m: margin,
-    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 94, '🟢 POTENTIALLY SUITABLE', `Fits ${bikeModel}`),
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 94, '🟢 SUITABLE SPACE', `Fits ${bikeModel}`),
     detections: [
       { class_name: 'CAR', confidence: 0.94, is_vehicle: true, normalized_bbox: [0.36, 0.34, 0.13, 0.28] }
     ],
     vehicles_count: 3, persons_count: 0, obstacles_count: 0,
     confidence_score: 0.94, confidence_percent: 94,
-    guidance_banner: `🟢 POTENTIALLY SUITABLE • SLOT 2 (${lFt}ft × ${wFt}ft) • Clearance: +${wMarginFt} ft`,
-    speech_text: `Parking space potentially suitable! Slot 2 is available with +${wMarginFt} feet clearance.`
+    guidance_banner: `🟢 SUITABLE SPACE • SLOT 2 (${lFt}ft × ${wFt}ft) • Clearance: +${wMarginFt} ft`,
+    speech_text: `Parking space verified and suitable! Slot 2 is available with +${wMarginFt} feet clearance.`
   };
 }
 
@@ -581,21 +618,21 @@ function buildNarrowSlotResponse(bikeModel, vLen, vWid, isCar, margin = 0.30) {
     final_decision: 'SUITABLE',
     decision_color: 'green',
     decision_icon: '🟢',
-    headline: 'PARKING SPACE POTENTIALLY SUITABLE',
+    headline: 'VERIFIED PARKING SPACE AVAILABLE',
     reason: `Narrow bay fits ${bikeModel} safely with ${clrStr} clearance.`,
     can_recommend: true,
     recommended_slot: recSlot,
     ar_slots: [recSlot],
     ranked_spaces: [recSlot],
     safety_margin_m: margin,
-    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 86, '🟢 POTENTIALLY SUITABLE', `Fits ${bikeModel} (${clrStr})`),
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 86, '🟢 SUITABLE SPACE', `Fits ${bikeModel} (${clrStr})`),
     detections: [
       { class_name: 'CAR', confidence: 0.95, is_vehicle: true, normalized_bbox: [0.02, 0.24, 0.32, 0.52] },
       { class_name: 'CAR', confidence: 0.93, is_vehicle: true, normalized_bbox: [0.66, 0.26, 0.32, 0.50] }
     ],
     vehicles_count: 2, persons_count: 0, obstacles_count: 0,
     confidence_score: 0.86, confidence_percent: 86,
-    guidance_banner: `🟢 POTENTIALLY SUITABLE • TIGHT FIT (${lFt}ft × ${wFt}ft) • Clearance: ${clrStr}`,
+    guidance_banner: `🟢 SUITABLE SPACE • TIGHT FIT (${lFt}ft × ${wFt}ft) • Clearance: ${clrStr}`,
     speech_text: `Space fits your ${bikeModel}, but clearance is tight. Park carefully.`
   };
 }

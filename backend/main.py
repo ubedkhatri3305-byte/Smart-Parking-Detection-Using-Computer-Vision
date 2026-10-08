@@ -2984,9 +2984,9 @@ async def analyze_parking(request: Request):
         "confidence_percent": decision_eval["confidence_percent"],
         "breakdown": conf_eval["breakdown"],
         "can_recommend": (decision_eval["decision"] == DecisionState.SUITABLE),
-        "result_status": "POTENTIALLY_SUITABLE" if (recommended_slot and decision_eval["decision"] == DecisionState.SUITABLE) else decision_eval["decision"],
+        "result_status": "SUITABLE" if (recommended_slot and decision_eval["decision"] == DecisionState.SUITABLE) else decision_eval["decision"],
         "result_message": (
-            f"🟢 POTENTIALLY SUITABLE • {recommended_slot['label']} fits your {veh_specs['name']} with safe clearance."
+            f"🟢 SUITABLE SPACE • {recommended_slot['label']} fits your {veh_specs['name']} with safe clearance."
             if (recommended_slot and decision_eval["decision"] == DecisionState.SUITABLE) else
             f"{decision_eval['icon']} {decision_eval['headline']} • {decision_eval['reason']}"
         ),
@@ -3435,12 +3435,12 @@ async def analyze_live_frame(request: Request):
         rec_label = recommended_slot["label"]
         rec_fit = recommended_slot["vehicle_fit"]
         speech_text = (
-            f"Parking spot potentially suitable! {rec_label} is verified and free. "
+            f"Parking spot verified and suitable! {rec_label} is verified and free. "
             f"Space is {rec_fit['slot_length_ft']} feet long by {rec_fit['slot_width_ft']} feet wide. "
             f"It fits your {bike_display_name} with {rec_fit['clearance_ft_str']} clearance."
         )
         guidance_banner = (
-            f"🟢 POTENTIALLY SUITABLE • {rec_label.upper()} ({rec_fit['dims_ft_str']}) "
+            f"🟢 SUITABLE SPACE • {rec_label.upper()} ({rec_fit['dims_ft_str']}) "
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     elif final_decision == DecisionState.UNCERTAIN:
@@ -3887,11 +3887,11 @@ async def scan_multiframe_endpoint(request: Request):
     if final_decision == DecisionState.SUITABLE and recommended_slot:
         rec_fit = recommended_slot["vehicle_fit"]
         speech_text = (
-            f"Multi-frame scan verified: {recommended_slot['label']} is potentially suitable. "
+            f"Multi-frame scan verified: {recommended_slot['label']} is verified and suitable. "
             f"Space is {rec_fit['slot_length_ft']} ft by {rec_fit['slot_width_ft']} ft, fitting your {bike_display_name}."
         )
         guidance_banner = (
-            f"🟢 POTENTIALLY SUITABLE • {recommended_slot['label'].upper()} ({rec_fit['dims_ft_str']}) "
+            f"🟢 SUITABLE SPACE • {recommended_slot['label'].upper()} ({rec_fit['dims_ft_str']}) "
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     elif final_decision == DecisionState.UNCERTAIN:

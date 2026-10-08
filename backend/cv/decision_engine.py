@@ -425,7 +425,7 @@ class ParkingDecisionEngine:
 
         if suitable_candidates:
             # 🟢 SUITABLE
-            headline = "PARKING SPACE POTENTIALLY SUITABLE"
+            headline = "VERIFIED PARKING SPACE AVAILABLE"
             reason = (
                 f"{best_space.get('label', 'Candidate space')} verified ({s_len_ft} ft × {s_wid_ft} ft). "
                 f"Fits your {v_name} with {clr_str} clearance margin."
@@ -476,10 +476,10 @@ class ParkingDecisionEngine:
                     "confidence": "92%"
                 },
                 "speech_text": (
-                    f"Parking spot potentially suitable! {best_space.get('label', 'Space')} is free. "
+                    f"Parking spot verified and suitable! {best_space.get('label', 'Space')} is free. "
                     f"It fits your {v_name} with {clr_str} clearance."
                 ),
-                "guidance_banner": f"🟢 POTENTIALLY SUITABLE • {best_space.get('label', '').upper()} • Clearance: {clr_str} • Fits {v_name}"
+                "guidance_banner": f"🟢 SUITABLE SPACE • {best_space.get('label', '').upper()} • Clearance: {clr_str} • Fits {v_name}"
             }
 
         # Check if rejected due to obstacle/person blocker

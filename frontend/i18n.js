@@ -96,7 +96,7 @@
       wz_s5_tag: 'Step 5 of 5',
       wz_s5_title: 'Point Camera at Parking Row',
       wz_s5_sub: 'AI detects empty spaces and suggests the best spot for your bike. 100% free — zero fees, no booking.',
-      pointer_park_here: 'POTENTIALLY SUITABLE',
+      pointer_park_here: 'VERIFIED PARKING BAY',
       perm_req_title: 'Camera Permission Required',
       perm_req_desc: 'Allow your phone\'s rear camera to scan the parking row. The AI will highlight the best available spot that fits your vehicle.',
       perm_security: '🔒 Frames are processed locally for parking detection only. Nothing is stored.',
