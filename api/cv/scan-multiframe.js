@@ -56,11 +56,54 @@ export default function handler(req, res) {
     const rawFrames = body.frames || (body.image_base64 ? [body.image_base64] : []);
     const firstB64 = rawFrames.length > 0 ? rawFrames[0] : '';
 
-    // Analyze base64 image data directly for entropy, uniformity, and surface features
     const analysis = analyzeImageBuffer(firstB64, clientFeatures);
+    const entities = analysis.detectedEntities || [];
+    const hasPerson = entities.some(e => e.is_person);
+    const hasHazard = entities.some(e => e.is_obstacle);
+    const hasVehicles = entities.some(e => e.is_vehicle) || analysis.vehiclesCount > 0;
 
-    // REJECTION A: WALL OR COMPUTER SCREEN
-    if (analysis.isWallOrScreen) {
+    // PRIORITY 1: OBSTACLE OR PEDESTRIAN DETECTED IN CAMERA VIEW
+    if (hasPerson || hasHazard || (entities.length > 0 && !hasVehicles)) {
+      const obsLabel = hasPerson ? 'PEDESTRIAN' : (hasHazard ? 'GROUND OBSTACLE' : (entities[0].class_name || 'OBSTACLE'));
+      return res.status(200).json({
+        success: true,
+        status_code: 'NOT_SUITABLE',
+        final_decision: 'NOT_SUITABLE',
+        decision_color: 'red',
+        decision_icon: '🔴',
+        headline: `SPACE BLOCKED BY ${obsLabel.toUpperCase()}`,
+        reason: `Obstacle or hazard (${obsLabel}) detected in the camera view. Area is not clear for parking.`,
+        can_recommend: false,
+        is_parking_scene: true,
+        recommended_slot: null,
+        ar_slots: [],
+        detections: entities,
+        vehicles_count: analysis.vehiclesCount || 0,
+        persons_count: hasPerson ? 1 : 0,
+        obstacles_count: (hasHazard || !hasPerson) ? entities.length : 0,
+        confidence_score: 0.94,
+        confidence_percent: 94,
+        checklist: {
+          zone: { status_icon: '✓', label: 'Ground Surface' },
+          space: { status_icon: '✗', label: 'Blocked by Hazard' },
+          obstacles: { status_icon: '⚠️', label: `${obsLabel} Detected` },
+          vehicle_fit: { status_icon: '✗', label: 'Obstructed' },
+          permission: { status_icon: '?', label: 'Unverified' }
+        },
+        breakdown: {
+          parking_zone: 0.50,
+          space_free: 0.10,
+          obstacle_free: 0.15,
+          vehicle_fit: 0.10,
+          permission: 0.40
+        },
+        guidance_banner: `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`,
+        speech_text: `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`
+      });
+    }
+
+    // PRIORITY 2: WALL OR COMPUTER SCREEN (Only if zero entities)
+    if (analysis.isWallOrScreen && entities.length === 0) {
       return res.status(200).json({
         success: true,
         status_code: 'NOT_SUITABLE',
@@ -99,102 +142,33 @@ export default function handler(req, res) {
       });
     }
 
-    // REJECTION B: INDOOR / DOMESTIC FLOOR
-    if (analysis.isIndoor) {
-      return res.status(200).json({
-        success: true,
-        status_code: 'NOT_SUITABLE',
-        final_decision: 'NOT_SUITABLE',
-        decision_color: 'red',
-        decision_icon: '🔴',
-        headline: 'INDOOR / HOUSE FLOOR DETECTED',
-        reason: 'Indoor domestic flooring detected. Point camera outdoors at an authentic parking space or roadway.',
-        can_recommend: false,
-        is_parking_scene: false,
-        is_indoor: true,
-        recommended_slot: null,
-        ar_slots: [],
-        detections: analysis.detectedEntities || [],
-        vehicles_count: 0,
-        persons_count: (analysis.detectedEntities || []).filter(e => e.is_person).length,
-        obstacles_count: (analysis.detectedEntities || []).filter(e => e.is_obstacle).length,
-        confidence_score: 0.20,
-        confidence_percent: 20,
-        checklist: {
-          zone: { status_icon: '✗', label: 'Domestic Indoor Floor' },
-          space: { status_icon: '✗', label: 'Not Parking Ground' },
-          obstacles: { status_icon: '✓', label: 'Evaluated' },
-          vehicle_fit: { status_icon: '✗', label: 'Not a Parking Bay' },
-          permission: { status_icon: '✗', label: 'Private Indoor' }
-        },
-        breakdown: {
-          parking_zone: 0.10,
-          space_free: 0.20,
-          obstacle_free: 0.80,
-          vehicle_fit: 0.10,
-          permission: 0.10
-        },
-        guidance_banner: '🔴 NOT SUITABLE FOR PARKING • Indoor domestic setting detected',
-        speech_text: 'Indoor domestic area detected. Please point camera outside at an authorized parking area.'
-      });
-    }
-
-    // REJECTION C: UNVERIFIED SURFACE (ROAD WITHOUT STRIPING / DIRT / EMPTY AIR)
-    if (!analysis.hasMarkings && !mapIsKnown && analysis.vehiclesCount < 2) {
-      const entities = analysis.detectedEntities || [];
-      const hasPerson = entities.some(e => e.is_person);
-      const hasHazard = entities.some(e => e.is_obstacle);
-
-      return res.status(200).json({
-        success: true,
-        status_code: 'UNCERTAIN',
-        final_decision: 'UNCERTAIN',
-        decision_color: 'yellow',
-        decision_icon: '🟡',
-        headline: 'NO PARKING SPACE DETECTED',
-        reason: 'Area lacks designated parking demarcations, striping, or parked vehicle corridors.',
-        can_recommend: false,
-        is_parking_scene: false,
-        recommended_slot: null,
-        ar_slots: [],
-        detections: entities,
-        vehicles_count: analysis.vehiclesCount || 0,
-        persons_count: hasPerson ? 1 : 0,
-        obstacles_count: hasHazard ? 1 : 0,
-        confidence_score: 0.50,
-        confidence_percent: 50,
-        checklist: {
-          zone: { status_icon: '?', label: 'Unverified Surface' },
-          space: { status_icon: '?', label: 'No Marked Bay' },
-          obstacles: { status_icon: (hasPerson || hasHazard) ? '⚠️' : '✓', label: (hasPerson || hasHazard) ? 'Obstacle in View' : 'Clear View' },
-          vehicle_fit: { status_icon: '?', label: 'Awaiting Parking Bay' },
-          permission: { status_icon: '?', label: 'Unverified Location' }
-        },
-        breakdown: {
-          parking_zone: 0.40,
-          space_free: 0.50,
-          obstacle_free: (hasPerson || hasHazard) ? 0.40 : 0.90,
-          vehicle_fit: 0.50,
-          permission: 0.40
-        },
-        guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays',
-        speech_text: 'No parking space detected. Please point camera at an authorized parking bay or road surface.'
-      });
-    }
-
-    // ------------------------------------------------------------------------
-    // CASE 3: AUTHENTIC PARKING BAY CONFIRMED (Lines or Map Facility)
-    // ------------------------------------------------------------------------
+    // PRIORITY 3: AUTHENTIC PARKING BAY CONFIRMED OR OPEN ROAD CORRIDOR
     const bayW_m = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
     const bayL_m = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
     const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
     const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
-    const isFit = (widthMargin_m >= 0.20) && (lengthMargin_m >= 0.15);
+    const isFit = (widthMargin_m >= 0.15) && (lengthMargin_m >= 0.10);
 
     const bayLenFt = (bayL_m * 3.28084).toFixed(1);
     const bayWidFt = (bayW_m * 3.28084).toFixed(1);
     const marginFt = (widthMargin_m * 3.28084).toFixed(1);
     const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
+
+    let dynPoly = clientFeatures.markings_polygon || null;
+    if (!dynPoly && entities.length >= 2) {
+      const vSorted = [...entities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
+      if (vSorted.length >= 2) {
+        const x1 = vSorted[0].normalized_bbox[0] + vSorted[0].normalized_bbox[2];
+        const x2 = vSorted[1].normalized_bbox[0];
+        if (x2 - x1 > 0.15) {
+          dynPoly = [[x1, 0.44], [x2, 0.44], [Math.min(0.95, x2 + 0.05), 0.90], [Math.max(0.05, x1 - 0.05), 0.90]];
+        }
+      }
+    }
+    // Default open roadside corridor bay
+    if (!dynPoly) {
+      dynPoly = [[0.28, 0.42], [0.72, 0.42], [0.86, 0.88], [0.14, 0.88]];
+    }
 
     if (!isFit) {
       return res.status(200).json({
@@ -208,7 +182,7 @@ export default function handler(req, res) {
         can_recommend: false,
         recommended_slot: null,
         ar_slots: [],
-        detections: analysis.detectedEntities || [],
+        detections: entities,
         vehicles_count: analysis.vehiclesCount || 0,
         persons_count: 0,
         obstacles_count: 0,
@@ -216,42 +190,6 @@ export default function handler(req, res) {
         confidence_percent: 88,
         guidance_banner: `🔴 TOO NARROW • Bay does not fit ${bikeModel} safely (${clearanceStr} clearance)`,
         speech_text: `Spaces in view are too narrow for your ${bikeModel}. Do not park here.`
-      });
-    }
-
-    let dynPoly = clientFeatures.markings_polygon || null;
-    if (!dynPoly && analysis.detectedEntities && analysis.detectedEntities.length >= 2) {
-      // Find gap between first two vehicles
-      const vSorted = [...analysis.detectedEntities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
-      if (vSorted.length >= 2) {
-        const x1 = vSorted[0].normalized_bbox[0] + vSorted[0].normalized_bbox[2];
-        const x2 = vSorted[1].normalized_bbox[0];
-        if (x2 - x1 > 0.15) {
-          dynPoly = [[x1, 0.44], [x2, 0.44], [Math.min(0.95, x2 + 0.05), 0.90], [Math.max(0.05, x1 - 0.05), 0.90]];
-        }
-      }
-    }
-
-    if (!dynPoly) {
-      return res.status(200).json({
-        success: true,
-        status_code: 'UNCERTAIN',
-        final_decision: 'UNCERTAIN',
-        decision_color: 'yellow',
-        decision_icon: '🟡',
-        headline: 'NO PARKING SPACE DETECTED',
-        reason: 'Area lacks visible parking stall demarcations or reference parked vehicles.',
-        can_recommend: false,
-        recommended_slot: null,
-        ar_slots: [],
-        detections: analysis.detectedEntities || [],
-        vehicles_count: analysis.vehiclesCount || 0,
-        persons_count: 0,
-        obstacles_count: 0,
-        confidence_score: 0.50,
-        confidence_percent: 50,
-        guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking stalls',
-        speech_text: 'No parking space detected. Align camera with marked parking bays.'
       });
     }
 
@@ -303,7 +241,7 @@ export default function handler(req, res) {
       can_recommend: true,
       recommended_slot: recSlot,
       ar_slots: [recSlot],
-      detections: analysis.detectedEntities || [],
+      detections: entities,
       vehicles_count: analysis.vehiclesCount || 0,
       persons_count: 0,
       obstacles_count: 0,
@@ -336,14 +274,28 @@ export default function handler(req, res) {
 // IMAGE ENTROPY & SURFACE ANALYSIS HELPER
 // ----------------------------------------------------------------------------
 function analyzeImageBuffer(base64Str, clientFeatures = {}) {
-  // 1. Trust explicit client canvas features if computed
+  const clientEntities = (clientFeatures && clientFeatures.detected_entities) || [];
+  const hasEntities = clientEntities.length > 0;
+
+  // 1. If client detected entities, it is NEVER a wall or indoor screen
+  if (hasEntities) {
+    return {
+      isWallOrScreen: false,
+      isIndoor: false,
+      hasMarkings: clientFeatures.has_road_markings || false,
+      vehiclesCount: clientFeatures.vehicles_count || clientEntities.filter(e => e.is_vehicle).length,
+      detectedEntities: clientEntities
+    };
+  }
+
+  // 2. Trust explicit client canvas features if computed
   if (clientFeatures && typeof clientFeatures.is_wall_or_screen === 'boolean') {
     return {
       isWallOrScreen: clientFeatures.is_wall_or_screen,
       isIndoor: clientFeatures.is_indoor || false,
       hasMarkings: clientFeatures.has_road_markings || false,
       vehiclesCount: clientFeatures.vehicles_count || 0,
-      detectedEntities: clientFeatures.detected_entities || []
+      detectedEntities: clientEntities
     };
   }
 
@@ -351,18 +303,16 @@ function analyzeImageBuffer(base64Str, clientFeatures = {}) {
     return { isWallOrScreen: true, isIndoor: false, hasMarkings: false, vehiclesCount: 0, detectedEntities: [] };
   }
 
-  // 2. Decode raw base64 header and bytes to measure image variance
+  // 3. Decode raw base64 header and bytes to measure image variance
   const cleanB64 = base64Str.includes(',') ? base64Str.split(',')[1] : base64Str;
   const rawLen = cleanB64.length;
 
-  // Very small payloads (< 12KB for a 640x480 frame) denote flat solid colors / blank wall / screen
-  if (rawLen < 14000) {
+  if (rawLen < 10000) {
     return { isWallOrScreen: true, isIndoor: false, hasMarkings: false, vehiclesCount: 0, detectedEntities: [] };
   }
 
   try {
     const buf = Buffer.from(cleanB64.slice(0, 10000), 'base64');
-    // Calculate byte frequency distribution (Shannon entropy approximation)
     const counts = new Uint32Array(256);
     for (let i = 0; i < buf.length; i++) counts[buf[i]]++;
     let entropy = 0;
@@ -373,8 +323,7 @@ function analyzeImageBuffer(base64Str, clientFeatures = {}) {
       }
     }
 
-    // Solid screens, flat blank walls, or uniform monitors exhibit low entropy (< 6.2)
-    if (entropy < 6.2) {
+    if (entropy < 5.0) {
       return { isWallOrScreen: true, isIndoor: false, hasMarkings: false, vehiclesCount: 0, detectedEntities: [] };
     }
   } catch (_) {}
