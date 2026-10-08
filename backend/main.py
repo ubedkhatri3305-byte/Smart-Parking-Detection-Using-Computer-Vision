@@ -3125,13 +3125,27 @@ async def analyze_live_frame(request: Request):
             "name": map_lot_id or "Public Parking Facility"
         }
 
+    client_features = payload.get("client_features") or {}
+
     # 3. ParkingZoneValidator: Determine if the area is a plausible parking zone
-    zone_result = zone_validator.validate_zone(
-        image=image,
-        detections=detections,
-        map_context=map_context,
-        parking_mode=parking_mode
-    )
+    if client_features.get("is_wall_or_screen") and not (scenario_key or (map_is_known and map_lot_id)):
+        zone_result = {
+            "status": ZoneStatus.INVALID,
+            "zone_class": ZoneClass.HOUSE_FLOOR,
+            "confidence": 0.96,
+            "is_valid": False,
+            "headline": "WALL OR COMPUTER SCREEN DETECTED",
+            "reason": "Vertical wall, computer display, or indoor flat surface detected. Point camera outdoors at an authentic parking space or road.",
+            "evidence_positive": [],
+            "evidence_negative": ["Client camera flat-plane detection", "Zero vehicular roadway texture"]
+        }
+    else:
+        zone_result = zone_validator.validate_zone(
+            image=image,
+            detections=detections,
+            map_context=map_context,
+            parking_mode=parking_mode
+        )
 
     # 4. HANDLE INVALID ZONES (Home floor, private house driveway, garden, field, footpath, active road lane)
     if zone_result["status"] == ZoneStatus.INVALID:
@@ -3523,12 +3537,24 @@ async def scan_multiframe_endpoint(request: Request):
         else:
             detections = detector.detect(img, conf_threshold=0.20)
 
-        zone_result = zone_validator.validate_zone(
-            image=img,
-            detections=detections,
-            map_context=map_context,
-            parking_mode=parking_mode
-        )
+        if client_features.get("is_wall_or_screen") and not (scenario_key or (map_is_known and map_lot_id)):
+            zone_result = {
+                "status": ZoneStatus.INVALID,
+                "zone_class": ZoneClass.HOUSE_FLOOR,
+                "confidence": 0.96,
+                "is_valid": False,
+                "headline": "WALL OR COMPUTER SCREEN DETECTED",
+                "reason": "Vertical wall, computer display, or indoor flat surface detected. Point camera outdoors at an authentic parking space or road.",
+                "evidence_positive": [],
+                "evidence_negative": ["Client camera flat-plane detection", "Zero vehicular roadway texture"]
+            }
+        else:
+            zone_result = zone_validator.validate_zone(
+                image=img,
+                detections=detections,
+                map_context=map_context,
+                parking_mode=parking_mode
+            )
         last_zone_result = zone_result
 
         # Norm detections for HUD

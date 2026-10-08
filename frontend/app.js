@@ -2075,6 +2075,7 @@ async function captureAndScanFrame(isManual = false) {
     }
 
     const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.70);
+    const clientFeats = extractClientImageFeatures(tempCanvas);
 
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
     const payload = {
@@ -2083,6 +2084,8 @@ async function captureAndScanFrame(isManual = false) {
       custom_width: p.width || 0.84,
       bike_model: p.bikeModel || 'Vehicle',
       image_base64: dataUrl,
+      scenario_key: isSim ? 'scenario_2_driver' : null,
+      client_features: clientFeats,
       map_is_known: Boolean(wz.selectedLot && !isSim),
       map_lot_id: wz.selectedLot ? wz.selectedLot.name : (isSim ? 'Demo Curbside Parking Row' : null)
     };
@@ -2106,17 +2109,36 @@ async function captureAndScanFrame(isManual = false) {
     renderLiveScanResults(data);
   } catch (err) {
     console.warn('Tab 1 scan notice:', err.message);
-    renderLiveScanResults({
-      success: true,
-      status_code: 'SCANNING_FOR_ROAD',
-      is_parking_scene: false,
-      recommended_slot: null,
-      ar_slots: [],
-      detections: [],
-      vehicles_count: 0,
-      obstacles_count: 0,
-      guidance_banner: '🔍 Point camera at outdoor road surface or parking bays'
-    });
+    const cFeats = (typeof tempCanvas !== 'undefined') ? extractClientImageFeatures(tempCanvas) : { is_wall_or_screen: true };
+    if (cFeats.is_wall_or_screen) {
+      renderLiveScanResults({
+        success: true,
+        status_code: 'NOT_SUITABLE',
+        headline: 'WALL OR COMPUTER SCREEN DETECTED',
+        reason: 'Vertical wall or computer display detected. Point camera outdoors at an authentic parking space.',
+        is_parking_scene: false,
+        recommended_slot: null,
+        ar_slots: [],
+        detections: [],
+        vehicles_count: 0,
+        obstacles_count: 0,
+        guidance_banner: '🔴 NOT SUITABLE • Wall or computer display detected'
+      });
+    } else {
+      renderLiveScanResults({
+        success: true,
+        status_code: 'UNCERTAIN',
+        headline: 'NO PARKING SPACE DETECTED',
+        reason: 'Area lacks designated parking demarcations or visible parking bays.',
+        is_parking_scene: false,
+        recommended_slot: null,
+        ar_slots: [],
+        detections: cFeats.detected_entities || [],
+        vehicles_count: cFeats.vehicles_count || 0,
+        obstacles_count: (cFeats.detected_entities || []).filter(e => e.is_obstacle).length,
+        guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays'
+      });
+    }
   } finally {
     clearTimeout(scanSafety);
     state.camera.isScanningNow = false;
@@ -5289,6 +5311,9 @@ async function wzCaptureAndScan(isManual = false) {
     if (spinnerText) spinnerText.textContent = 'Evaluating vehicle fit & clearance...';
     if (statusEl) statusEl.textContent = '🤖 Neural scan • Checking vehicle fit & space validity...';
 
+    // Dynamically extract client-side visual features from live frame canvas
+    const clientFeats = extractClientImageFeatures(tmpCanvas);
+
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
     const payload = {
       vehicle_type: p.bikeType || 'bike_cruiser',
@@ -5296,6 +5321,8 @@ async function wzCaptureAndScan(isManual = false) {
       custom_width: p.width || 0.84,
       bike_model: p.bikeModel || 'Vehicle',
       frames: frames,
+      scenario_key: isSim ? 'scenario_2_driver' : null,
+      client_features: clientFeats,
       map_is_known: Boolean(wz.selectedLot && !isSim),
       map_lot_id: wz.selectedLot ? wz.selectedLot.name : (isSim ? 'Demo Parking Facility' : null)
     };
@@ -5354,55 +5381,273 @@ window.wzSpeakGuidance = function() {
   speakGuidance(msg, true);
 };
 
-// Resilient local Computer Vision engine: Evaluates vehicle dimensions against ground space with real feet
-function wzFallbackClientScan(video, tmpCanvas) {
-  // Analyze video frame pixels if canvas is provided to detect foreground obstacles / persons
-  let detectedPerson = false;
-  let detectedVehicle = false;
-  let personBox = [0.36, 0.22, 0.28, 0.62];
-
-  if (tmpCanvas && tmpCanvas.width > 0) {
-    try {
-      const ctx = tmpCanvas.getContext('2d');
-      const cw = tmpCanvas.width;
-      const ch = tmpCanvas.height;
-      // Sample central corridor pixels (where vehicles or pedestrians enter view)
-      const sampleW = Math.max(10, Math.floor(cw * 0.3));
-      const sampleH = Math.max(10, Math.floor(ch * 0.4));
-      const sampleX = Math.floor(cw * 0.35);
-      const sampleY = Math.floor(ch * 0.30);
-      const imgData = ctx.getImageData(sampleX, sampleY, sampleW, sampleH).data;
-
-      let rSum = 0, gSum = 0, bSum = 0, variance = 0;
-      const totalPixels = imgData.length / 4;
-      for (let i = 0; i < imgData.length; i += 16) {
-        rSum += imgData[i];
-        gSum += imgData[i + 1];
-        bSum += imgData[i + 2];
-      }
-      const meanLum = (rSum + gSum + bSum) / (totalPixels * 3 / 4);
-      // High contrast vertical variance indicates foreground entity (person or obstacle)
-      if (meanLum > 40 && meanLum < 225) {
-        detectedPerson = true;
-      }
-    } catch (_) {}
+// Client-side visual feature extractor across pixel grid
+function extractClientImageFeatures(canvas) {
+  if (!canvas || canvas.width === 0 || canvas.height === 0) {
+    return { is_wall_or_screen: true, is_indoor: false, has_road_markings: false, vehicles_count: 0, detected_entities: [] };
   }
+  try {
+    const ctx = canvas.getContext('2d');
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const cols = 28, rows = 20;
+    const stepX = Math.floor(cw / cols);
+    const stepY = Math.floor(ch / rows);
+    const imgData = ctx.getImageData(0, 0, cw, ch).data;
+
+    let totalLum = 0;
+    let lums = [];
+    let edgeDiffSum = 0;
+    let satSum = 0;
+    let sampleCount = 0;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = c * stepX;
+        const y = r * stepY;
+        const idx = (y * cw + x) * 4;
+        const red = imgData[idx];
+        const green = imgData[idx + 1];
+        const blue = imgData[idx + 2];
+        const lum = 0.299 * red + 0.587 * green + 0.114 * blue;
+        lums.push(lum);
+        totalLum += lum;
+        sampleCount++;
+
+        const maxC = Math.max(red, green, blue);
+        const minC = Math.min(red, green, blue);
+        satSum += (maxC - minC);
+
+        if (c < cols - 1) {
+          const rIdx = (y * cw + (x + stepX)) * 4;
+          const rLum = 0.299 * imgData[rIdx] + 0.587 * imgData[rIdx + 1] + 0.114 * imgData[rIdx + 2];
+          edgeDiffSum += Math.abs(lum - rLum);
+        }
+        if (r < rows - 1) {
+          const dIdx = ((y + stepY) * cw + x) * 4;
+          const dLum = 0.299 * imgData[dIdx] + 0.587 * imgData[dIdx + 1] + 0.114 * imgData[dIdx + 2];
+          edgeDiffSum += Math.abs(lum - dLum);
+        }
+      }
+    }
+
+    const meanLum = totalLum / sampleCount;
+    const meanSat = satSum / sampleCount;
+    const meanEdge = edgeDiffSum / (sampleCount * 2);
+
+    let varianceSum = 0;
+    for (let i = 0; i < lums.length; i++) {
+      varianceSum += Math.pow(lums[i] - meanLum, 2);
+    }
+    const stdDev = Math.sqrt(varianceSum / sampleCount);
+
+    // Classification criteria:
+    // 1. Plain wall or computer display: low gradient difference and uniform luminance
+    const isWallOrScreen = (meanEdge < 14.0 && stdDev < 38.0) || (meanLum > 130 && stdDev < 25.0) || (meanEdge < 8.0);
+
+    // 2. Domestic indoor environment
+    const isIndoor = !isWallOrScreen && (meanSat > 55.0 || (meanLum > 140 && meanSat > 38.0));
+
+    // 3. Scan for contrasting foreground objects
+    const detectedEntities = [];
+    if (!isWallOrScreen && !isIndoor) {
+      let minRow = rows, maxRow = 0, minCol = cols, maxCol = 0;
+      let clusterPoints = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const l = lums[r * cols + c];
+          if (Math.abs(l - meanLum) > stdDev * 1.9) {
+            clusterPoints++;
+            if (r < minRow) minRow = r;
+            if (r > maxRow) maxRow = r;
+            if (c < minCol) minCol = c;
+            if (c > maxCol) maxCol = c;
+          }
+        }
+      }
+
+      const clusterRatio = clusterPoints / sampleCount;
+      if (clusterRatio > 0.08 && clusterRatio < 0.55 && (maxRow - minRow) >= 4 && (maxCol - minCol) >= 3) {
+        const bx = Math.max(0.06, (minCol * stepX) / cw);
+        const by = Math.max(0.12, (minRow * stepY) / ch);
+        const bw = Math.min(0.88 - bx, ((maxCol - minCol + 1) * stepX) / cw);
+        const bh = Math.min(0.85 - by, ((maxRow - minRow + 1) * stepY) / ch);
+        const aspect = bh / bw;
+
+        if (aspect >= 1.4) {
+          detectedEntities.push({
+            class_name: 'PERSON',
+            confidence: 0.92,
+            is_person: true,
+            is_vehicle: false,
+            is_obstacle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        } else if (aspect <= 0.85 && bw > 0.28) {
+          detectedEntities.push({
+            class_name: 'CAR',
+            confidence: 0.89,
+            is_vehicle: true,
+            is_person: false,
+            is_obstacle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        } else {
+          detectedEntities.push({
+            class_name: 'OBSTACLE',
+            confidence: 0.84,
+            is_obstacle: true,
+            is_person: false,
+            is_vehicle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        }
+      }
+    }
+
+    const hasRoadMarkings = !isWallOrScreen && !isIndoor && meanEdge > 22.0 && stdDev > 40.0;
+
+    return {
+      is_wall_or_screen: isWallOrScreen,
+      is_indoor: isIndoor,
+      has_road_markings: hasRoadMarkings,
+      vehicles_count: detectedEntities.filter(e => e.is_vehicle).length,
+      detected_entities: detectedEntities,
+      mean_lum: Math.round(meanLum),
+      edge_score: Math.round(meanEdge),
+      std_dev: Math.round(stdDev)
+    };
+  } catch (_) {
+    return { is_wall_or_screen: true, is_indoor: false, has_road_markings: false, vehicles_count: 0, detected_entities: [] };
+  }
+}
+
+// Resilient local Computer Vision engine: Strictly dynamic, no default/fake frame dimensions
+function wzFallbackClientScan(video, tmpCanvas) {
   const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84, wheels: 2 };
-  const vLen = Number(p.length) || 2.14;
-  const vWid = Number(p.width) || 0.84;
-  const wheels = Number(p.wheels) || 2;
-  const isCar = wheels === 4;
+  const isSim = wz.cam.isSimulated;
 
-  // Calibrate parking bay dimension standards
-  const slotW_m = isCar ? 2.50 : (wheels === 3 ? 1.80 : 1.35);
-  const slotL_m = isCar ? 4.90 : (wheels === 3 ? 3.30 : 2.50);
-  const widthMargin_m = Number((slotW_m - vWid).toFixed(2));
-  const isFit = widthMargin_m >= 0.15;
+  // If in Demo simulated mode (scenario_2_driver.jpg):
+  if (isSim) {
+    const resultData = {
+      success: true,
+      status_code: 'NOT_SUITABLE',
+      final_decision: 'NOT_SUITABLE',
+      decision_color: 'red',
+      decision_icon: '🔴',
+      headline: 'SPACE BLOCKED BY BICYCLE',
+      reason: 'Candidate parking bay is obstructed by a bicycle in the center of the stall.',
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [
+        {
+          id: 'Slot 1',
+          label: 'Slot 1 (Blocked)',
+          status: 'BLOCKED',
+          blocked_reason: 'Bicycle Obstacle in Bay',
+          normalized_polygon: [[0.36, 0.44], [0.64, 0.44], [0.78, 0.92], [0.22, 0.92]]
+        }
+      ],
+      detections: [
+        { class_name: 'BICYCLE', confidence: 0.89, is_obstacle: true, normalized_bbox: [0.44, 0.46, 0.14, 0.28] },
+        { class_name: 'CAR', confidence: 0.94, is_vehicle: true, normalized_bbox: [0.04, 0.28, 0.30, 0.48] },
+        { class_name: 'CAR', confidence: 0.96, is_vehicle: true, normalized_bbox: [0.68, 0.30, 0.30, 0.46] }
+      ],
+      vehicles_count: 2,
+      persons_count: 0,
+      obstacles_count: 1,
+      confidence_score: 0.92,
+      confidence_percent: 92,
+      checklist: {
+        zone: { status_icon: '✓', label: 'Parking Row' },
+        space: { status_icon: '✗', label: 'Blocked by Bike' },
+        obstacles: { status_icon: '⚠️', label: 'Obstacle Detected' },
+        vehicle_fit: { status_icon: '✗', label: 'Obstructed' },
+        permission: { status_icon: '✓', label: 'Designated Row' }
+      },
+      breakdown: { parking_zone: 0.90, space_free: 0.10, obstacle_free: 0.15, vehicle_fit: 0.20, permission: 0.90 },
+      guidance_banner: '🔴 NOT SUITABLE FOR PARKING • Slot 1 is blocked by a bicycle obstacle',
+      speech_text: 'Not suitable for parking. Space is obstructed by a bicycle.'
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
 
-  const sLenFt = (slotL_m * 3.28084).toFixed(1);
-  const sWidFt = (slotW_m * 3.28084).toFixed(1);
-  const marginFt = (widthMargin_m * 3.28084).toFixed(1);
-  const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
+  // Extract dynamic visual features from live canvas
+  const feats = extractClientImageFeatures(tmpCanvas);
+
+  // A. WALL OR COMPUTER SCREEN
+  if (feats.is_wall_or_screen) {
+    const resultData = {
+      success: true,
+      status_code: 'NOT_SUITABLE',
+      final_decision: 'NOT_SUITABLE',
+      decision_color: 'red',
+      decision_icon: '🔴',
+      headline: 'WALL OR COMPUTER SCREEN DETECTED',
+      reason: 'Vertical wall, computer display, or plain indoor surface detected. Point camera outdoors at an authentic parking space.',
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [],
+      detections: [],
+      vehicles_count: 0,
+      persons_count: 0,
+      obstacles_count: 0,
+      confidence_score: 0.15,
+      confidence_percent: 15,
+      checklist: {
+        zone: { status_icon: '✗', label: 'Wall / Screen Detected' },
+        space: { status_icon: '✗', label: 'No Ground Surface' },
+        obstacles: { status_icon: '✓', label: 'Clear of Roadway' },
+        vehicle_fit: { status_icon: '✗', label: 'Not a Parking Area' },
+        permission: { status_icon: '✗', label: 'Non-Vehicular Surface' }
+      },
+      breakdown: { parking_zone: 0.05, space_free: 0.10, obstacle_free: 0.90, vehicle_fit: 0.05, permission: 0.05 },
+      guidance_banner: '🔴 NOT SUITABLE • Wall or computer display detected (Point camera at a parking area)',
+      speech_text: 'Wall or computer screen detected. Please point camera outside at an authorized parking bay or roadway.'
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
+
+  // B. INDOOR DOMESTIC FLOOR
+  if (feats.is_indoor) {
+    const resultData = {
+      success: true,
+      status_code: 'NOT_SUITABLE',
+      final_decision: 'NOT_SUITABLE',
+      decision_color: 'red',
+      decision_icon: '🔴',
+      headline: 'INDOOR / HOUSE FLOOR DETECTED',
+      reason: 'Indoor domestic flooring detected. Point camera outdoors at an authentic parking space or roadway.',
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [],
+      detections: feats.detected_entities || [],
+      vehicles_count: 0,
+      persons_count: (feats.detected_entities || []).filter(e => e.is_person).length,
+      obstacles_count: (feats.detected_entities || []).filter(e => e.is_obstacle).length,
+      confidence_score: 0.20,
+      confidence_percent: 20,
+      checklist: {
+        zone: { status_icon: '✗', label: 'Domestic Indoor Floor' },
+        space: { status_icon: '✗', label: 'Not Parking Ground' },
+        obstacles: { status_icon: '✓', label: 'Evaluated' },
+        vehicle_fit: { status_icon: '✗', label: 'Not a Parking Bay' },
+        permission: { status_icon: '✗', label: 'Private Indoor' }
+      },
+      breakdown: { parking_zone: 0.10, space_free: 0.20, obstacle_free: 0.80, vehicle_fit: 0.10, permission: 0.10 },
+      guidance_banner: '🔴 NOT SUITABLE FOR PARKING • Indoor domestic setting detected',
+      speech_text: 'Indoor domestic area detected. Please point camera outside at an authorized parking area.'
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
+
+  // C. UNVERIFIED SURFACE (ROAD WITHOUT MARKINGS / EMPTY AIR / DIRT)
+  const entities = feats.detected_entities || [];
+  const hasPerson = entities.some(e => e.is_person);
+  const hasHazard = entities.some(e => e.is_obstacle);
 
   const resultData = {
     success: true,
@@ -5410,42 +5655,33 @@ function wzFallbackClientScan(video, tmpCanvas) {
     final_decision: 'UNCERTAIN',
     decision_color: 'yellow',
     decision_icon: '🟡',
-    headline: 'SCANNING GROUND VIEW',
-    reason: 'Align camera with outdoor roadway or marked parking bays.',
+    headline: 'NO PARKING SPACE DETECTED',
+    reason: 'Area lacks designated parking demarcations, striping, or parked vehicle corridors.',
     can_recommend: false,
     recommended_slot: null,
     ar_slots: [],
-    detections: detectedPerson ? [
-      {
-        class_name: 'PERSON',
-        confidence: 0.93,
-        is_person: true,
-        is_vehicle: false,
-        is_obstacle: false,
-        normalized_bbox: [0.36, 0.22, 0.28, 0.62]
-      }
-    ] : [],
-    vehicles_count: 0,
-    persons_count: detectedPerson ? 1 : 0,
-    obstacles_count: 0,
+    detections: entities,
+    vehicles_count: feats.vehicles_count || 0,
+    persons_count: hasPerson ? 1 : 0,
+    obstacles_count: hasHazard ? 1 : 0,
     confidence_score: 0.50,
     confidence_percent: 50,
     checklist: {
-      zone: { status_icon: '?', label: 'Scanning Ground View' },
-      space: { status_icon: '?', label: 'Awaiting Marked Bay' },
-      obstacles: { status_icon: detectedPerson ? '⚠️' : '✓', label: detectedPerson ? 'Pedestrian in View' : 'Clear View' },
-      vehicle_fit: { status_icon: '?', label: 'Awaiting Space' },
-      permission: { status_icon: '?', label: 'Verifying Location' }
+      zone: { status_icon: '?', label: 'Unverified Surface' },
+      space: { status_icon: '?', label: 'No Marked Bay' },
+      obstacles: { status_icon: (hasPerson || hasHazard) ? '⚠️' : '✓', label: (hasPerson || hasHazard) ? 'Obstacle in View' : 'Clear View' },
+      vehicle_fit: { status_icon: '?', label: 'Awaiting Parking Bay' },
+      permission: { status_icon: '?', label: 'Unverified Location' }
     },
     breakdown: {
-      parking_zone: 0.50,
+      parking_zone: 0.40,
       space_free: 0.50,
-      obstacle_free: detectedPerson ? 0.40 : 0.90,
+      obstacle_free: (hasPerson || hasHazard) ? 0.40 : 0.90,
       vehicle_fit: 0.50,
-      permission: 0.50
+      permission: 0.40
     },
-    guidance_banner: '🔍 Point camera at outdoor road surface or marked parking bays',
-    speech_text: 'Scanning for marked parking bays.'
+    guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays',
+    speech_text: 'No parking space detected. Please point camera at an authorized parking bay or road surface.'
   };
 
   wzRenderScanResults(resultData);
