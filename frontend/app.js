@@ -1240,25 +1240,7 @@ function initRegistrationModal() {
     });
   }
 
-  // 1-Click Demo Accounts
-  document.querySelectorAll('.demo-acc-chip[data-email]').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const email = chip.getAttribute('data-email');
-      const pass = chip.getAttribute('data-pass') || '123456';
-      switchAuthMode('login');
-      if (loginEmail) loginEmail.value = email;
-      if (loginPass) loginPass.value = pass;
-      hideAuthAlert();
-      showAuthAlert(`⚡ Fast-filled credentials for ${email}. Signing in...`, 'success');
-      setTimeout(() => {
-        if (formLogin) {
-          formLogin.dispatchEvent(new Event('submit', { cancelable: true }));
-        }
-      }, 350);
-    });
-  });
-
-  // 1-Click Instant Guest Pass
+  // Instant Guest Pass
   if (btnGuestLogin) {
     btnGuestLogin.addEventListener('click', async () => {
       hideAuthAlert();
