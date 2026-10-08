@@ -57,6 +57,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("startup")
+async def startup_event():
+    import threading
+    def _warmup():
+        try:
+            get_yolo_detector()
+        except Exception as e:
+            print(f"[!] Warning warming up YOLO detector: {e}")
+    threading.Thread(target=_warmup, daemon=True).start()
+
+
 @app.middleware("http")
 async def add_no_cache_header(request, call_next):
     response = await call_next(request)
@@ -78,7 +90,11 @@ def get_yolo_detector():
     global _detector_instance
     if _detector_instance is None:
         try:
-            _detector_instance = ParkingYOLODetector(conf_threshold=0.25)
+            _detector_instance = ParkingYOLODetector(conf_threshold=0.20)
+            # Warm up detector with a dummy frame so the first real client scan is instantaneous (<0.15s)
+            dummy = np.zeros((320, 320, 3), dtype=np.uint8)
+            _detector_instance.detect(dummy)
+            print("[+] YOLO detector loaded and warmed up successfully.")
         except Exception as e:
             print(f"[!] Warning: YOLO detector initialization deferred: {e}")
             return None
@@ -3099,10 +3115,10 @@ async def analyze_live_frame(request: Request):
         bw_norm = (xmax - xmin) / float(w)
         bh_norm = (ymax - ymin) / float(h)
         yn_norm = ymin / float(h)
-        # Filter out ego-vehicle interior dashboard only if an ultra-wide detection spans across the bottom
-        if bw_norm > 0.75 and yn_norm > 0.70 and bh_norm > 0.22:
+        # Filter out ego-vehicle interior dashboard only if an ultra-wide vehicle detection spans across the bottom
+        if is_veh and bw_norm > 0.85 and yn_norm > 0.75 and bh_norm > 0.20:
             continue
-        if yn_norm < 0.15 and bw_norm > 0.25 and (yn_norm + bh_norm) < 0.32:
+        if yn_norm < 0.12 and bw_norm > 0.35 and (yn_norm + bh_norm) < 0.25:
             continue
 
         if is_pers:
@@ -3154,24 +3170,12 @@ async def analyze_live_frame(request: Request):
     client_features = payload.get("client_features") if isinstance(payload.get("client_features"), dict) else {}
 
     # 3. ParkingZoneValidator: Determine if the area is a plausible parking zone
-    if client_features.get("is_wall_or_screen") and not (scenario_key or (map_is_known and map_lot_id)):
-        zone_result = {
-            "status": ZoneStatus.INVALID,
-            "zone_class": ZoneClass.HOUSE_FLOOR,
-            "confidence": 0.96,
-            "is_valid": False,
-            "headline": "WALL OR COMPUTER SCREEN DETECTED",
-            "reason": "Vertical wall, computer display, or indoor flat surface detected. Point camera outdoors at an authentic parking space or road.",
-            "evidence_positive": [],
-            "evidence_negative": ["Client camera flat-plane detection", "Zero vehicular roadway texture"]
-        }
-    else:
-        zone_result = zone_validator.validate_zone(
-            image=image,
-            detections=detections,
-            map_context=map_context,
-            parking_mode=parking_mode
-        )
+    zone_result = zone_validator.validate_zone(
+        image=image,
+        detections=detections,
+        map_context=map_context,
+        parking_mode=parking_mode
+    )
 
     # 4. HANDLE INVALID ZONES (Home floor, private house driveway, garden, field, footpath, active road lane)
     if zone_result["status"] == ZoneStatus.INVALID:
@@ -3624,24 +3628,12 @@ async def scan_multiframe_endpoint(request: Request):
         else:
             detections = detector.detect(img, conf_threshold=0.20)
 
-        if client_features.get("is_wall_or_screen") and not (scenario_key or (map_is_known and map_lot_id)):
-            zone_result = {
-                "status": ZoneStatus.INVALID,
-                "zone_class": ZoneClass.HOUSE_FLOOR,
-                "confidence": 0.96,
-                "is_valid": False,
-                "headline": "WALL OR COMPUTER SCREEN DETECTED",
-                "reason": "Vertical wall, computer display, or indoor flat surface detected. Point camera outdoors at an authentic parking space or road.",
-                "evidence_positive": [],
-                "evidence_negative": ["Client camera flat-plane detection", "Zero vehicular roadway texture"]
-            }
-        else:
-            zone_result = zone_validator.validate_zone(
-                image=img,
-                detections=detections,
-                map_context=map_context,
-                parking_mode=parking_mode
-            )
+        zone_result = zone_validator.validate_zone(
+            image=img,
+            detections=detections,
+            map_context=map_context,
+            parking_mode=parking_mode
+        )
         last_zone_result = zone_result
 
         # Norm detections for HUD
@@ -3660,10 +3652,10 @@ async def scan_multiframe_endpoint(request: Request):
             bw_norm = (xmax - xmin) / float(w)
             bh_norm = (ymax - ymin) / float(h)
             yn_norm = ymin / float(h)
-            # Filter out ego-vehicle interior dashboard only if an ultra-wide detection spans across the bottom
-            if bw_norm > 0.75 and yn_norm > 0.70 and bh_norm > 0.22:
+            # Filter out ego-vehicle interior dashboard only if an ultra-wide vehicle detection spans across the bottom
+            if is_veh and bw_norm > 0.85 and yn_norm > 0.75 and bh_norm > 0.20:
                 continue
-            if yn_norm < 0.15 and bw_norm > 0.25 and (yn_norm + bh_norm) < 0.32:
+            if yn_norm < 0.12 and bw_norm > 0.35 and (yn_norm + bh_norm) < 0.25:
                 continue
 
             if is_pers:

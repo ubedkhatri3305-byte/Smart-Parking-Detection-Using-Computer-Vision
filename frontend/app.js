@@ -2092,7 +2092,7 @@ async function captureAndScanFrame(isManual = false) {
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     const response = await fetch(`${API_BASE}/api/cv/analyze-live-frame`, {
       method: 'POST',
@@ -2110,8 +2110,26 @@ async function captureAndScanFrame(isManual = false) {
     renderLiveScanResults(data);
   } catch (err) {
     console.warn('Tab 1 scan notice:', err.message);
-    const cFeats = (typeof tempCanvas !== 'undefined') ? extractClientImageFeatures(tempCanvas) : { is_wall_or_screen: true };
-    if (cFeats.is_wall_or_screen) {
+    const cFeats = (typeof tempCanvas !== 'undefined') ? extractClientImageFeatures(tempCanvas) : { is_wall_or_screen: false, detected_entities: [] };
+    const entList = cFeats.detected_entities || [];
+    if (entList.length > 0) {
+      const hasPers = entList.some(e => e.is_person);
+      const obsLbl = hasPers ? 'PEDESTRIAN' : 'OBSTACLE';
+      renderLiveScanResults({
+        success: true,
+        status_code: 'NOT_SUITABLE',
+        headline: `SPACE BLOCKED: ${obsLbl}`,
+        reason: `Physical entity or hazard (${obsLbl}) detected in view. Area is not clear for parking.`,
+        is_parking_scene: false,
+        recommended_slot: null,
+        ar_slots: [],
+        detections: entList,
+        vehicles_count: cFeats.vehicles_count || 0,
+        obstacles_count: entList.filter(e => e.is_obstacle).length,
+        persons_count: hasPers ? 1 : 0,
+        guidance_banner: `🔴 NOT SUITABLE • Blocked by ${obsLbl.toLowerCase()}`
+      });
+    } else if (cFeats.is_wall_or_screen) {
       renderLiveScanResults({
         success: true,
         status_code: 'NOT_SUITABLE',
@@ -2123,6 +2141,7 @@ async function captureAndScanFrame(isManual = false) {
         detections: [],
         vehicles_count: 0,
         obstacles_count: 0,
+        persons_count: 0,
         guidance_banner: '🔴 NOT SUITABLE • Wall or computer display detected'
       });
     } else {
@@ -2134,9 +2153,10 @@ async function captureAndScanFrame(isManual = false) {
         is_parking_scene: false,
         recommended_slot: null,
         ar_slots: [],
-        detections: cFeats.detected_entities || [],
+        detections: entList,
         vehicles_count: cFeats.vehicles_count || 0,
-        obstacles_count: (cFeats.detected_entities || []).filter(e => e.is_obstacle).length,
+        obstacles_count: entList.filter(e => e.is_obstacle).length,
+        persons_count: 0,
         guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays'
       });
     }
@@ -2298,12 +2318,13 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
-      // Filter out ego-vehicle interior dashboard only if an ultra-wide detection spans across the bottom
-      if (wNorm > 0.75 && yNorm > 0.70 && hNorm > 0.22) return;
-      if (yNorm < 0.15 && wNorm > 0.25 && (yNorm + hNorm) < 0.32) return;
-
       const cNameUpper = (det.class_name || '').toUpperCase();
       const isPerson = det.is_person || cNameUpper === 'PERSON' || cNameUpper === 'PEDESTRIAN';
+
+      // Filter out ego-vehicle interior dashboard only if an ultra-wide vehicle detection spans across the bottom
+      const isVeh = det.is_vehicle || ['CAR', 'TRUCK', 'BUS', 'VAN'].includes(cNameUpper);
+      if (isVeh && wNorm > 0.85 && yNorm > 0.75 && hNorm > 0.20) return;
+      if (yNorm < 0.12 && wNorm > 0.35 && (yNorm + hNorm) < 0.25) return;
 
       if (isPerson) {
         // Amber box for Pedestrians / Persons
@@ -5227,10 +5248,10 @@ async function wzCaptureAndScan(isManual = false) {
     });
   }
 
-  // If live video is starting and has zero dimensions, retry briefly up to 4 times
-  if (!isSim && video && (video.videoWidth === 0 || video.videoHeight === 0)) {
+  // If live video is starting and has zero dimensions, retry briefly up to 8 times
+  if (!isSim && video && (video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < 2)) {
     if (!wz.cam.retryCount) wz.cam.retryCount = 0;
-    if (wz.cam.retryCount < 4) {
+    if (wz.cam.retryCount < 8) {
       wz.cam.retryCount++;
       setTimeout(() => wzCaptureAndScan(isManual), 200);
       return;
@@ -5264,12 +5285,13 @@ async function wzCaptureAndScan(isManual = false) {
     if (viewport) viewport.classList.remove('scanning-active');
   }, 9000);
 
+  let tmpCanvas = null;
   try {
     if (spinnerText) spinnerText.textContent = 'Capturing live sensor frame...';
     if (statusEl) statusEl.textContent = '📸 Sensor active • YOLOv8 detecting objects & ground...';
 
-    const maxDim = 640;
-    const tmpCanvas = document.createElement('canvas');
+    const maxDim = 540;
+    tmpCanvas = document.createElement('canvas');
     let targetW = 640, targetH = 480;
 
     if (isSim && simulatedImgElement && simulatedImgElement.complete) {
@@ -5327,8 +5349,8 @@ async function wzCaptureAndScan(isManual = false) {
     };
 
     const controller = new AbortController();
-    // Fast 2.5s network timeout for instant responsive live camera scanning on cloud
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    // 12s network timeout for reliable neural detection across all hardware and networks
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     const res = await fetch(`${API_BASE}/api/cv/scan-multiframe`, {
       method: 'POST',
@@ -5441,11 +5463,11 @@ function extractClientImageFeatures(canvas) {
     const stdDev = Math.sqrt(varianceSum / sampleCount);
 
     // Classification criteria:
-    // 1. Plain wall or computer display: low gradient difference and uniform luminance
-    const isWallOrScreen = (meanEdge < 14.0 && stdDev < 38.0) || (meanLum > 130 && stdDev < 25.0) || (meanEdge < 8.0);
+    // 1. Plain wall or computer display: low gradient difference and uniform luminance (e.g. covered lens)
+    const isWallOrScreen = (meanEdge < 3.0 && stdDev < 10.0) || (stdDev < 6.0);
 
     // 2. Domestic indoor environment
-    const isIndoor = !isWallOrScreen && (meanSat > 55.0 || (meanLum > 140 && meanSat > 38.0));
+    const isIndoor = !isWallOrScreen && (meanSat > 65.0 && meanLum > 155.0);
 
     // 3. Scan for contrasting foreground objects
     const detectedEntities = [];
@@ -5574,9 +5596,53 @@ function wzFallbackClientScan(video, tmpCanvas) {
 
   // Extract dynamic visual features from live canvas
   const feats = extractClientImageFeatures(tmpCanvas);
+  const entities = feats.detected_entities || [];
+  const hasPerson = entities.some(e => e.is_person);
+  const hasHazard = entities.some(e => e.is_obstacle);
 
-  // A. WALL OR COMPUTER SCREEN
-  if (feats.is_wall_or_screen) {
+  // A. OBSTACLES OR PEDESTRIANS IN CAMERA VIEW
+  if (hasPerson || hasHazard || entities.length > 0) {
+    const obsLabel = hasPerson ? 'PEDESTRIAN' : 'GROUND OBSTACLE';
+    const resultData = {
+      success: true,
+      status_code: 'NOT_SUITABLE',
+      final_decision: 'NOT_SUITABLE',
+      decision_color: 'red',
+      decision_icon: '🔴',
+      headline: `SPACE BLOCKED BY ${obsLabel}`,
+      reason: `Obstacle or hazard (${obsLabel}) detected in the camera view. Area is not clear for parking.`,
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [],
+      detections: entities,
+      vehicles_count: feats.vehicles_count || 0,
+      persons_count: hasPerson ? 1 : 0,
+      obstacles_count: hasHazard ? 1 : 0,
+      confidence_score: 0.94,
+      confidence_percent: 94,
+      checklist: {
+        zone: { status_icon: '✓', label: 'Ground Surface' },
+        space: { status_icon: '✗', label: 'Blocked by Hazard' },
+        obstacles: { status_icon: '⚠️', label: `${obsLabel} Detected` },
+        vehicle_fit: { status_icon: '✗', label: 'Obstructed' },
+        permission: { status_icon: '?', label: 'Unverified' }
+      },
+      breakdown: {
+        parking_zone: 0.50,
+        space_free: 0.10,
+        obstacle_free: 0.15,
+        vehicle_fit: 0.10,
+        permission: 0.40
+      },
+      guidance_banner: `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`,
+      speech_text: `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
+
+  // B. WALL OR COMPUTER SCREEN
+  if (feats.is_wall_or_screen && entities.length === 0) {
     const resultData = {
       success: true,
       status_code: 'NOT_SUITABLE',
@@ -6071,12 +6137,13 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bw = wNorm * cw;
       const bh = hNorm * ch;
 
-      // Filter out ego-vehicle interior (dashboard at bottom, rearview mirror / windshield header at top)
-      if ((wNorm > 0.65 && yNorm > 0.40) || yNorm > 0.65) return;
-      if (yNorm < 0.15 && wNorm > 0.25 && (yNorm + hNorm) < 0.32) return;
-
       const cNameUpper = (det.class_name || '').toUpperCase();
       const isPerson = det.is_person || cNameUpper === 'PERSON' || cNameUpper === 'PEDESTRIAN';
+
+      // Filter out ego-vehicle interior dashboard only if an ultra-wide vehicle detection spans across the bottom
+      const isVeh = det.is_vehicle || ['CAR', 'TRUCK', 'BUS', 'VAN'].includes(cNameUpper);
+      if (isVeh && wNorm > 0.85 && yNorm > 0.75 && hNorm > 0.20) return;
+      if (yNorm < 0.12 && wNorm > 0.35 && (yNorm + hNorm) < 0.25) return;
 
       if (isPerson) {
         // High-Visibility Amber/Gold Box for Pedestrians / Persons

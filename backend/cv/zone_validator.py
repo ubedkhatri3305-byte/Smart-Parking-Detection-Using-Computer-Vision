@@ -247,7 +247,9 @@ class ParkingZoneValidator:
                     "evidence_negative": ["Sidewalk paver geometry", "Pedestrian right-of-way"]
                 }
 
-            if surface_type == "indoor_flooring" and len(vehicles) == 0 and not is_known_parking:
+            has_entities = len(detections) > 0 or len(vehicles) > 0 or len(obstacles) > 0
+
+            if surface_type == "indoor_flooring" and not has_entities and not is_known_parking:
                 return {
                     "status": ZoneStatus.INVALID,
                     "zone_class": ZoneClass.HOUSE_FLOOR,
@@ -259,7 +261,7 @@ class ParkingZoneValidator:
                     "evidence_negative": ["High saturation indoor floor reflection", "Absence of road asphalt"]
                 }
 
-            if surface_type == "wall_or_screen" and len(vehicles) == 0:
+            if surface_type == "wall_or_screen" and not has_entities:
                 return {
                     "status": ZoneStatus.INVALID,
                     "zone_class": ZoneClass.HOUSE_FLOOR,
@@ -415,11 +417,7 @@ class ParkingZoneValidator:
         laplacian = cv2.Laplacian(gray, cv2.CV_64F)
         lap_var = float(laplacian.var())
         # Glossy or smooth vertical wall / digital screen with low granular roughness
-        if lap_var < 35.0:
-            return {"surface_type": "wall_or_screen", "has_parking_lines": False}
-
-        # 4d. Light painted wall or indoor surface without road asphalt aggregate
-        if mean_v >= 135.0 and mean_s < 45.0 and lap_var < 80.0:
+        if lap_var < 15.0 and mean_s < 25.0:
             return {"surface_type": "wall_or_screen", "has_parking_lines": False}
 
         # 5. Authenticated Painted Parking Bay Lines on Outdoor Asphalt

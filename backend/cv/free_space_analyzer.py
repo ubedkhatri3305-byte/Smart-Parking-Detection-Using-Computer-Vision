@@ -103,8 +103,8 @@ class FreeSpaceAnalyzer:
         # ---------------------------------------------------------------------
         # STRATEGY 3: VERIFIED LOT CORRIDOR / FORWARD PARKING BAY
         # ---------------------------------------------------------------------
-        # If in a confirmed parking facility or forward camera view, segment candidate bay
-        if not candidates and is_zone_valid:
+        # If in a confirmed parking facility, forward camera drive-in view, or open ground surface
+        if not candidates and zone_class not in ("garden", "footpath", "field", "house_floor"):
             lot_bays = self._detect_lot_ground_corridors(w, h, y_top, y_bot, cleaned_detections)
             candidates.extend(lot_bays)
 

@@ -85,6 +85,77 @@ class ParkingDecisionEngine:
             zc_str = zc_str.split(".", 1)[-1]
         zone_class = zc_str.lower()
 
+        # Collect physical obstacle hazards in view (persons, animals, bags, furniture, debris, cones)
+        frame_obstacles = [
+            d for d in detections
+            if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard")
+                or str(d.get("class_name", "")).lower() not in ("car", "motorcycle", "bus", "truck", "train", "traffic light", "stop sign", "parking meter"))
+            and not d.get("is_vehicle", False)
+        ]
+
+        # OBSTACLE HAZARD PRIORITY: If an active person or obstacle is in the camera view
+        if frame_obstacles and (not candidate_spaces or any(s.get("status") == "BLOCKED" for s in candidate_spaces)):
+            first_obs = frame_obstacles[0]
+            obs_name = first_obs.get("class_name", "Obstacle").capitalize()
+            obs_conf = first_obs.get("confidence", 0.85)
+            obs_count = len(frame_obstacles)
+            if obs_count > 1:
+                names = sorted(list(set(d.get("class_name", "Obstacle").capitalize() for d in frame_obstacles)))
+                headline = f"SPACE BLOCKED: {names[0].upper()} & OBSTACLES"
+                reason = f"Ground obstacles and entities detected in camera view ({', '.join(names[:3])}). Area is not clear for parking."
+            else:
+                headline = f"SPACE BLOCKED: {obs_name.upper()}"
+                reason = f"Ground obstruction ({obs_name} {int(obs_conf*100)}%) detected in camera view. Area is not clear for parking."
+
+            return {
+                "decision": DecisionState.NOT_SUITABLE,
+                "final_decision": DecisionState.NOT_SUITABLE,
+                "status_code": "NOT_SUITABLE",
+                "color": "red",
+                "decision_color": "red",
+                "icon": "🔴",
+                "decision_icon": "🔴",
+                "headline": headline,
+                "reason": reason,
+                "confidence_score": 0.94,
+                "confidence_percent": 94,
+                "can_recommend": False,
+                "recommended_space": None,
+                "ranked_spaces": candidate_spaces,
+                "analysis_summary": {
+                    "vehicle_name": v_name,
+                    "vehicle_length_m": v_len,
+                    "vehicle_width_m": v_wid,
+                    "safety_margin_m": margin_m,
+                    "required_length_m": required_len,
+                    "required_width_m": required_wid,
+                    "detected_space_length_m": candidate_spaces[0].get("metrics", {}).get("length_m", 0.0) if candidate_spaces else 0.0,
+                    "detected_space_width_m": candidate_spaces[0].get("metrics", {}).get("width_m", 0.0) if candidate_spaces else 0.0,
+                    "length_check_pass": False,
+                    "width_check_pass": False,
+                    "length_status": "— Obstructed",
+                    "width_status": "— Obstructed",
+                    "obstacle_check_pass": False,
+                    "obstacle_status": f"✗ Blocked ({obs_name})",
+                    "zone_check_pass": is_zone_valid,
+                    "zone_status": "✓ Ground Surface" if is_zone_valid else "🟡 Unconfirmed",
+                    "confidence_percent": 94,
+                    "final_verdict": f"🔴 {headline}",
+                    "reason": reason,
+                    "vehicle": f"{v_name} ({round(v_len*3.28, 1)}ft × {round(v_wid*3.28, 1)}ft)",
+                    "detected_free_space": "None (Obstructed)",
+                    "safety_margin": f"{margin_m}m ({round(margin_m*3.28, 1)}ft)",
+                    "required_space": f"{required_len}m × {required_wid}m",
+                    "length_check": "— Obstructed",
+                    "width_check": "— Obstructed",
+                    "obstacles": f"✗ Blocked: {obs_name}",
+                    "parking_zone": "✓ Ground Surface" if is_zone_valid else "🟡 Unconfirmed",
+                    "confidence": "94%"
+                },
+                "speech_text": f"Not suitable for parking. Space is blocked by {obs_name}.",
+                "guidance_banner": f"🔴 NOT SUITABLE • Blocked by {obs_name}"
+            }
+
         # REJECTION 1: Non-parking environments (Wall, computer screen, indoor floor, garden, field, sidewalk)
         if not is_zone_valid and zone_class in ("house_floor", "garden", "field", "footpath", "private_property"):
             is_screen_or_wall = (zone_class == "house_floor" and "screen" in zone_info.get("headline", "").lower())
@@ -139,14 +210,6 @@ class ParkingDecisionEngine:
                 "speech_text": f"{headline}. {reason}",
                 "guidance_banner": f"🔴 NOT SUITABLE • {headline}"
             }
-
-        # Collect physical obstacle hazards in view
-        frame_obstacles = [
-            d for d in detections
-            if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard")
-                or str(d.get("class_name", "")).lower() in ("person", "bicycle", "debris", "box", "chair", "cone", "traffic cone", "ground obstacle"))
-            and not d.get("is_vehicle", False)
-        ]
 
         # REJECTION 2: No candidate spaces discovered in camera frame
         if not candidate_spaces:
@@ -295,7 +358,7 @@ class ParkingDecisionEngine:
             is_blocked = (s_status in ("BLOCKED", "OCCUPIED")) or (blocked_reason is not None)
 
             # Suitability of this specific candidate
-            is_suitable = is_physically_fit and not is_blocked and is_zone_valid
+            is_suitable = is_physically_fit and not is_blocked and (is_zone_valid or zone_class not in ("garden", "footpath", "field", "house_floor"))
 
             # Diagnostic checks for explanation
             length_check_str = "✓ Sufficient" if length_fits else f"✗ Insufficient ({s_len}m < {required_len}m required)"
