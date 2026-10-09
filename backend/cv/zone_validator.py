@@ -249,7 +249,7 @@ class ParkingZoneValidator:
 
             has_entities = len(detections) > 0 or len(vehicles) > 0 or len(obstacles) > 0
 
-            if surface_type == "indoor_flooring" and not has_entities:
+            if surface_type == "indoor_flooring":
                 return {
                     "status": ZoneStatus.INVALID,
                     "zone_class": ZoneClass.HOUSE_FLOOR,
@@ -261,7 +261,7 @@ class ParkingZoneValidator:
                     "evidence_negative": ["High saturation indoor floor reflection", "Absence of road asphalt"]
                 }
 
-            if surface_type == "wall_or_screen" and not has_entities:
+            if surface_type == "wall_or_screen":
                 return {
                     "status": ZoneStatus.INVALID,
                     "zone_class": ZoneClass.HOUSE_FLOOR,
