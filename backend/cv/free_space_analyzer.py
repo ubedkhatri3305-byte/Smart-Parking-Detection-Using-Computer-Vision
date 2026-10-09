@@ -108,6 +108,17 @@ class FreeSpaceAnalyzer:
             lot_bays = self._detect_lot_ground_corridors(w, h, y_top, y_bot, cleaned_detections)
             candidates.extend(lot_bays)
 
+        # ---------------------------------------------------------------------
+        # STRATEGY 4: UNMARKED OPEN GROUND REGION (Paved Outdoor Area)
+        # ---------------------------------------------------------------------
+        # If no marked bays or vehicle gaps exist, but ground is outdoor paved area
+        # (NOT domestic house floor, vertical wall, garden, field, footpath, restricted)
+        if not candidates and zone_class not in ("house_floor", "garden", "field", "footpath", "restricted_no_parking", "vertical_surface"):
+            is_open_paved = zone_info.get("is_open_paved_ground", False) or (zone_class == "unmarked_paved_ground") or (zone_class == "unknown_area" and image is not None)
+            if is_open_paved:
+                open_bays = self._detect_unmarked_open_ground(w, h, y_top, y_bot, cleaned_detections)
+                candidates.extend(open_bays)
+
         return candidates
 
     def _detect_marked_stall_boundaries(
@@ -287,3 +298,76 @@ class FreeSpaceAnalyzer:
             return (inter / smaller_area) >= threshold
         except Exception:
             return False
+
+    def _detect_unmarked_open_ground(
+        self,
+        w: int,
+        h: int,
+        y_top: int,
+        y_bot: int,
+        detections: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Identify plausible open ground regions on unmarked outdoor pavement.
+        Excludes detected vehicles and obstacles so obstacles elsewhere in view
+        do not invalidate the open ground region.
+        Does not assume the entire camera frame is a parking space.
+        """
+        y_ground_top = int(max(y_top, h * 0.46))
+        y_ground_bot = int(min(y_bot, h * 0.92))
+
+        left_bound = 0.16
+        right_bound = 0.84
+
+        # Dynamically clip bounds if an obstacle or vehicle occupies the side perimeter
+        for obj in detections:
+            bbox = obj.get("bbox", [])
+            if len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = bbox
+            xn1, xn2 = x1 / float(w), x2 / float(w)
+            yn1, yn2 = y1 / float(h), y2 / float(h)
+
+            # Skip objects completely outside ground vertical range
+            if yn2 < 0.42 or yn1 > 0.95:
+                continue
+
+            # Object on left side
+            if xn2 < 0.45 and xn2 > left_bound:
+                left_bound = min(0.48, xn2 + 0.04)
+            # Object on right side
+            elif xn1 > 0.55 and xn1 < right_bound:
+                right_bound = max(0.52, xn1 - 0.04)
+
+        corridor_width = right_bound - left_bound
+        if corridor_width < 0.20:
+            left_bound = 0.22
+            right_bound = 0.78
+
+        cx = (left_bound + right_bound) / 2.0
+        w_near = (right_bound - left_bound) * w
+        w_far = w_near * 0.65
+
+        x_tl = int(max(0.04 * w, (cx * w) - (w_far / 2.0)))
+        x_tr = int(min(0.96 * w, (cx * w) + (w_far / 2.0)))
+        x_br = int(min(0.96 * w, (cx * w) + (w_near / 2.0)))
+        x_bl = int(max(0.04 * w, (cx * w) - (w_near / 2.0)))
+
+        poly = [
+            [x_tl, y_ground_top],
+            [x_tr, y_ground_top],
+            [x_br, y_ground_bot],
+            [x_bl, y_ground_bot]
+        ]
+
+        return [{
+            "id": "Open Ground 1",
+            "label": "Open Paved Area (Unmarked)",
+            "source": "unmarked_open_ground",
+            "polygon": poly,
+            "status": "AVAILABLE",
+            "blocked_reason": None,
+            "rule_zone": "unverified",
+            "is_marked": False
+        }]
+

@@ -45,6 +45,7 @@ class ParkingGeometry:
         # Calibration ratio: meters per BEV pixel
         self.meters_per_px_x = self.ground_width_m / self.bev_width
         self.meters_per_px_y = self.ground_length_m / self.bev_height
+        self.has_verified_calibration = (src_points is not None)
 
         if self.src_pts is not None and len(self.src_pts) == 4:
             self.compute_homography()
@@ -121,10 +122,12 @@ class ParkingGeometry:
             ground_w_near = (x_near_r - x_near_l) * ref_factor
             ground_w_far = (x_far_r - x_far_l) * ref_factor
             ground_len = max(float(z_far - z_near), 2.60)
+            self.has_verified_calibration = True
         else:
             ground_w_near = ((x_near_r - x_near_l) / f) * z_near
             ground_w_far = ((x_far_r - x_far_l) / f) * z_far
             ground_len = float(z_far - z_near)
+            self.has_verified_calibration = False
 
         ground_width_avg = max(1.35, float((ground_w_near + ground_w_far) / 2.0))
         ground_length_val = max(2.50, float(ground_len))
@@ -222,5 +225,6 @@ class ParkingGeometry:
             "area_sq_m": final_area,
             "area_sq_ft": area_sq_ft,
             "dims_ft": f"{length_ft} ft (L) × {width_ft} ft (W)",
-            "dims_m": f"{final_l}m (L) × {final_w}m (W)"
+            "dims_m": f"{final_l}m (L) × {final_w}m (W)",
+            "calibration_verified": getattr(self, "has_verified_calibration", False)
         }

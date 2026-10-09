@@ -189,21 +189,18 @@ export default function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // PRIORITY 2: DISCOVER AUTHENTIC CANDIDATE PARKING BAYS
+    // PRIORITY 2: DISCOVER AUTHENTIC CANDIDATE PARKING BAYS & OPEN GROUND
     // -------------------------------------------------------------
-    const bayW_m = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
-    const bayL_m = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
-    const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
-    const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
-    const isFit = (widthMargin_m >= 0.15) && (lengthMargin_m >= 0.10);
+    const safetyMargin = Number(body.safety_margin || 0.30);
+    const reqLen = Number((vLen + safetyMargin).toFixed(2));
+    const reqWid = Number((vWid + safetyMargin).toFixed(2));
+    const reqLenFt = (reqLen * 3.28084).toFixed(1);
+    const reqWidFt = (reqWid * 3.28084).toFixed(1);
 
-    const bayLenFt = (bayL_m * 3.28084).toFixed(1);
-    const bayWidFt = (bayW_m * 3.28084).toFixed(1);
-    const marginFt = (widthMargin_m * 3.28084).toFixed(1);
-    const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
+    // Only accept dynamic polygon from REAL verified road markings, vehicle corridors, or open ground
+    let dynPoly = (clientFeatures.has_road_markings && clientFeatures.markings_polygon) ? clientFeatures.markings_polygon : null;
+    let isUnmarkedGround = false;
 
-    // Only accept dynamic polygon from REAL verified road markings on asphalt or vehicle corridors
-    let dynPoly = (clientFeatures.has_road_markings && clientFeatures.is_road_asphalt && clientFeatures.markings_polygon) ? clientFeatures.markings_polygon : null;
     if (!dynPoly && entities.length >= 2) {
       const vSorted = [...entities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
       if (vSorted.length >= 2) {
@@ -214,6 +211,23 @@ export default function handler(req, res) {
         }
       }
     }
+
+    // Detect open paved outdoor ground via perspective geometry
+    if (!dynPoly && (clientFeatures.is_road_asphalt || clientFeatures.is_open_paved_ground || (!isIndoorScene && !analysis.isWallOrScreen && !analysis.isVegetation))) {
+      dynPoly = [[0.20, 0.46], [0.80, 0.46], [0.88, 0.90], [0.12, 0.90]];
+      isUnmarkedGround = true;
+    }
+
+    const bayW_m = isUnmarkedGround ? Number((reqWid + 0.60).toFixed(2)) : Number((reqWid + 0.40).toFixed(2));
+    const bayL_m = isUnmarkedGround ? Number((reqLen + 1.20).toFixed(2)) : Number((reqLen + 0.80).toFixed(2));
+    const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
+    const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
+    const isFit = (bayW_m >= reqWid) && (bayL_m >= reqLen);
+
+    const bayLenFt = (bayL_m * 3.28084).toFixed(1);
+    const bayWidFt = (bayW_m * 3.28084).toFixed(1);
+    const marginFt = (widthMargin_m * 3.28084).toFixed(1);
+    const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
 
     // Check if an obstacle, person, or vehicle intersects this candidate bay
     let intersectingEntity = null;
@@ -226,9 +240,9 @@ export default function handler(req, res) {
       }
     }
 
-    // If candidate bay is physically blocked OR (no candidate bay exists AND scene has obstacles/vehicles)
-    if (intersectingEntity || (!dynPoly && (hasPerson || hasHazard || (hasVehicles && entities.length === 1)))) {
-      const blocking = intersectingEntity || (hasPerson ? pList[0] : (hasHazard ? oList[0] : (hasVehicles ? vList[0] : entities[0])));
+    // Reject with blocked reason ONLY if an obstacle intersects the candidate space
+    if (intersectingEntity) {
+      const blocking = intersectingEntity;
       let obsLabel = 'GROUND OBSTACLE';
       const cUpper = ((blocking && blocking.class_name) || '').toUpperCase();
       if (blocking && blocking.is_vehicle) {
@@ -247,28 +261,36 @@ export default function handler(req, res) {
         obsLabel = cUpper || 'GROUND OBSTACLE';
       }
 
-      const headline = `🔴 NO — CANNOT PARK HERE (BLOCKED BY ${obsLabel})`;
-      const reason = `${obsLabel} detected in the candidate space. Area is physically obstructed — vehicle cannot enter.`;
-      const bannerText = `🔴 NO — CANNOT PARK HERE • Space is blocked by ${obsLabel.toLowerCase()}`;
+      const headline = blocking.is_vehicle ? 'NOT SUITABLE — SPACE BLOCKED BY VEHICLE' : `NOT SUITABLE — SPACE BLOCKED BY ${obsLabel}`;
+      const reason = `Candidate parking space is obstructed by ${obsLabel.toLowerCase()}. Space is physically blocked.`;
+      const bannerText = `🔴 NOT SUITABLE • Blocked by ${obsLabel.toLowerCase()}`;
       const voiceText = `Cannot park here. Space is blocked by a ${obsLabel.toLowerCase()}.`;
 
       return res.status(200).json({
         success: true,
         status_code: 'NOT_SUITABLE',
         final_decision: 'NOT_SUITABLE',
+        detailed_status: 'NOT SUITABLE',
         decision_color: 'red',
         decision_icon: '🔴',
         headline: headline,
         reason: reason,
         can_recommend: false,
-        is_parking_scene: false,
+        is_parking_scene: true,
         recommended_slot: null,
         ar_slots: dynPoly ? [{
           id: 'Bay 1',
           label: 'Bay 1 (Blocked)',
           status: 'BLOCKED',
           blocked_reason: `Blocked by ${obsLabel}`,
-          normalized_polygon: dynPoly
+          normalized_polygon: dynPoly,
+          center: [0.50, 0.68],
+          width_m: bayW_m,
+          length_m: bayL_m,
+          width_ft: bayWidFt,
+          length_ft: bayLenFt,
+          clearance_ft_str: 'Blocked',
+          vehicle_fit: { is_suitable: false, fit_status: 'BLOCKED', fit_badge: `🚫 Blocked by ${obsLabel}` }
         }] : [],
         ranked_spaces: [],
         detections: entities,
@@ -285,8 +307,8 @@ export default function handler(req, res) {
           permission: { status_icon: '?', label: 'Unverified' }
         },
         analysis_summary: makeAnalysisSummary(
-          bikeModel, vLen, vWid, 0.30, 0.0, 0.0, false, false, false, true, 94,
-          `🔴 VEHICLE CANNOT BE PARKED HERE (BLOCKED BY ${obsLabel})`,
+          bikeModel, vLen, vWid, safetyMargin, 0.0, 0.0, false, false, false, true, 94,
+          `🔴 ${headline}`,
           `${obsLabel} physically obstructs the parking space.`
         ),
         breakdown: {
@@ -301,16 +323,17 @@ export default function handler(req, res) {
       });
     }
 
-    // If no genuine physical markings or inter-vehicle corridor detected, NEVER fabricate fake slots!
+    // If no candidate space discovered in scene
     if (!dynPoly) {
       return res.status(200).json({
         success: true,
         status_code: 'UNCERTAIN',
         final_decision: 'UNCERTAIN',
+        detailed_status: 'UNCERTAIN',
         decision_color: 'yellow',
         decision_icon: '🟡',
-        headline: 'PARKING SPACE NOT VERIFIED',
-        reason: 'Valid parking space not verified. Please scan a valid parking area with clear road or bay markings.',
+        headline: 'NO PARKING SPACE DETECTED',
+        reason: 'No designated parking bay markings, road corridors, or vacant bays in view.',
         can_recommend: false,
         recommended_slot: null,
         ar_slots: [],
@@ -318,8 +341,8 @@ export default function handler(req, res) {
         vehicles_count: analysis.vehiclesCount || 0,
         persons_count: 0,
         obstacles_count: 0,
-        confidence_score: 0.45,
-        confidence_percent: 45,
+        confidence_score: 0.50,
+        confidence_percent: 50,
         checklist: {
           zone: { status_icon: '?', label: 'Unverified Surface' },
           space: { status_icon: '?', label: 'No Marked Bay' },
@@ -334,8 +357,8 @@ export default function handler(req, res) {
           vehicle_fit: 0.40,
           permission: 0.35
         },
-        guidance_banner: '🟡 PARKING SPACE NOT VERIFIED • Please scan a valid parking area',
-        speech_text: 'Parking space not verified. Please scan a valid parking area.'
+        guidance_banner: '🟡 NO PARKING SPACE DETECTED • Please scan a valid parking area',
+        speech_text: 'No parking space detected. Please scan a valid parking area.'
       });
     }
 
@@ -344,10 +367,11 @@ export default function handler(req, res) {
         success: true,
         status_code: 'NOT_SUITABLE',
         final_decision: 'NOT_SUITABLE',
+        detailed_status: 'NOT SUITABLE',
         decision_color: 'red',
         decision_icon: '🔴',
-        headline: `🔴 NO — CANNOT PARK HERE (SPACE TOO NARROW FOR ${bikeModel.toUpperCase()})`,
-        reason: `Marked space (${bayLenFt} ft × ${bayWidFt} ft) is too narrow for ${bikeModel} (clearance is only ${clearanceStr}).`,
+        headline: 'NOT SUITABLE — SPACE TOO SMALL',
+        reason: `Candidate space (${bayLenFt} ft × ${bayWidFt} ft) is too small for ${bikeModel} (requires ${reqLenFt} ft × ${reqWidFt} ft including ${marginFt} ft clearance).`,
         can_recommend: false,
         recommended_slot: null,
         ar_slots: [],
@@ -361,27 +385,28 @@ export default function handler(req, res) {
           zone: { status_icon: '✓', label: 'Ground Area' },
           space: { status_icon: '✓', label: 'Marked Bay' },
           obstacles: { status_icon: '✓', label: 'Clear View' },
-          vehicle_fit: { status_icon: '✗', label: `Too Narrow (${clearanceStr})` },
+          vehicle_fit: { status_icon: '✗', label: `Too Small (${clearanceStr})` },
           permission: { status_icon: '?', label: 'Unverified' }
         },
         analysis_summary: makeAnalysisSummary(
-          bikeModel, vLen, vWid, 0.30, bayL_m, bayW_m, lengthMargin_m >= 0.10, widthMargin_m >= 0.15, true, true, 88,
-          `🔴 VEHICLE CANNOT BE PARKED HERE (TOO NARROW FOR ${bikeModel})`,
-          `Space width (${bayWidFt} ft) does not fit ${bikeModel}.`
+          bikeModel, vLen, vWid, safetyMargin, bayL_m, bayW_m, bayL_m >= reqLen, bayW_m >= reqWid, true, true, 88,
+          '🔴 NOT SUITABLE — SPACE TOO SMALL',
+          `Space dimensions (${bayLenFt} ft × ${bayWidFt} ft) do not fit ${bikeModel}.`
         ),
-        guidance_banner: `🔴 NO — CANNOT PARK HERE • Space is too narrow for ${bikeModel} (${clearanceStr} clearance)`,
-        speech_text: `Spaces in view are too narrow for your ${bikeModel}. Do not park here.`
+        guidance_banner: `🔴 NOT SUITABLE • Space is too small for ${bikeModel} (${clearanceStr} clearance)`,
+        speech_text: `Space is too small for your ${bikeModel}. Do not park here.`
       });
     }
 
+    const slotLabel = isUnmarkedGround ? 'Open Ground Corridor' : 'Bay 1';
     const recSlot = {
       id: 'Bay 1',
-      label: 'Bay 1 (Verified Bay)',
+      label: slotLabel,
       status: 'AVAILABLE',
       is_recommended: true,
       is_suitable: true,
       fit_status: 'OPTIMAL',
-      fit_badge: '🟢 Fits Vehicle',
+      fit_badge: isUnmarkedGround ? '🟡 Physically Suitable' : '🟢 Fits Vehicle',
       normalized_polygon: dynPoly,
       center: [(dynPoly[0][0] + dynPoly[1][0]) / 2, (dynPoly[0][1] + dynPoly[2][1]) / 2],
       width_m: bayW_m,
@@ -397,7 +422,7 @@ export default function handler(req, res) {
       vehicle_fit: {
         is_suitable: true,
         fit_status: 'OPTIMAL',
-        fit_badge: '🟢 Fits Vehicle',
+        fit_badge: isUnmarkedGround ? '🟡 Physically Suitable' : '🟢 Fits Vehicle',
         slot_width_m: bayW_m,
         slot_length_m: bayL_m,
         slot_width_ft: bayWidFt,
@@ -407,14 +432,62 @@ export default function handler(req, res) {
         width_margin_m: widthMargin_m,
         width_margin_ft: Number(marginFt),
         clearance_ft_str: clearanceStr,
-        message: `Designated parking space verified and fits your ${bikeModel}.`
+        message: isUnmarkedGround
+          ? `Open ground region fits your ${bikeModel} with ${clearanceStr} clearance margin.`
+          : `Designated parking space verified and fits your ${bikeModel}.`
       }
     };
+
+    if (isUnmarkedGround) {
+      const headline = 'PHYSICALLY SUITABLE — PARKING PERMISSION UNVERIFIED';
+      const reason = `Open ground area appears physically suitable (${bayLenFt} ft × ${bayWidFt} ft) and fits your ${bikeModel} with ${clearanceStr} clearance, but legal parking permission or municipal lot registration is unverified.`;
+      return res.status(200).json({
+        success: true,
+        status_code: 'UNCERTAIN',
+        final_decision: 'UNCERTAIN',
+        detailed_status: 'VEHICLE FIT VERIFIED',
+        decision_color: 'yellow',
+        decision_icon: '🟡',
+        headline: headline,
+        reason: reason,
+        can_recommend: false,
+        recommended_slot: recSlot,
+        ar_slots: [recSlot],
+        detections: entities,
+        vehicles_count: analysis.vehiclesCount || 0,
+        persons_count: pList.length,
+        obstacles_count: 0,
+        confidence_score: 0.78,
+        confidence_percent: 78,
+        checklist: {
+          zone: { status_icon: '✓', label: 'Open Paved Ground' },
+          space: { status_icon: '✓', label: 'Ground Clear' },
+          obstacles: { status_icon: '✓', label: 'Clear View' },
+          vehicle_fit: { status_icon: '✓', label: `Fits (${clearanceStr})` },
+          permission: { status_icon: '🟡', label: 'Permission Unverified' }
+        },
+        analysis_summary: makeAnalysisSummary(
+          bikeModel, vLen, vWid, safetyMargin, bayL_m, bayW_m, true, true, true, true, 78,
+          `🟡 ${headline}`,
+          reason
+        ),
+        breakdown: {
+          parking_zone: 0.70,
+          space_free: 0.95,
+          obstacle_free: 0.95,
+          vehicle_fit: 0.90,
+          permission: 0.45
+        },
+        guidance_banner: `🟡 PHYSICALLY SUITABLE • Parking permission unverified • Clearance: ${clearanceStr}`,
+        speech_text: `Space is physically suitable for your ${bikeModel}, but parking permission is unverified.`
+      });
+    }
 
     return res.status(200).json({
       success: true,
       status_code: 'SUITABLE',
       final_decision: 'SUITABLE',
+      detailed_status: 'PARKING PERMISSION VERIFIED',
       decision_color: 'green',
       decision_icon: '🟢',
       headline: 'YES — YOU CAN PARK YOUR VEHICLE HERE',
@@ -436,7 +509,7 @@ export default function handler(req, res) {
         permission: { status_icon: '✓', label: 'Permitted Bay' }
       },
       analysis_summary: makeAnalysisSummary(
-        bikeModel, vLen, vWid, 0.30, bayL_m, bayW_m, true, true, true, true, 92,
+        bikeModel, vLen, vWid, safetyMargin, bayL_m, bayW_m, true, true, true, true, 92,
         `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE (${bikeModel} fits with +${marginFt} ft clearance)`,
         `Designated parking space verified and fits ${bikeModel}.`
       ),

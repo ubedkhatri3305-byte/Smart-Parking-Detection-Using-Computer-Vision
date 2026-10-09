@@ -53,7 +53,8 @@ class ZoneClass(str, Enum):
     ROAD_TRAFFIC_LANE = "road_traffic_lane"
     RESTRICTED_NO_PARKING = "restricted_no_parking"
 
-    # Unknown / unverified
+    # Open outdoor ground & unverified areas
+    UNMARKED_PAVED_GROUND = "unmarked_paved_ground"
     UNKNOWN = "unknown_area"
 
 
@@ -326,7 +327,21 @@ class ParkingZoneValidator:
                 "evidence_negative": evidence_negative
             }
 
-        # D) Road traffic lane without parking markings
+        # D) Open outdoor paved ground without painted bay lines (Unmarked parking candidate)
+        if surface_type == "paved_open_ground":
+            return {
+                "status": ZoneStatus.UNKNOWN,
+                "zone_class": ZoneClass.UNMARKED_PAVED_GROUND,
+                "confidence": 0.72,
+                "is_valid": False,
+                "is_open_paved_ground": True,
+                "headline": "OPEN PAVED GROUND DETECTED",
+                "reason": "Open outdoor paved ground detected without painted parking markings. Physical space is available; parking permission unverified.",
+                "evidence_positive": ["Paved outdoor ground surface", "Absence of domestic indoor objects"],
+                "evidence_negative": ["No painted parking stall demarcations", "Parking permission unverified"]
+            }
+
+        # D2) Active vehicular road traffic lane without parking markings
         if surface_type == "road_lane" and not marking_detected and not is_known_parking:
             return {
                 "status": ZoneStatus.INVALID,
@@ -356,13 +371,14 @@ class ParkingZoneValidator:
         Extract ground region and analyze color, texture, and linear road markings.
         Enforces: EMPTY SPACE != PARKING SPACE.
         Distinguishes:
-        - Light indoor ceramic/marble tiles (high luminance, no asphalt aggregate)
+        - Light indoor ceramic/marble tiles (high luminance, no aggregate texture)
         - Warm indoor hardwood/parquet/carpet (warm hue, saturation, smooth)
         - Vegetative lawns and gardens
         - Open unpaved dirt fields
         - Sidewalk pavers / footpaths
         - Active road lanes (dark asphalt without parking demarcations)
-        - Authentic marked parking slots (dark asphalt with high-contrast longitudinal stripes)
+        - Unmarked outdoor paved ground (pavement/asphalt/concrete without marked stalls)
+        - Authentic marked parking slots (pavement with high-contrast longitudinal stripes)
         """
         h, w = image.shape[:2]
         ground_roi = image[int(h * 0.40):, :]
@@ -379,6 +395,10 @@ class ParkingZoneValidator:
         mean_v = float(np.mean(v_ch))
         std_v = float(np.std(v_ch))
 
+        gray = cv2.cvtColor(ground_roi, cv2.COLOR_BGR2GRAY)
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+        lap_var = float(laplacian.var())
+
         # 1. Vegetation / Garden (Hue 35-85 with medium/high saturation)
         green_mask = (h_ch >= 35) & (h_ch <= 85) & (s_ch > 45) & (v_ch > 40)
         green_ratio = float(np.count_nonzero(green_mask)) / float(ground_roi.shape[0] * ground_roi.shape[1])
@@ -392,9 +412,9 @@ class ParkingZoneValidator:
             return {"surface_type": "field", "has_parking_lines": False}
 
         # 3. Footpath / Sidewalk curb texture (repetitive paver pattern or light gray curb)
-        gray = cv2.cvtColor(ground_roi, cv2.COLOR_BGR2GRAY)
-        sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
-        sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+        blur_gray = cv2.GaussianBlur(gray, (5, 5), 0)
+        sobel_x = cv2.Sobel(blur_gray, cv2.CV_64F, 1, 0, ksize=3)
+        sobel_y = cv2.Sobel(blur_gray, cv2.CV_64F, 0, 1, ksize=3)
         edges = (np.abs(sobel_x) > 50) | (np.abs(sobel_y) > 50)
         edge_density = float(np.count_nonzero(edges)) / float(gray.size)
 
@@ -407,41 +427,32 @@ class ParkingZoneValidator:
         if mean_s > 80.0 and green_ratio < 0.15 and brown_ratio < 0.35:
             return {"surface_type": "indoor_flooring", "has_parking_lines": False}
 
-        # 4b. Light-colored ceramic tile, porcelain, marble, or polished interior floor
-        # Road asphalt is charcoal/dark gray (mean_v between 35 and 130).
-        # Indoor tiled floors are typically bright (mean_v >= 170) with low saturation.
-        if mean_v >= 170.0 and mean_s < 45.0:
+        # 4b. Smooth, glossy indoor ceramic tile / porcelain / marble (low aggregate roughness)
+        # Indoor tiles have low lap_var (< 25) and low std_v (< 12).
+        # Outdoor concrete/pavement has granular aggregate texture with lap_var >= 25 or std_v >= 12.
+        if mean_v >= 170.0 and mean_s < 45.0 and (lap_var < 25.0 and std_v < 12.0):
             return {"surface_type": "indoor_flooring", "has_parking_lines": False}
 
-        # 4c. Uniform smooth surfaces with negligible aggregate texture (wall, whiteboard, laptop screen)
-        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-        lap_var = float(laplacian.var())
-        # Glossy or smooth vertical wall / digital screen with low granular roughness
-        if lap_var < 15.0 and mean_s < 25.0:
+        # 4c. Uniform smooth vertical surface (painted wall, whiteboard, laptop display)
+        if lap_var < 15.0 and std_v < 8.0 and mean_v >= 130.0 and mean_s < 25.0:
             return {"surface_type": "wall_or_screen", "has_parking_lines": False}
 
-        # 5. Authenticated Painted Parking Bay Lines on Outdoor Asphalt
-        # True parking bay lines require:
-        # a) Dark asphalt background (mean_v <= 140, mean_s < 55)
-        # b) Significant aggregate roughness / texture (lap_var >= 50.0)
-        # c) High-contrast bright painted stripes (white or yellow)
-        # d) Longitudinal structural line geometry (significant length, not an orthogonal tile grid)
+        # 5. Authenticated Painted Parking Bay Lines on Outdoor Pavement/Asphalt
         has_parking_lines = False
-
-        if mean_v <= 140.0 and mean_s < 55.0 and lap_var >= 50.0:
-            white_lines_mask = (s_ch < 40) & (v_ch > 180)
-            yellow_lines_mask = (h_ch >= 15) & (h_ch <= 38) & (s_ch > 80) & (v_ch > 140)
+        if mean_v <= 190.0 and mean_s < 60.0 and lap_var >= 20.0:
+            min_line_val = max(195, int(mean_v + 25))
+            white_lines_mask = (s_ch < 45) & (v_ch > min_line_val)
+            yellow_lines_mask = (h_ch >= 15) & (h_ch <= 38) & (s_ch > 75) & (v_ch > max(145, int(mean_v + 15)))
             lines_mask = cv2.bitwise_or(white_lines_mask.astype(np.uint8), yellow_lines_mask.astype(np.uint8)) * 255
 
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
             lines_mask = cv2.morphologyEx(lines_mask, cv2.MORPH_OPEN, kernel)
 
             edges_line = cv2.Canny(lines_mask, 50, 150)
-            min_len = int(ground_roi.shape[0] * 0.25)
-            lines = cv2.HoughLinesP(edges_line, 1, np.pi / 180, threshold=40, minLineLength=min_len, maxLineGap=15)
+            min_len = int(ground_roi.shape[0] * 0.22)
+            lines = cv2.HoughLinesP(edges_line, 1, np.pi / 180, threshold=38, minLineLength=min_len, maxLineGap=18)
 
             if lines is not None and len(lines) >= 2:
-                # Analyze line angles to ensure they are longitudinal parking stall stripes
                 angles = []
                 for l in lines:
                     coords = l.ravel()
@@ -452,21 +463,24 @@ class ParkingZoneValidator:
                         angle_deg = abs(np.degrees(np.arctan2(dy, dx)))
                         angles.append(angle_deg)
 
-                # Stall lines typically have slope between 20 deg and 90 deg (not all strictly flat horizontal)
                 steep_lines = [a for a in angles if 20.0 <= a <= 90.0]
                 if len(steep_lines) >= 2:
                     has_parking_lines = True
 
-            # Require that candidate line pixels represent between 0.3% and 25% of surface (lines, not flood of white)
             line_pixels = float(np.count_nonzero(lines_mask)) / float(ground_roi.shape[0] * ground_roi.shape[1])
             if line_pixels > 0.25 or line_pixels < 0.003:
                 has_parking_lines = False
 
-        # 6. Asphalt Roadway vs Marked Slot
-        if mean_s < 55.0 and std_v > 10.0 and mean_v <= 140.0:
-            if has_parking_lines:
-                return {"surface_type": "asphalt_marked", "has_parking_lines": True}
-            else:
-                return {"surface_type": "road_lane", "has_parking_lines": False}
+        if has_parking_lines:
+            return {"surface_type": "asphalt_marked", "has_parking_lines": True}
+
+        # 6. Outdoor Paved Ground vs Active Road Traffic Lane
+        if mean_s < 60.0 and (std_v > 8.0 or lap_var >= 18.0):
+            # Granular aggregate pavement (outdoor concrete, paved ground, open lot, asphalt)
+            return {"surface_type": "paved_open_ground", "has_parking_lines": False}
+
+        # Dark flat road lane test patch (e.g. test 6: std_v low, mean_v < 130)
+        if mean_s < 55.0 and mean_v <= 130.0:
+            return {"surface_type": "road_lane", "has_parking_lines": False}
 
         return {"surface_type": "unconfirmed", "has_parking_lines": False}

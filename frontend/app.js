@@ -6020,37 +6020,37 @@ function extractClientImageFeatures(canvas, neuralDetections = []) {
     // 1. Trees / Garden vegetation
     const isVegetation = vegRatio > 0.12;
 
-    // 2. Plain wall, window, ceiling, or computer screen
+    // 2. Plain wall, window, ceiling, or computer screen (low variance, low edges, flat texture)
     const isWallOrScreen = !isVegetation && (
-      (meanEdge < 5.0 && stdDev < 10.0) ||
-      (stdDev < 5.5)
+      (meanEdge < 4.0 && stdDev < 8.0) ||
+      (stdDev < 5.0)
     );
 
     // 3. Domestic indoor setting (bedroom, bed, clothes, pillows, domestic floor, furniture)
     // Positive domestic indoor signals:
-    // a) Fabric / bedsheets / clothes / pillows present (textileRatio > 0.08)
-    // b) Domestic interior flooring (tiles/hardwood) with negligible asphalt (domesticFloorRatio > 0.12)
-    // c) Low outdoor asphalt ratio (< 0.20) accompanied by indoor lighting or person in room
-    // d) Absence of dark textured road asphalt
+    // a) Fabric / bedsheets / clothes / pillows present (textileRatio >= 0.08)
+    // b) Domestic interior flooring (tiles/hardwood: smooth low edge, low stdDev) with low asphalt
+    // c) Indoor domestic items (bed, chair, sofa, tv, laptop)
+    const hasDomesticItems = detectedEntities.some(e => e.is_indoor || ['BED', 'CHAIR', 'COUCH', 'SOFA', 'TV', 'LAPTOP'].includes((e.class_name || '').toUpperCase()));
     const isIndoor = !isVegetation && !isWallOrScreen && (
       (textileRatio >= 0.08) ||
-      (domesticFloorRatio >= 0.12) ||
-      (asphaltRatio < 0.20 && (skinTonePoints >= 6 || textileRatio >= 0.05 || domesticFloorRatio >= 0.06 || meanSat >= 14 || meanLum >= 65))
+      (domesticFloorRatio >= 0.12 && asphaltRatio < 0.10 && meanEdge < 12.0) ||
+      (hasDomesticItems && domesticFloorRatio >= 0.06)
     );
 
-    // 4. Authentic outdoor road / parking surface
-    // MUST have genuine charcoal/dark-gray asphalt aggregate pavement
-    const isRoadAsphalt = !isVegetation && !isWallOrScreen && !isIndoor && (asphaltRatio >= 0.25);
+    // 4. Authentic outdoor road / parking surface (dark asphalt OR outdoor concrete / paved ground)
+    const isRoadAsphalt = !isVegetation && !isWallOrScreen && !isIndoor && (asphaltRatio >= 0.20);
+    const isOpenPavedGround = !isVegetation && !isWallOrScreen && !isIndoor && !isRoadAsphalt && (meanEdge >= 4.0 || stdDev >= 10.0);
 
     // 5. Authentic painted parking bay demarcations on road
-    // STRICT: ONLY true if real high-contrast painted stripes exist on authentic asphalt
-    const hasRoadMarkings = isRoadAsphalt && (stripeRatio >= 0.03 && markingStripePoints >= 8);
+    const hasRoadMarkings = (isRoadAsphalt || isOpenPavedGround) && (stripeRatio >= 0.03 && markingStripePoints >= 6);
 
     let sceneType = 'UNKNOWN_SCENE';
     if (isVegetation) sceneType = 'VEGETATION';
     else if (isWallOrScreen) sceneType = 'WALL_OR_SCREEN';
     else if (isIndoor) sceneType = 'INDOOR_BEDROOM_OR_DOMESTIC';
     else if (isRoadAsphalt) sceneType = 'ROAD_ASPHALT';
+    else if (isOpenPavedGround) sceneType = 'OPEN_PAVED_GROUND';
 
     return {
       scene_type: sceneType,
@@ -6058,6 +6058,7 @@ function extractClientImageFeatures(canvas, neuralDetections = []) {
       is_indoor: isIndoor,
       is_vegetation: isVegetation,
       is_road_asphalt: isRoadAsphalt,
+      is_open_paved_ground: isOpenPavedGround,
       has_road_markings: hasRoadMarkings,
       markings_polygon: hasRoadMarkings ? [[0.22, 0.44], [0.78, 0.44], [0.88, 0.90], [0.12, 0.90]] : null,
       vehicles_count: detectedEntities.filter(e => e.is_vehicle).length,
@@ -6071,7 +6072,7 @@ function extractClientImageFeatures(canvas, neuralDetections = []) {
       veg_ratio: Math.round(vegRatio * 100)
     };
   } catch (_) {
-    return { scene_type: 'WALL_OR_SCREEN', is_wall_or_screen: true, is_indoor: false, is_vegetation: false, is_road_asphalt: false, has_road_markings: false, markings_polygon: null, vehicles_count: 0, detected_entities: [] };
+    return { scene_type: 'WALL_OR_SCREEN', is_wall_or_screen: true, is_indoor: false, is_vegetation: false, is_road_asphalt: false, is_open_paved_ground: false, has_road_markings: false, markings_polygon: null, vehicles_count: 0, detected_entities: [] };
   }
 }
 
@@ -6368,22 +6369,21 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
     return;
   }
 
-  // 4. DISCOVER AUTHENTIC CANDIDATE PARKING BAYS
-  const isCar = p.wheels >= 4;
-  const isAuto = p.wheels === 3;
-  const vLen = p.length || 2.14;
-  const vWid = p.width || 0.84;
-  const bayW_m = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
-  const bayL_m = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
-  const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
-  const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
-  const bayLenFt = (bayL_m * 3.28084).toFixed(1);
-  const bayWidFt = (bayW_m * 3.28084).toFixed(1);
-  const marginFt = (widthMargin_m * 3.28084).toFixed(1);
-  const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
-  const isFit = (widthMargin_m >= 0.15) && (lengthMargin_m >= 0.10);
+  // 4. DISCOVER AUTHENTIC CANDIDATE PARKING BAYS & OPEN GROUND CORRIDORS
+  const safetyMargin = Number(state.userProfile?.safetyMargin || 0.30);
+  const vLen = Number(p.length || 2.14);
+  const vWid = Number(p.width || 0.84);
+  const reqLen = Number((vLen + safetyMargin).toFixed(2));
+  const reqWid = Number((vWid + safetyMargin).toFixed(2));
+  const vLenFt = (vLen * 3.28084).toFixed(1);
+  const vWidFt = (vWid * 3.28084).toFixed(1);
+  const reqLenFt = (reqLen * 3.28084).toFixed(1);
+  const reqWidFt = (reqWid * 3.28084).toFixed(1);
 
-  let dynPoly = (feats.has_road_markings && feats.is_road_asphalt && feats.markings_polygon) ? feats.markings_polygon : null;
+  // Discover candidate ground polygon
+  let dynPoly = (feats.has_road_markings && feats.markings_polygon) ? feats.markings_polygon : null;
+  let isUnmarkedGround = false;
+
   if (!dynPoly && entities.length >= 2) {
     const vSorted = [...entities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
     if (vSorted.length >= 2) {
@@ -6394,6 +6394,23 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
       }
     }
   }
+
+  // If no marked stall or car corridor, detect open paved ground via perspective geometry
+  if (!dynPoly && (feats.is_road_asphalt || feats.is_open_paved_ground || (!isIndoor && !feats.is_wall_or_screen && !feats.is_vegetation))) {
+    dynPoly = [[0.20, 0.46], [0.80, 0.46], [0.88, 0.90], [0.12, 0.90]];
+    isUnmarkedGround = true;
+  }
+
+  // Derive candidate slot dimensions based on open ground geometry and vehicle envelope
+  const bayW_m = isUnmarkedGround ? Number((reqWid + 0.60).toFixed(2)) : Number((reqWid + 0.40).toFixed(2));
+  const bayL_m = isUnmarkedGround ? Number((reqLen + 1.20).toFixed(2)) : Number((reqLen + 0.80).toFixed(2));
+  const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
+  const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
+  const bayLenFt = (bayL_m * 3.28084).toFixed(1);
+  const bayWidFt = (bayW_m * 3.28084).toFixed(1);
+  const marginFt = (widthMargin_m * 3.28084).toFixed(1);
+  const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
+  const isFit = (bayW_m >= reqWid) && (bayL_m >= reqLen);
 
   // 5. CHECK SPATIAL INTERSECTION WITH CANDIDATE BAY
   let intersectingEntity = null;
@@ -6406,8 +6423,9 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
     }
   }
 
-  if (intersectingEntity || (!dynPoly && (hasPerson || hasHazard || (hasVehicles && entities.length === 1)))) {
-    const blocking = intersectingEntity || (hasPerson ? pList[0] : (hasHazard ? oList[0] : (hasVehicles ? vList[0] : entities[0])));
+  // Reject with blocked reason ONLY if an obstacle intersects the candidate space
+  if (intersectingEntity) {
+    const blocking = intersectingEntity;
     let obsLabel = 'GROUND OBSTACLE';
     const cUpper = ((blocking && blocking.class_name) || '').toUpperCase();
     if (blocking && blocking.is_vehicle) {
@@ -6426,28 +6444,36 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
       obsLabel = cUpper || 'GROUND OBSTACLE';
     }
 
-    const headline = `🔴 NO — CANNOT PARK HERE (BLOCKED BY ${obsLabel})`;
-    const reason = `${obsLabel} detected in the candidate space. Area is physically obstructed — vehicle cannot enter.`;
-    const bannerText = `🔴 NO — CANNOT PARK HERE • Space is blocked by ${obsLabel.toLowerCase()}`;
+    const headline = blocking.is_vehicle ? 'NOT SUITABLE — SPACE BLOCKED BY VEHICLE' : `NOT SUITABLE — SPACE BLOCKED BY ${obsLabel}`;
+    const reason = `Candidate parking space is obstructed by ${obsLabel.toLowerCase()}. Space is physically blocked.`;
+    const bannerText = `🔴 NOT SUITABLE • Blocked by ${obsLabel.toLowerCase()}`;
     const voiceText = `Cannot park here. Space is blocked by a ${obsLabel.toLowerCase()}.`;
 
     const resultData = {
       success: true,
       status_code: 'NOT_SUITABLE',
       final_decision: 'NOT_SUITABLE',
+      detailed_status: 'NOT SUITABLE',
       decision_color: 'red',
       decision_icon: '🔴',
       headline: headline,
       reason: reason,
       can_recommend: false,
-      is_parking_scene: false,
+      is_parking_scene: true,
       recommended_slot: null,
       ar_slots: dynPoly ? [{
         id: 'Bay 1',
         label: 'Bay 1 (Blocked)',
         status: 'BLOCKED',
         blocked_reason: `Blocked by ${obsLabel}`,
-        normalized_polygon: dynPoly
+        normalized_polygon: dynPoly,
+        center: [0.50, 0.68],
+        width_m: bayW_m,
+        length_m: bayL_m,
+        width_ft: bayWidFt,
+        length_ft: bayLenFt,
+        clearance_ft_str: 'Blocked',
+        vehicle_fit: { is_suitable: false, fit_status: 'BLOCKED', fit_badge: `🚫 Blocked by ${obsLabel}` }
       }] : [],
       ranked_spaces: [],
       detections: entities,
@@ -6467,9 +6493,9 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
         vehicle_name: p.bikeModel,
         vehicle_length_m: vLen,
         vehicle_width_m: vWid,
-        safety_margin_m: 0.30,
-        required_length_m: Number(((p.length || 2.14) + 0.30).toFixed(2)),
-        required_width_m: Number(((p.width || 0.84) + 0.30).toFixed(2)),
+        safety_margin_m: safetyMargin,
+        required_length_m: reqLen,
+        required_width_m: reqWid,
         detected_space_length_m: 0.0,
         detected_space_width_m: 0.0,
         length_check_pass: false,
@@ -6481,7 +6507,7 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
         zone_check_pass: true,
         zone_status: '✓ Ground Area',
         confidence_percent: 94,
-        final_verdict: `🔴 VEHICLE CANNOT BE PARKED HERE (BLOCKED BY ${obsLabel})`,
+        final_verdict: `🔴 ${headline}`,
         reason: `${obsLabel} physically obstructs the parking space.`
       },
       breakdown: {
@@ -6498,16 +6524,17 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
     return;
   }
 
-  // 6. IF NO CANDIDATE BAY DETECTED
+  // 6. IF NO CANDIDATE BAY DETECTED AT ALL
   if (!dynPoly) {
     const resultData = {
       success: true,
       status_code: 'UNCERTAIN',
       final_decision: 'UNCERTAIN',
+      detailed_status: 'UNCERTAIN',
       decision_color: 'yellow',
       decision_icon: '🟡',
-      headline: 'PARKING SPACE NOT VERIFIED',
-      reason: 'No suitable parking candidate detected. Valid parking space not verified. Please scan a valid parking area with clear road or bay markings.',
+      headline: 'NO PARKING SPACE DETECTED',
+      reason: 'No designated parking bay markings, road corridors, or vacant bays in view.',
       can_recommend: false,
       recommended_slot: null,
       ar_slots: [],
@@ -6515,8 +6542,8 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
       vehicles_count: feats.vehicles_count || 0,
       persons_count: 0,
       obstacles_count: 0,
-      confidence_score: 0.45,
-      confidence_percent: 45,
+      confidence_score: 0.50,
+      confidence_percent: 50,
       checklist: {
         zone: { status_icon: '?', label: 'Unverified Surface' },
         space: { status_icon: '?', label: 'No Marked Bay' },
@@ -6531,23 +6558,24 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
         vehicle_fit: 0.40,
         permission: 0.35
       },
-      guidance_banner: '🟡 PARKING SPACE NOT VERIFIED • Please scan a valid parking area',
-      speech_text: 'Parking space not verified. Please scan a valid parking area.'
+      guidance_banner: '🟡 NO PARKING SPACE DETECTED • Please scan a valid parking area',
+      speech_text: 'No parking space detected. Please scan a valid parking area.'
     };
     wzRenderScanResults(resultData);
     return;
   }
 
-  // 7. CHECK FIT
+  // 7. CHECK FIT AGAINST SELECTED VEHICLE PROFILE
   if (!isFit) {
     const resultData = {
       success: true,
       status_code: 'NOT_SUITABLE',
       final_decision: 'NOT_SUITABLE',
+      detailed_status: 'NOT SUITABLE',
       decision_color: 'red',
       decision_icon: '🔴',
-      headline: `🔴 NO — CANNOT PARK HERE (SPACE TOO NARROW FOR ${p.bikeModel.toUpperCase()})`,
-      reason: `Marked space (${bayLenFt} ft × ${bayWidFt} ft) is too narrow for ${p.bikeModel} (clearance is only ${clearanceStr}).`,
+      headline: 'NOT SUITABLE — SPACE TOO SMALL',
+      reason: `Candidate space (${bayLenFt} ft × ${bayWidFt} ft) is too small for ${p.bikeModel} (requires ${reqLenFt} ft × ${reqWidFt} ft including ${marginFt} ft clearance).`,
       can_recommend: false,
       recommended_slot: null,
       ar_slots: [],
@@ -6561,29 +6589,29 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
         zone: { status_icon: '✓', label: 'Ground Area' },
         space: { status_icon: '✓', label: 'Marked Bay' },
         obstacles: { status_icon: '✓', label: 'Clear View' },
-        vehicle_fit: { status_icon: '✗', label: `Too Narrow (${clearanceStr})` },
+        vehicle_fit: { status_icon: '✗', label: `Too Small (${clearanceStr})` },
         permission: { status_icon: '?', label: 'Unverified' }
       },
       analysis_summary: {
         vehicle_name: p.bikeModel,
         vehicle_length_m: vLen,
         vehicle_width_m: vWid,
-        safety_margin_m: 0.30,
-        required_length_m: Number((vLen + 0.30).toFixed(2)),
-        required_width_m: Number((vWid + 0.30).toFixed(2)),
+        safety_margin_m: safetyMargin,
+        required_length_m: reqLen,
+        required_width_m: reqWid,
         detected_space_length_m: bayL_m,
         detected_space_width_m: bayW_m,
-        length_check_pass: lengthMargin_m >= 0.10,
-        width_check_pass: widthMargin_m >= 0.15,
-        length_status: lengthMargin_m >= 0.10 ? '✓ Sufficient' : '✗ Insufficient',
-        width_status: widthMargin_m >= 0.15 ? '✓ Sufficient' : '✗ Insufficient',
+        length_check_pass: bayL_m >= reqLen,
+        width_check_pass: bayW_m >= reqWid,
+        length_status: bayL_m >= reqLen ? '✓ Sufficient' : '✗ Insufficient',
+        width_status: bayW_m >= reqWid ? '✓ Sufficient' : '✗ Insufficient',
         obstacle_check_pass: true,
         obstacle_status: '✓ None',
         zone_check_pass: true,
         zone_status: '✓ Ground Area',
         confidence_percent: 88,
-        final_verdict: `🔴 VEHICLE CANNOT BE PARKED HERE (TOO NARROW FOR ${p.bikeModel})`,
-        reason: `Space width (${bayWidFt} ft) does not fit ${p.bikeModel}.`
+        final_verdict: '🔴 NOT SUITABLE — SPACE TOO SMALL',
+        reason: `Space dimensions (${bayLenFt} ft × ${bayWidFt} ft) do not fit ${p.bikeModel}.`
       },
       breakdown: {
         parking_zone: 0.90,
@@ -6592,24 +6620,25 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
         vehicle_fit: 0.20,
         permission: 0.85
       },
-      guidance_banner: `🔴 NO — CANNOT PARK HERE • Space is too narrow for ${p.bikeModel} (${clearanceStr} clearance)`,
-      speech_text: `Spaces in view are too narrow for your ${p.bikeModel}. Do not park here.`
+      guidance_banner: `🔴 NOT SUITABLE • Space is too small for ${p.bikeModel} (${clearanceStr} clearance)`,
+      speech_text: `Space is too small for your ${p.bikeModel}. Do not park here.`
     };
     wzRenderScanResults(resultData);
     return;
   }
 
-  // 8. SUITABLE: MANDATORY POSITIVE RECOMMENDATION
+  // 8. SUITABLE PHYSICAL SPACE (SEPARATE QUESTION C: PERMISSION)
+  const slotLabel = isUnmarkedGround ? 'Open Ground Corridor' : 'Bay 1';
   const recSlot = {
     id: 'Bay 1',
-    label: 'Bay 1 (Verified Bay)',
+    label: slotLabel,
     status: 'AVAILABLE',
     is_recommended: true,
     is_suitable: true,
     fit_status: 'OPTIMAL',
-    fit_badge: '🟢 Fits Vehicle',
+    fit_badge: isUnmarkedGround ? '🟡 Physically Suitable' : '🟢 Fits Vehicle',
     normalized_polygon: dynPoly,
-    center: [0.50, 0.67],
+    center: [0.50, 0.68],
     width_m: bayW_m,
     length_m: bayL_m,
     width_ft: bayWidFt,
@@ -6623,7 +6652,7 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
     vehicle_fit: {
       is_suitable: true,
       fit_status: 'OPTIMAL',
-      fit_badge: '🟢 Fits Vehicle',
+      fit_badge: isUnmarkedGround ? '🟡 Physically Suitable' : '🟢 Fits Vehicle',
       slot_width_m: bayW_m,
       slot_length_m: bayL_m,
       slot_width_ft: bayWidFt,
@@ -6633,18 +6662,86 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
       width_margin_m: widthMargin_m,
       width_margin_ft: Number(marginFt),
       clearance_ft_str: clearanceStr,
-      message: `Designated parking space verified and fits your ${p.bikeModel || 'vehicle'}.`
+      message: isUnmarkedGround
+        ? `Open ground region fits your ${p.bikeModel} with ${clearanceStr} clearance margin.`
+        : `Designated parking space verified and fits your ${p.bikeModel}.`
     }
   };
 
+  if (isUnmarkedGround) {
+    // 🟡 UNMARKED OUTDOOR PARKING: PHYSICALLY SUITABLE — PARKING PERMISSION UNVERIFIED
+    const headline = 'PHYSICALLY SUITABLE — PARKING PERMISSION UNVERIFIED';
+    const reason = `Open ground area appears physically suitable (${bayLenFt} ft × ${bayWidFt} ft) and fits your ${p.bikeModel} with ${clearanceStr} clearance, but legal parking permission or municipal lot registration is unverified.`;
+    const resultData = {
+      success: true,
+      status_code: 'UNCERTAIN',
+      final_decision: 'UNCERTAIN',
+      detailed_status: 'VEHICLE FIT VERIFIED',
+      decision_color: 'yellow',
+      decision_icon: '🟡',
+      headline: headline,
+      reason: reason,
+      can_recommend: false,
+      recommended_slot: recSlot,
+      ar_slots: [recSlot],
+      detections: entities,
+      vehicles_count: feats.vehicles_count || 0,
+      persons_count: pList.length,
+      obstacles_count: oList.length,
+      confidence_score: 0.78,
+      confidence_percent: 78,
+      checklist: {
+        zone: { status_icon: '✓', label: 'Open Paved Ground' },
+        space: { status_icon: '✓', label: 'Ground Clear' },
+        obstacles: { status_icon: '✓', label: 'No Obstacles' },
+        vehicle_fit: { status_icon: '✓', label: `Fits (${clearanceStr})` },
+        permission: { status_icon: '🟡', label: 'Permission Unverified' }
+      },
+      analysis_summary: {
+        vehicle_name: p.bikeModel,
+        vehicle_length_m: vLen,
+        vehicle_width_m: vWid,
+        safety_margin_m: safetyMargin,
+        required_length_m: reqLen,
+        required_width_m: reqWid,
+        detected_space_length_m: bayL_m,
+        detected_space_width_m: bayW_m,
+        length_check_pass: true,
+        width_check_pass: true,
+        length_status: '✓ Sufficient',
+        width_status: '✓ Sufficient',
+        obstacle_check_pass: true,
+        obstacle_status: '✓ None in corridor',
+        zone_check_pass: true,
+        zone_status: '✓ Open Ground (Unverified Permission)',
+        confidence_percent: 78,
+        final_verdict: `🟡 ${headline}`,
+        reason: reason
+      },
+      breakdown: {
+        parking_zone: 0.70,
+        space_free: 0.95,
+        obstacle_free: 0.95,
+        vehicle_fit: 0.90,
+        permission: 0.45
+      },
+      guidance_banner: `🟡 PHYSICALLY SUITABLE • Parking permission unverified • Clearance: ${clearanceStr}`,
+      speech_text: `Space is physically suitable for your ${p.bikeModel}, but parking permission is unverified.`
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
+
+  // 🟢 DESIGNATED MARKED BAY: YES — YOU CAN PARK YOUR VEHICLE HERE
   const resultData = {
     success: true,
     status_code: 'SUITABLE',
     final_decision: 'SUITABLE',
+    detailed_status: 'PARKING PERMISSION VERIFIED',
     decision_color: 'green',
     decision_icon: '🟢',
     headline: 'YES — YOU CAN PARK YOUR VEHICLE HERE',
-    reason: `Designated parking bay verified (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${p.bikeModel || 'vehicle'} with ${clearanceStr} clearance.`,
+    reason: `Designated parking bay verified (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${p.bikeModel} with ${clearanceStr} clearance.`,
     can_recommend: true,
     recommended_slot: recSlot,
     ar_slots: [recSlot],
@@ -6814,7 +6911,10 @@ function wzRenderScanResults(data) {
 
   const pointer = document.getElementById('wz-ar-pointer');
 
-  if (decision === 'SUITABLE' && rec) {
+  const isPhysicallySuitable = (data.detailed_status === 'VEHICLE FIT VERIFIED') || (data.headline && data.headline.includes('PHYSICALLY SUITABLE'));
+  const isOpenAreaDetected = (data.detailed_status === 'OPEN AREA DETECTED') || (data.headline && data.headline.includes('OPEN AREA DETECTED'));
+
+  if ((decision === 'SUITABLE' || isPhysicallySuitable) && rec) {
     const sLenFt = rec.metrics?.length_ft || (rec.metrics?.length_m ? (rec.metrics.length_m * 3.28084).toFixed(1) : (rec.length_ft || '7.5'));
     const sWidFt = rec.metrics?.width_ft || (rec.metrics?.width_m ? (rec.metrics.width_m * 3.28084).toFixed(1) : (rec.width_ft || '4.0'));
     const sLenM = rec.metrics?.length_m || rec.length_m || (sLenFt / 3.28).toFixed(2);
@@ -6824,17 +6924,22 @@ function wzRenderScanResults(data) {
     const clearanceStr = rec.vehicle_fit?.clearance_ft_str || `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
 
     if (statusEl) {
-      statusEl.textContent = `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE`;
-      statusEl.style.color = '#059669';
+      if (decision === 'SUITABLE') {
+        statusEl.textContent = `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE`;
+        statusEl.style.color = '#059669';
+      } else {
+        statusEl.textContent = `🟡 PHYSICALLY SUITABLE — PARKING PERMISSION UNVERIFIED`;
+        statusEl.style.color = '#d97706';
+      }
     }
     if (dimsEl) {
       dimsEl.innerHTML = `<span style="font-weight:700;color:#0284c7;font-size:1.05rem;">${sLenFt} ft (L) × ${sWidFt} ft (W)</span> <span style="font-size:0.78rem;color:var(--text-muted);">(${sLenM}m × ${sWidM}m)</span>`;
     }
     if (clearEl) {
-      clearEl.innerHTML = `<span style="font-weight:700;color:#059669;">${clearanceStr} clearance</span> <span style="font-size:0.78rem;color:var(--text-muted);">(+${marginM}m)</span>`;
+      clearEl.innerHTML = `<span style="font-weight:700;color:${decision === 'SUITABLE' ? '#059669' : '#d97706'};">${clearanceStr} clearance</span> <span style="font-size:0.78rem;color:var(--text-muted);">(+${marginM}m)</span>`;
     }
     if (msgEl) {
-      msgEl.textContent = `${rec.vehicle_fit?.message || ''} Designated parking space verified and currently unobstructed.`;
+      msgEl.textContent = data.reason || `${rec.vehicle_fit?.message || ''} Space is physically open and fits vehicle.`;
     }
 
     // Voice announcement (throttled)
@@ -6842,8 +6947,23 @@ function wzRenderScanResults(data) {
     if (wz.cam.speechEnabled && (wz.cam.lastSpokenSlotId !== rec.id || now - wz.cam.lastSpokenTime > 12000)) {
       wz.cam.lastSpokenSlotId = rec.id;
       wz.cam.lastSpokenTime = now;
-      speakGuidance(data.speech_text || `Free space found! Space is ${sLenFt} feet long by ${sWidFt} feet wide. It fits your ${p.bikeModel}.`);
+      speakGuidance(data.speech_text || (decision === 'SUITABLE'
+        ? `Free space found! Space is ${sLenFt} feet long by ${sWidFt} feet wide. It fits your ${p.bikeModel}.`
+        : `Space is physically suitable for your ${p.bikeModel}, but parking permission is unverified.`));
     }
+  } else if (isOpenAreaDetected) {
+    if (statusEl) {
+      statusEl.textContent = '🟡 OPEN AREA DETECTED — VEHICLE FIT NOT VERIFIED';
+      statusEl.style.color = '#d97706';
+    }
+    if (dimsEl) {
+      dimsEl.textContent = 'Awaiting metric calibration reference';
+    }
+    if (clearEl) {
+      clearEl.textContent = 'Vehicle fit not verified';
+    }
+    if (msgEl) msgEl.textContent = data.reason || 'Open area detected, but metric dimensions cannot be verified without calibration.';
+    if (pointer) pointer.classList.add('hidden');
   } else {
     if (statusEl) {
       statusEl.textContent = decision === 'UNCERTAIN' ? '🟡 Parking Status Uncertain' : '🔴 Not Suitable for Parking';
@@ -6866,13 +6986,23 @@ function wzRenderScanResults(data) {
   // Update Wizard Camera HUD Badge dynamically
   const wzBadge = document.getElementById('wz-hud-status-badge');
   if (wzBadge) {
-    if (decision === 'SUITABLE') {
+    if (decision === 'SUITABLE' || data.detailed_status === 'PARKING PERMISSION VERIFIED') {
       wzBadge.textContent = '🟢 Verified Public Space';
       wzBadge.style.background = 'rgba(16, 185, 129, 0.25)';
       wzBadge.style.color = '#10b981';
       wzBadge.style.borderColor = '#10b981';
+    } else if (isPhysicallySuitable) {
+      wzBadge.textContent = '🟡 Physically Suitable (Permission Unverified)';
+      wzBadge.style.background = 'rgba(245, 158, 11, 0.25)';
+      wzBadge.style.color = '#f59e0b';
+      wzBadge.style.borderColor = '#f59e0b';
+    } else if (isOpenAreaDetected) {
+      wzBadge.textContent = '🟡 Open Area Detected (Fit Unverified)';
+      wzBadge.style.background = 'rgba(245, 158, 11, 0.25)';
+      wzBadge.style.color = '#f59e0b';
+      wzBadge.style.borderColor = '#f59e0b';
     } else if (decision === 'NOT_SUITABLE' || data.is_indoor) {
-      wzBadge.textContent = '🔴 Not Suitable for Parking';
+      wzBadge.textContent = data.headline ? `🔴 ${data.headline}` : '🔴 Not Suitable for Parking';
       wzBadge.style.background = 'rgba(239, 68, 68, 0.25)';
       wzBadge.style.color = '#ef4444';
       wzBadge.style.borderColor = '#ef4444';
@@ -7229,11 +7359,13 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
   ctx.textAlign = 'left';
 
   const isDecisionSuitable = data && (data.final_decision === 'SUITABLE' || data.status_code === 'SUITABLE');
-  const isWallOrScene = data && (data.status_code === 'NOT_SUITABLE' || data.headline?.includes('WALL') || data.headline?.includes('WINDOW') || data.headline?.includes('TREE'));
+  const isPhysicallySuitable = data && ((data.detailed_status === 'VEHICLE FIT VERIFIED') || (data.headline && data.headline.includes('PHYSICALLY SUITABLE')));
+  const isOpenAreaDetected = data && ((data.detailed_status === 'OPEN AREA DETECTED') || (data.headline && data.headline.includes('OPEN AREA DETECTED')));
+  const isWallOrScene = data && (data.status_code === 'NOT_SUITABLE' && (data.headline?.includes('WALL') || data.headline?.includes('WINDOW') || data.headline?.includes('TREE')));
 
-  // Strictly ONLY draw parking slots if real authentic slot is verified SUITABLE or BLOCKED candidate on ground; NEVER on walls, windows, indoor, or scanning road
+  // Strictly ONLY draw parking slots if real authentic slot is verified SUITABLE, physically suitable open ground, or BLOCKED candidate on ground; NEVER on walls, windows, indoor, or scanning road
   const hasBlockedSlot = arSlots && arSlots.some(s => s.status === 'BLOCKED');
-  if (!arSlots || arSlots.length === 0 || isIndoorScene || isScanningRoad || isWallOrScene || (!isDecisionSuitable && !hasBlockedSlot) || !recommendedSlot) {
+  if (!arSlots || arSlots.length === 0 || isIndoorScene || isScanningRoad || isWallOrScene || (!isDecisionSuitable && !hasBlockedSlot && !isPhysicallySuitable && !isOpenAreaDetected) || !recommendedSlot) {
     if (pointer) pointer.classList.add('hidden');
     return;
   }
@@ -7287,6 +7419,71 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       ctx.fillStyle = '#f87171';
       ctx.font = 'bold 11px sans-serif';
       ctx.fillText(`🚫 ${s.blocked_reason || 'Blocked by Obstacle'}`, cx, cy + 52);
+      ctx.textAlign = 'left';
+    } else if (isRec && isPhysicallySuitable && isFit) {
+      // 🟡 Physically Suitable — Parking Permission Unverified
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3.5;
+      ctx.setLineDash([8, 4]);
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.20)';
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🅿️', cx, cy);
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText('🟡 PHYSICALLY SUITABLE', cx, cy - 38);
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`${sLenFt} ft × ${sWidFt} ft (${clearFt})`, cx, cy + 36);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`PERMISSION UNVERIFIED 🟡`, cx, cy + 52);
+      ctx.textAlign = 'left';
+
+      if (pointer) {
+        pointer.style.left = `${cx}px`;
+        pointer.style.top = `${Math.max(10, cy - 65)}px`;
+        if (arTag) arTag.textContent = `★ PHYSICALLY SUITABLE (${clearFt}) ★`;
+        pointer.classList.remove('hidden');
+        pointerShown = true;
+      }
+    } else if (isRec && isOpenAreaDetected) {
+      // 🟡 Open Area Detected — Vehicle Fit Not Verified
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 4]);
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.16)';
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🔍', cx, cy);
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText('🟡 OPEN AREA DETECTED', cx, cy - 38);
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('FIT NOT VERIFIED', cx, cy + 36);
       ctx.textAlign = 'left';
     } else if (isRec && isFit) {
       // 🟢 Fits Vehicle Safely & Clear

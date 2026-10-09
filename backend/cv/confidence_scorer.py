@@ -174,8 +174,16 @@ class ParkingConfidenceScorer:
             decision = DecisionState.UNCERTAIN
             decision_color = "yellow"
             decision_icon = "🟡"
-            headline = "PARKING STATUS UNCERTAIN"
-            summary_reason = zone_result.get("reason") or "An empty area was detected, but a valid parking zone or permission could not be verified."
+            is_calibrated = vehicle_fit.get("calibration_verified", True)
+            if not is_calibrated or vehicle_fit.get("is_unverified_dimensions"):
+                headline = "OPEN AREA DETECTED — VEHICLE FIT NOT VERIFIED"
+                summary_reason = "Open paved ground region detected, but real-world metric dimensions cannot be verified without calibration reference."
+            elif is_fit_suitable:
+                headline = "PHYSICALLY SUITABLE — PARKING PERMISSION UNVERIFIED"
+                summary_reason = "Area appears physically suitable for parking and fits your vehicle, but parking permission or municipal lot registration is unverified."
+            else:
+                headline = "PARKING STATUS UNCERTAIN"
+                summary_reason = zone_result.get("reason") or "An empty area was detected, but a valid parking zone or permission could not be verified."
         elif final_confidence >= cls.SUITABLE_THRESHOLD and can_park_legally and is_fit_suitable:
             decision = DecisionState.SUITABLE
             decision_color = "green"

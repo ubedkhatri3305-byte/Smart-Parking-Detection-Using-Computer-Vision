@@ -77,8 +77,8 @@ class ParkingOccupancyAnalyzer:
             # First priority check: Vehicles inside or overlapping the slot
             for obj in det_objects:
                 det = obj["det"]
-                category = det["category"]
-                cls_name = det["class_name"]
+                category = det.get("category") or ("vehicle" if det.get("is_vehicle") else "")
+                cls_name = det.get("class_name", "")
 
                 if not slot_shapely.is_valid or not obj["poly"].is_valid:
                     continue
@@ -91,7 +91,7 @@ class ParkingOccupancyAnalyzer:
                     # Check if bottom ground contact point is inside slot
                     contact_inside = slot_shapely.contains(obj["bottom_pt"]) or slot_shapely.contains(obj["center_pt"])
 
-                    if category == "vehicle":
+                    if category == "vehicle" or det.get("is_vehicle", False):
                         if slot_overlap > self.vehicle_iou_threshold or (contact_inside and obj_inside_ratio > 0.3):
                             if slot_overlap > max_overlap_ratio:
                                 max_overlap_ratio = slot_overlap
@@ -104,8 +104,8 @@ class ParkingOccupancyAnalyzer:
             if status != SlotStatus.OCCUPIED:
                 for obj in det_objects:
                     det = obj["det"]
-                    category = det["category"]
-                    cls_name = det["class_name"]
+                    category = det.get("category") or ("obstacle" if det.get("is_obstacle") or det.get("is_person") else "")
+                    cls_name = det.get("class_name", "")
 
                     is_pers = det.get("is_person", False) or (cls_name == "person")
                     is_obs = (
@@ -152,6 +152,9 @@ class ParkingOccupancyAnalyzer:
             analyzed_slots.append({
                 "id": slot_id,
                 "label": slot.get("label", f"Bay {slot_id}"),
+                "source": slot.get("source", "detector"),
+                "is_marked": slot.get("is_marked", True),
+                "rule_zone": slot.get("rule_zone", "unverified"),
                 "status": status,
                 "status_icon": status_icon,
                 "color_hex": color_hex,

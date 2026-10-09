@@ -89,28 +89,29 @@ class ParkingDecisionEngine:
         frame_obstacles = [
             d for d in detections
             if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard")
-                or str(d.get("class_name", "")).lower() not in ("car", "motorcycle", "bus", "truck", "train", "traffic light", "stop sign", "parking meter"))
+                or str(d.get("class_name", "")).lower() in ("person", "pedestrian", "bicycle", "traffic cone", "barrier", "chair", "box", "debris"))
             and not d.get("is_vehicle", False)
         ]
 
-        # OBSTACLE HAZARD PRIORITY: Only if NO candidate spaces exist, OR if ALL candidate spaces are blocked!
-        if frame_obstacles and (not candidate_spaces or all(s.get("status") == "BLOCKED" for s in candidate_spaces)):
+        # OBSTACLE HAZARD PRIORITY: Only if ALL candidate spaces are blocked!
+        if frame_obstacles and candidate_spaces and all(s.get("status") == "BLOCKED" for s in candidate_spaces):
             first_obs = frame_obstacles[0]
             obs_name = first_obs.get("class_name", "Obstacle").capitalize()
             obs_conf = first_obs.get("confidence", 0.85)
             obs_count = len(frame_obstacles)
             if obs_count > 1:
                 names = sorted(list(set(d.get("class_name", "Obstacle").capitalize() for d in frame_obstacles)))
-                headline = f"SPACE BLOCKED: {names[0].upper()} & OBSTACLES"
-                reason = f"Ground obstacles and entities detected in camera view ({', '.join(names[:3])}). Area is not clear for parking."
+                headline = f"NOT SUITABLE — SPACE BLOCKED BY {names[0].upper()}"
+                reason = f"Ground obstacles and entities detected in candidate parking space ({', '.join(names[:3])}). Area is physically obstructed."
             else:
-                headline = f"SPACE BLOCKED: {obs_name.upper()}"
-                reason = f"Ground obstruction ({obs_name} {int(obs_conf*100)}%) detected in camera view. Area is not clear for parking."
+                headline = f"NOT SUITABLE — SPACE BLOCKED BY {obs_name.upper()}"
+                reason = f"Ground obstruction ({obs_name} {int(obs_conf*100)}%) detected in candidate parking space. Area is physically obstructed."
 
             return {
                 "decision": DecisionState.NOT_SUITABLE,
                 "final_decision": DecisionState.NOT_SUITABLE,
                 "status_code": "NOT_SUITABLE",
+                "detailed_status": "NOT SUITABLE",
                 "color": "red",
                 "decision_color": "red",
                 "icon": "🔴",
@@ -213,24 +214,22 @@ class ParkingDecisionEngine:
 
         # REJECTION 2: No candidate spaces discovered in camera frame
         if not candidate_spaces:
-            if frame_obstacles:
-                first_obs = frame_obstacles[0]
-                obs_name = first_obs.get("class_name", "Obstacle").capitalize()
-                obs_conf = first_obs.get("confidence", 0.85)
-                headline = f"SPACE BLOCKED: {obs_name.upper()}"
-                reason = f"Ground obstruction ({obs_name} {int(obs_conf*100)}%) detected in camera view. Area is not clear for parking."
+            if not is_zone_valid and zone_class in ("house_floor", "garden", "field", "footpath", "private_property", "restricted_no_parking"):
+                headline = zone_info.get("headline", "NOT SUITABLE FOR PARKING")
+                reason = zone_info.get("reason", "Area is not an authorized vehicular parking surface.")
                 return {
                     "decision": DecisionState.NOT_SUITABLE,
                     "final_decision": DecisionState.NOT_SUITABLE,
                     "status_code": "NOT_SUITABLE",
+                    "detailed_status": "NOT SUITABLE",
                     "color": "red",
                     "decision_color": "red",
                     "icon": "🔴",
                     "decision_icon": "🔴",
                     "headline": headline,
                     "reason": reason,
-                    "confidence_score": 0.94,
-                    "confidence_percent": 94,
+                    "confidence_score": 0.90,
+                    "confidence_percent": 90,
                     "can_recommend": False,
                     "recommended_space": None,
                     "ranked_spaces": [],
@@ -245,43 +244,46 @@ class ParkingDecisionEngine:
                         "detected_space_width_m": 0.0,
                         "length_check_pass": False,
                         "width_check_pass": False,
-                        "length_status": "— Obstructed",
-                        "width_status": "— Obstructed",
-                        "obstacle_check_pass": False,
-                        "obstacle_status": f"✗ Blocked ({obs_name})",
-                        "zone_check_pass": is_zone_valid,
-                        "zone_status": "✓ Ground Corridor" if is_zone_valid else "🟡 Awaiting Demarcations",
-                        "confidence_percent": 94,
+                        "length_status": "✗ Invalid Surface",
+                        "width_status": "✗ Invalid Surface",
+                        "obstacle_check_pass": True,
+                        "obstacle_status": "✓ Evaluated",
+                        "zone_check_pass": False,
+                        "zone_status": f"✗ Rejected ({headline})",
+                        "confidence_percent": 90,
                         "final_verdict": f"🔴 {headline}",
                         "reason": reason,
                         "vehicle": f"{v_name} ({round(v_len*3.28, 1)}ft × {round(v_wid*3.28, 1)}ft)",
-                        "detected_free_space": "None (Obstructed)",
+                        "detected_free_space": "None",
                         "safety_margin": f"{margin_m}m ({round(margin_m*3.28, 1)}ft)",
                         "required_space": f"{required_len}m × {required_wid}m",
-                        "length_check": "— Obstructed",
-                        "width_check": "— Obstructed",
-                        "obstacles": f"✗ Blocked: {obs_name}",
-                        "parking_zone": "✓ Ground Corridor" if is_zone_valid else "🟡 Awaiting Demarcations",
-                        "confidence": "94%"
+                        "length_check": "✗ Invalid Surface",
+                        "width_check": "✗ Invalid Surface",
+                        "obstacles": "✓ Evaluated",
+                        "parking_zone": f"✗ Rejected ({headline})",
+                        "confidence": "90%"
                     },
-                    "speech_text": f"Not suitable for parking. Space is blocked by {obs_name}.",
-                    "guidance_banner": f"🔴 NOT SUITABLE • Blocked by {obs_name}"
+                    "speech_text": f"{headline}. {reason}",
+                    "guidance_banner": f"🔴 NOT SUITABLE • {headline}"
                 }
 
-            headline = "NO PARKING SPACE DETECTED"
-            reason = "No designated parking bay markings, road asphalt corridors, or vacant bays in view."
+            is_open_paved = zone_info.get("is_open_paved_ground", False) or (zone_class == "unmarked_paved_ground")
+            headline = "OPEN AREA DETECTED — CHECKING VEHICLE FIT" if is_open_paved else "NO PARKING SPACE DETECTED"
+            detailed_status = "OPEN AREA DETECTED" if is_open_paved else "UNCERTAIN"
+            reason = "Open ground detected. Evaluating boundaries and clearances." if is_open_paved else "No designated parking bay markings, road corridors, or vacant bays in view."
             return {
                 "decision": DecisionState.UNCERTAIN,
                 "final_decision": DecisionState.UNCERTAIN,
                 "status_code": "UNCERTAIN",
+                "detailed_status": detailed_status,
                 "color": "yellow",
                 "decision_color": "yellow",
                 "icon": "🟡",
                 "decision_icon": "🟡",
                 "headline": headline,
                 "reason": reason,
-                "confidence_score": 0.50,
-                "confidence_percent": 50,
+                "confidence_score": 0.55 if is_open_paved else 0.50,
+                "confidence_percent": 55 if is_open_paved else 50,
                 "can_recommend": False,
                 "recommended_space": None,
                 "ranked_spaces": [],
@@ -296,27 +298,27 @@ class ParkingDecisionEngine:
                     "detected_space_width_m": 0.0,
                     "length_check_pass": False,
                     "width_check_pass": False,
-                    "length_status": "— Awaiting Space",
-                    "width_status": "— Awaiting Space",
+                    "length_status": "— Awaiting Calibration",
+                    "width_status": "— Awaiting Calibration",
                     "obstacle_check_pass": True,
                     "obstacle_status": "✓ Evaluated",
-                    "zone_check_pass": False,
-                    "zone_status": "🟡 Awaiting Demarcations",
-                    "confidence_percent": 50,
+                    "zone_check_pass": is_open_paved,
+                    "zone_status": "✓ Open Paved Ground" if is_open_paved else "🟡 Awaiting Demarcations",
+                    "confidence_percent": 55 if is_open_paved else 50,
                     "final_verdict": f"🟡 {headline}",
                     "reason": reason,
                     "vehicle": f"{v_name} ({round(v_len*3.28, 1)}ft × {round(v_wid*3.28, 1)}ft)",
                     "detected_free_space": "—",
                     "safety_margin": f"{margin_m}m ({round(margin_m*3.28, 1)}ft)",
                     "required_space": f"{required_len}m × {required_wid}m",
-                    "length_check": "— Awaiting Space",
-                    "width_check": "— Awaiting Space",
+                    "length_check": "— Awaiting Calibration",
+                    "width_check": "— Awaiting Calibration",
                     "obstacles": "✓ Evaluated",
-                    "parking_zone": "🟡 Awaiting Demarcations",
-                    "confidence": "50%"
+                    "parking_zone": "✓ Open Paved Ground" if is_open_paved else "🟡 Awaiting Demarcations",
+                    "confidence": f"{55 if is_open_paved else 50}%"
                 },
-                "speech_text": "No parking space detected. Please point camera at an authorized parking bay or road surface.",
-                "guidance_banner": "🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays"
+                "speech_text": f"{headline}. {reason}",
+                "guidance_banner": f"🟡 {headline} • {reason}"
             }
 
         # -------------------------------------------------------------
@@ -357,20 +359,17 @@ class ParkingDecisionEngine:
             is_physically_fit = length_fits and width_fits
             is_blocked = (s_status in ("BLOCKED", "OCCUPIED")) or (blocked_reason is not None)
 
-            # Suitability of this specific candidate
+            # Suitability: physically open, fits vehicle, and on plausible surface
             is_suitable = is_physically_fit and not is_blocked and (is_zone_valid or zone_class not in ("garden", "footpath", "field", "house_floor"))
 
-            # Diagnostic checks for explanation
             length_check_str = "✓ Sufficient" if length_fits else f"✗ Insufficient ({s_len}m < {required_len}m required)"
             width_check_str = "✓ Sufficient" if width_fits else f"✗ Insufficient ({s_wid}m < {required_wid}m required)"
             obstacle_str = f"✗ Blocked ({blocked_reason})" if is_blocked else "✓ None"
 
-            # Compute candidate ranking score
-            # Higher score = better vehicle fit, greater clearance margin, obstacle-free
             score = 0.0
             if is_suitable:
                 score += 100.0
-                score += min(50.0, (wid_diff + len_diff) * 10.0)  # bonus for comfortable clearance
+                score += min(50.0, (wid_diff + len_diff) * 10.0)
             elif is_blocked:
                 score -= 50.0
             elif not is_physically_fit:
@@ -396,18 +395,16 @@ class ParkingDecisionEngine:
         # ---------------------------------------------------------------------
         evaluated_candidates.sort(key=lambda item: item["score"], reverse=True)
 
-        # Separate suitable candidates
         suitable_candidates = [c for c in evaluated_candidates if c["is_suitable"]]
         best_candidate_eval = suitable_candidates[0] if suitable_candidates else evaluated_candidates[0]
         best_space = best_candidate_eval["space"]
 
-        # Tag best recommended space
         for idx, item in enumerate(evaluated_candidates):
             item["space"]["is_recommended"] = (idx == 0 and item["is_suitable"])
             item["space"]["rank"] = idx + 1
 
         # ---------------------------------------------------------------------
-        # SYNTHESIZE FINAL DECISION
+        # SYNTHESIZE FINAL DECISION (Separate: Open Space vs Vehicle Fit vs Permission)
         # ---------------------------------------------------------------------
         s_len_ft = round(float(best_space.get("length_m", 0) or best_space.get("metrics", {}).get("length_m", 0)) * 3.28084, 1)
         s_wid_ft = round(float(best_space.get("width_m", 0) or best_space.get("metrics", {}).get("width_m", 0)) * 3.28084, 1)
@@ -423,27 +420,32 @@ class ParkingDecisionEngine:
 
         ranked_spaces_list = [item["space"] for item in evaluated_candidates]
 
-        if suitable_candidates:
-            # 🟢 SUITABLE
-            headline = "YES — YOU CAN PARK YOUR VEHICLE HERE"
-            slot_name = best_space.get('label', f"Candidate {best_space.get('rank', 1)}")
-            reason = (
-                f"{slot_name} verified ({s_len_ft} ft × {s_wid_ft} ft). "
-                f"Fits your {v_name} with {clr_str} clearance margin."
-            )
+        can_park_legally = bool(permission_info.get("can_park_legally", False))
+        is_permission_unknown = bool(permission_info.get("is_unknown", True))
+        is_prohibited = bool(permission_info.get("is_prohibited", False))
+        is_perm_verified = can_park_legally and (not is_permission_unknown) and (not is_prohibited) and is_zone_valid
+
+        # Check if space is uncalibrated / unverified dimensions
+        metrics_dict = best_space.get("metrics", {})
+        is_calibrated = metrics_dict.get("calibration_verified", True)
+        if best_space.get("source") == "unmarked_open_ground" and not is_calibrated:
+            headline = "OPEN AREA DETECTED — VEHICLE FIT NOT VERIFIED"
+            detailed_status = "OPEN AREA DETECTED"
+            reason = "Open paved ground region detected, but real-world metric dimensions cannot be verified without calibration reference."
             return {
-                "decision": DecisionState.SUITABLE,
-                "final_decision": DecisionState.SUITABLE,
-                "status_code": "SUITABLE",
-                "color": "green",
-                "decision_color": "green",
-                "icon": "🟢",
-                "decision_icon": "🟢",
+                "decision": DecisionState.UNCERTAIN,
+                "final_decision": DecisionState.UNCERTAIN,
+                "status_code": "UNCERTAIN",
+                "detailed_status": detailed_status,
+                "color": "yellow",
+                "decision_color": "yellow",
+                "icon": "🟡",
+                "decision_icon": "🟡",
                 "headline": headline,
                 "reason": reason,
-                "confidence_score": 0.92,
-                "confidence_percent": 92,
-                "can_recommend": True,
+                "confidence_score": 0.65,
+                "confidence_percent": 65,
+                "can_recommend": False,
                 "recommended_space": best_space,
                 "ranked_spaces": ranked_spaces_list,
                 "analysis_summary": {
@@ -455,44 +457,219 @@ class ParkingDecisionEngine:
                     "required_width_m": required_wid,
                     "detected_space_length_m": best_space.get("length_m", 0.0),
                     "detected_space_width_m": best_space.get("width_m", 0.0),
-                    "length_check_pass": True,
-                    "width_check_pass": True,
-                    "length_status": "✓ Sufficient",
-                    "width_status": "✓ Sufficient",
+                    "length_check_pass": False,
+                    "width_check_pass": False,
+                    "length_status": "🟡 Dimensions Uncalibrated",
+                    "width_status": "🟡 Dimensions Uncalibrated",
                     "obstacle_check_pass": True,
                     "obstacle_status": "✓ None",
                     "zone_check_pass": True,
-                    "zone_status": "✓ Detected & Verified",
-                    "confidence_percent": 92,
-                    "final_verdict": f"🟢 {headline}",
+                    "zone_status": "✓ Open Paved Ground",
+                    "confidence_percent": 65,
+                    "final_verdict": f"🟡 {headline}",
                     "reason": reason,
                     "vehicle": f"{v_name} ({v_len_ft}ft × {v_wid_ft}ft)",
-                    "detected_free_space": f"{s_len_ft}ft (L) × {s_wid_ft}ft (W)",
+                    "detected_free_space": "Uncalibrated",
                     "safety_margin": f"{margin_m}m ({margin_ft}ft)",
                     "required_space": f"{req_len_ft}ft × {req_wid_ft}ft",
-                    "length_check": best_candidate_eval["length_check"],
-                    "width_check": best_candidate_eval["width_check"],
-                    "obstacles": best_candidate_eval["obstacle_check"],
-                    "parking_zone": "✓ Detected & Verified",
-                    "confidence": "92%"
+                    "length_check": "🟡 Uncalibrated",
+                    "width_check": "🟡 Uncalibrated",
+                    "obstacles": "✓ None",
+                    "parking_zone": "✓ Open Paved Ground",
+                    "confidence": "65%"
                 },
-                "speech_text": (
-                    f"Yes! You can park your vehicle here. {best_space.get('label', 'Space')} is free and verified. "
-                    f"It fits your {v_name} with {clr_str} clearance."
-                ),
-                "guidance_banner": f"🟢 YES — YOU CAN PARK YOUR VEHICLE HERE • {best_space.get('label', '').upper()} • Clearance: {clr_str} • Fits {v_name}"
+                "speech_text": "Open area detected, but vehicle fit is not verified. Please verify clearance carefully.",
+                "guidance_banner": f"🟡 OPEN AREA DETECTED • Vehicle fit not verified"
             }
+
+        if suitable_candidates:
+            if is_perm_verified:
+                # 🟢 YES — YOU CAN PARK HERE
+                headline = "YES — YOU CAN PARK HERE"
+                detailed_status = "PARKING PERMISSION VERIFIED"
+                slot_name = best_space.get('label', f"Candidate {best_space.get('rank', 1)}")
+                reason = (
+                    f"Designated parking space verified ({s_len_ft} ft × {s_wid_ft} ft). "
+                    f"Currently unobstructed, and fits your {v_name} with {clr_str} clearance margin."
+                )
+                return {
+                    "decision": DecisionState.SUITABLE,
+                    "final_decision": DecisionState.SUITABLE,
+                    "status_code": "SUITABLE",
+                    "detailed_status": detailed_status,
+                    "color": "green",
+                    "decision_color": "green",
+                    "icon": "🟢",
+                    "decision_icon": "🟢",
+                    "headline": headline,
+                    "reason": reason,
+                    "confidence_score": 0.92,
+                    "confidence_percent": 92,
+                    "can_recommend": True,
+                    "recommended_space": best_space,
+                    "ranked_spaces": ranked_spaces_list,
+                    "analysis_summary": {
+                        "vehicle_name": v_name,
+                        "vehicle_length_m": v_len,
+                        "vehicle_width_m": v_wid,
+                        "safety_margin_m": margin_m,
+                        "required_length_m": required_len,
+                        "required_width_m": required_wid,
+                        "detected_space_length_m": best_space.get("length_m", 0.0),
+                        "detected_space_width_m": best_space.get("width_m", 0.0),
+                        "length_check_pass": True,
+                        "width_check_pass": True,
+                        "length_status": "✓ Sufficient",
+                        "width_status": "✓ Sufficient",
+                        "obstacle_check_pass": True,
+                        "obstacle_status": "✓ None",
+                        "zone_check_pass": True,
+                        "zone_status": "✓ Detected & Verified",
+                        "confidence_percent": 92,
+                        "final_verdict": f"🟢 {headline}",
+                        "reason": reason,
+                        "vehicle": f"{v_name} ({v_len_ft}ft × {v_wid_ft}ft)",
+                        "detected_free_space": f"{s_len_ft}ft (L) × {s_wid_ft}ft (W)",
+                        "safety_margin": f"{margin_m}m ({margin_ft}ft)",
+                        "required_space": f"{req_len_ft}ft × {req_wid_ft}ft",
+                        "length_check": best_candidate_eval["length_check"],
+                        "width_check": best_candidate_eval["width_check"],
+                        "obstacles": best_candidate_eval["obstacle_check"],
+                        "parking_zone": "✓ Detected & Verified",
+                        "confidence": "92%"
+                    },
+                    "speech_text": f"Yes! You can park here. Space is verified and fits your {v_name}.",
+                    "guidance_banner": f"🟢 YES — YOU CAN PARK HERE • Clearance: {clr_str} • Fits {v_name}"
+                }
+            elif is_prohibited:
+                # 🔴 PROHIBITED
+                headline = "NOT SUITABLE — PARKING RESTRICTED"
+                detailed_status = "NOT SUITABLE"
+                reason = "Parking is legally prohibited or tow-away regulations apply at this location."
+                return {
+                    "decision": DecisionState.NOT_SUITABLE,
+                    "final_decision": DecisionState.NOT_SUITABLE,
+                    "status_code": "NOT_SUITABLE",
+                    "detailed_status": detailed_status,
+                    "color": "red",
+                    "decision_color": "red",
+                    "icon": "🔴",
+                    "decision_icon": "🔴",
+                    "headline": headline,
+                    "reason": reason,
+                    "confidence_score": 0.96,
+                    "confidence_percent": 96,
+                    "can_recommend": False,
+                    "recommended_space": None,
+                    "ranked_spaces": ranked_spaces_list,
+                    "analysis_summary": {
+                        "vehicle_name": v_name,
+                        "vehicle_length_m": v_len,
+                        "vehicle_width_m": v_wid,
+                        "safety_margin_m": margin_m,
+                        "required_length_m": required_len,
+                        "required_width_m": required_wid,
+                        "detected_space_length_m": best_space.get("length_m", 0.0),
+                        "detected_space_width_m": best_space.get("width_m", 0.0),
+                        "length_check_pass": True,
+                        "width_check_pass": True,
+                        "length_status": "✓ Sufficient",
+                        "width_status": "✓ Sufficient",
+                        "obstacle_check_pass": True,
+                        "obstacle_status": "✓ None",
+                        "zone_check_pass": False,
+                        "zone_status": "✗ Prohibited Zone",
+                        "confidence_percent": 96,
+                        "final_verdict": f"🔴 {headline}",
+                        "reason": reason,
+                        "vehicle": f"{v_name} ({v_len_ft}ft × {v_wid_ft}ft)",
+                        "detected_free_space": f"{s_len_ft}ft × {s_wid_ft}ft",
+                        "safety_margin": f"{margin_m}m ({margin_ft}ft)",
+                        "required_space": f"{req_len_ft}ft × {req_wid_ft}ft",
+                        "length_check": "✓ Sufficient",
+                        "width_check": "✓ Sufficient",
+                        "obstacles": "✓ None",
+                        "parking_zone": "✗ Prohibited Zone",
+                        "confidence": "96%"
+                    },
+                    "speech_text": "Not suitable. Parking is prohibited at this location.",
+                    "guidance_banner": f"🔴 NOT SUITABLE • Parking is prohibited at this location"
+                }
+            else:
+                # 🟡 PHYSICALLY SUITABLE — PARKING PERMISSION UNVERIFIED
+                headline = "PHYSICALLY SUITABLE — PARKING PERMISSION UNVERIFIED"
+                detailed_status = "VEHICLE FIT VERIFIED"
+                slot_name = best_space.get('label', f"Candidate {best_space.get('rank', 1)}")
+                reason = (
+                    f"{slot_name} appears physically suitable ({s_len_ft} ft × {s_wid_ft} ft) "
+                    f"and fits your {v_name} with {clr_str} clearance margin, "
+                    f"but legal parking permission or municipal lot registration is unverified."
+                )
+                return {
+                    "decision": DecisionState.UNCERTAIN,
+                    "final_decision": DecisionState.UNCERTAIN,
+                    "status_code": "UNCERTAIN",
+                    "detailed_status": detailed_status,
+                    "color": "yellow",
+                    "decision_color": "yellow",
+                    "icon": "🟡",
+                    "decision_icon": "🟡",
+                    "headline": headline,
+                    "reason": reason,
+                    "confidence_score": 0.78,
+                    "confidence_percent": 78,
+                    "can_recommend": False,
+                    "recommended_space": best_space,
+                    "ranked_spaces": ranked_spaces_list,
+                    "analysis_summary": {
+                        "vehicle_name": v_name,
+                        "vehicle_length_m": v_len,
+                        "vehicle_width_m": v_wid,
+                        "safety_margin_m": margin_m,
+                        "required_length_m": required_len,
+                        "required_width_m": required_wid,
+                        "detected_space_length_m": best_space.get("length_m", 0.0),
+                        "detected_space_width_m": best_space.get("width_m", 0.0),
+                        "length_check_pass": True,
+                        "width_check_pass": True,
+                        "length_status": "✓ Sufficient",
+                        "width_status": "✓ Sufficient",
+                        "obstacle_check_pass": True,
+                        "obstacle_status": "✓ None",
+                        "zone_check_pass": True,
+                        "zone_status": "✓ Open Ground (Permission Unverified)",
+                        "confidence_percent": 78,
+                        "final_verdict": f"🟡 {headline}",
+                        "reason": reason,
+                        "vehicle": f"{v_name} ({v_len_ft}ft × {v_wid_ft}ft)",
+                        "detected_free_space": f"{s_len_ft}ft (L) × {s_wid_ft}ft (W)",
+                        "safety_margin": f"{margin_m}m ({margin_ft}ft)",
+                        "required_space": f"{req_len_ft}ft × {req_wid_ft}ft",
+                        "length_check": best_candidate_eval["length_check"],
+                        "width_check": best_candidate_eval["width_check"],
+                        "obstacles": best_candidate_eval["obstacle_check"],
+                        "parking_zone": "🟡 Permission Unverified",
+                        "confidence": "78%"
+                    },
+                    "speech_text": f"Space is physically suitable for your {v_name}, but parking permission is unverified.",
+                    "guidance_banner": f"🟡 PHYSICALLY SUITABLE • Parking permission unverified • Clearance: {clr_str}"
+                }
 
         # Check if rejected due to obstacle/person blocker
         if best_candidate_eval["is_blocked"]:
-            # 🔴 BLOCKED
-            blocked_msg = best_candidate_eval["blocked_reason"] or "Obstacle or person in candidate space"
-            headline = f"NO — THIS SPACE IS NOT SUITABLE (BLOCKED BY {blocked_msg.upper()})"
-            reason = f"Candidate parking region is obstructed by {blocked_msg}. Space is not clear for parking."
+            blocked_msg = best_candidate_eval["blocked_reason"] or "Obstacle in candidate space"
+            is_veh_block = "vehicle" in blocked_msg.lower() or "car" in blocked_msg.lower() or "bike" in blocked_msg.lower() or "auto" in blocked_msg.lower()
+            headline = "NOT SUITABLE — SPACE BLOCKED BY VEHICLE" if is_veh_block else "NOT SUITABLE — SPACE BLOCKED BY OBSTACLE"
+            reason = (
+                f"Candidate parking space is occupied by another vehicle ({blocked_msg}). Space is not available."
+                if is_veh_block else
+                f"Candidate parking space is obstructed by {blocked_msg}. Space is physically blocked."
+            )
             return {
                 "decision": DecisionState.NOT_SUITABLE,
                 "final_decision": DecisionState.NOT_SUITABLE,
                 "status_code": "NOT_SUITABLE",
+                "detailed_status": "NOT SUITABLE",
                 "color": "red",
                 "decision_color": "red",
                 "icon": "🔴",
@@ -540,17 +717,17 @@ class ParkingDecisionEngine:
 
         # Check if rejected due to vehicle dimensions (too narrow / too short)
         if not best_candidate_eval["length_fits"] or not best_candidate_eval["width_fits"]:
-            # 🔴 VEHICLE DOES NOT FIT
             dim_issue = "narrow" if not best_candidate_eval["width_fits"] else "short"
-            headline = f"SPACE TOO {dim_issue.upper()} FOR YOUR VEHICLE"
+            headline = "NOT SUITABLE — SPACE TOO SMALL"
             reason = (
-                f"Candidate space ({s_len_ft}ft × {s_wid_ft}ft) is too {dim_issue} for {v_name} "
-                f"(requires {req_len_ft}ft × {req_wid_ft}ft including {margin_ft}ft safety margin)."
+                f"Candidate space ({s_len_ft} ft × {s_wid_ft} ft) is too {dim_issue} for {v_name} "
+                f"(requires {req_len_ft} ft × {req_wid_ft} ft including {margin_ft} ft clearance margin)."
             )
             return {
                 "decision": DecisionState.NOT_SUITABLE,
                 "final_decision": DecisionState.NOT_SUITABLE,
                 "status_code": "NOT_SUITABLE",
+                "detailed_status": "NOT SUITABLE",
                 "color": "red",
                 "decision_color": "red",
                 "icon": "🔴",
@@ -595,6 +772,7 @@ class ParkingDecisionEngine:
                 "speech_text": f"Space is too {dim_issue} for your {v_name}. Do not park here.",
                 "guidance_banner": f"🔴 NOT SUITABLE • Space too {dim_issue} for {v_name} ({clr_str} clearance)"
             }
+
 
         # Default fallback
         headline = "PARKING STATUS UNCERTAIN"

@@ -3237,93 +3237,41 @@ async def analyze_live_frame(request: Request):
             "frame_resolution": {"width": w, "height": h}
         }
 
-    # 5. HANDLE UNKNOWN / UNVERIFIED SURFACES (Open ground with no parking markings, signs, or database records)
-    if zone_result["status"] == ZoneStatus.UNKNOWN:
-        decision_eval = decision_engine.evaluate_decision(
-            vehicle_specs=veh_specs,
-            candidate_spaces=[],
-            detected_objects=detections,
-            zone_info=zone_result,
-            permission_status="UNKNOWN",
-            safety_margin_m=safety_margin
-        )
-        confidence_res = confidence_scorer.evaluate(
-            zone_result=zone_result,
-            occupancy_status="AVAILABLE",
-            obstacle_detected=False,
-            vehicle_fit={"is_suitable": True, "width_margin_m": 0.0, "clearance_ft_str": "Unverified"},
-            permission_info={"can_park_legally": False, "is_unknown": True},
-            detection_confidence=float(np.mean([d["confidence"] for d in detections])) if detections else 0.70
-        )
-        temporal_tracker.add_frame_result(confidence_res)
-
-        annotated_frame = ParkingVisualizer.annotate_frame(
-            image, [], detections, vehicle_name=veh_specs.get("name", "Vehicle"), selected_slot_id=None
-        )
-        _, buf = cv2.imencode(".jpg", annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-        annotated_b64 = base64.b64encode(buf).decode("utf-8")
-
-        return {
-            "success": True,
-            "status_code": "UNCERTAIN",
-            "final_decision": DecisionState.UNCERTAIN,
-            "decision_color": "yellow",
-            "decision_icon": "🟡",
-            "headline": "PARKING STATUS UNCERTAIN",
-            "reason": zone_result["reason"],
-            "checklist": confidence_res["checklist"],
-            "confidence_score": confidence_res["confidence_score"],
-            "confidence_percent": confidence_res["confidence_percent"],
-            "breakdown": confidence_res["breakdown"],
-            "can_recommend": False,
-            "is_parking_scene": False,
-            "is_indoor": False,
-            "zone_class": zone_result["zone_class"],
-            "recommended_slot": None,
-            "ar_slots": [],
-            "ranked_spaces": [],
-            "analysis_summary": decision_eval["analysis_summary"],
-            "safety_margin_m": safety_margin,
-            "vehicles_count": vehicles_count,
-            "obstacles_count": obstacles_count,
-            "detections": norm_detections,
-            "detections_count": len(detections),
-            "annotated_frame": f"data:image/jpeg;base64,{annotated_b64}",
-            "speech_text": "An empty area was detected, but a valid parking zone or permission could not be verified. Please use a designated public parking facility.",
-            "guidance_banner": "🟡 PARKING STATUS UNCERTAIN • Valid parking zone or permission could not be verified",
-            "summary": {"total_slots": 0, "available": 0, "occupied": 0, "blocked": obstacles_count},
-            "vehicle": veh_specs,
-            "frame_resolution": {"width": w, "height": h}
-        }
-
-    # 6. AUTHENTIC PARKING ZONE (Marked bay, parking lot, or verified facility)
+    # 5. AUTHENTIC PARKING ZONES & UNMARKED OPEN GROUND
+    # Analyze candidate spaces dynamically from camera image (supports demarcated stalls, corridors, & unmarked ground)
     scenarios = load_scenarios()
     scenario_data = scenarios.get(scenario_key) if scenario_key in scenarios else None
     predefined_slots = scenario_data.get("slots") if scenario_data else None
 
-    # Analyze candidate spaces dynamically from camera image
+    # Determine effective parking mode
+    eff_parking_mode = parking_mode
+    if zone_result["status"] == ZoneStatus.UNKNOWN or zone_result.get("is_open_paved_ground"):
+        if eff_parking_mode == "auto":
+            eff_parking_mode = "unmarked"
+
     analyzed_slots = space_analyzer.analyze_spaces(
         image_shape=(h, w),
         detections=detections,
         zone_info=zone_result,
         predefined_slots=predefined_slots,
         vehicle_specs=veh_specs,
-        parking_mode=parking_mode,
+        parking_mode=eff_parking_mode,
         image=image
     )
 
     # Verify legal rules for each candidate space
     for s in analyzed_slots:
-        rule_zone = s.get("rule_zone", "registered")
+        rule_zone = s.get("rule_zone", "registered" if (map_is_known or scenario_key) else "unconfirmed")
         s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
 
     # Run holistic Decision Engine: ranks multiple spaces, checks vehicle fit + safety margin
+    perm_status = "VERIFIED" if (map_is_known or scenario_key) else ("PROHIBITED" if zone_result["status"] == ZoneStatus.INVALID else "UNKNOWN")
     decision_eval = decision_engine.evaluate_decision(
         vehicle_specs=veh_specs,
         candidate_spaces=analyzed_slots,
         detected_objects=detections,
         zone_info=zone_result,
-        permission_status="VERIFIED" if (map_is_known or scenario_key) else "UNKNOWN",
+        permission_status=perm_status,
         safety_margin_m=safety_margin
     )
 
@@ -3440,16 +3388,11 @@ async def analyze_live_frame(request: Request):
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     elif final_decision == DecisionState.UNCERTAIN:
-        speech_text = "No parking space detected. Please point camera at an authorized parking bay or road surface."
-        guidance_banner = f"🟡 NO PARKING SPACE DETECTED • {reason}"
+        speech_text = decision_eval.get("speech_text") or f"{headline}. {reason}"
+        guidance_banner = decision_eval.get("guidance_banner") or f"🟡 {headline} • {reason}"
     else:
-        any_avail = any(s["status"] == "AVAILABLE" for s in analyzed_slots)
-        if any_avail:
-            speech_text = f"Spaces in view are too narrow for your {bike_display_name}. Do not park here."
-            guidance_banner = f"🔴 NOT SUITABLE • Bays do not fit {bike_display_name} safely"
-        else:
-            speech_text = f"Not suitable for parking. {reason}"
-            guidance_banner = f"🔴 NOT SUITABLE FOR PARKING • {reason}"
+        speech_text = decision_eval.get("speech_text") or f"{headline}. {reason}"
+        guidance_banner = decision_eval.get("guidance_banner") or f"🔴 {headline} • {reason}"
 
     avail_count = sum(1 for s in analyzed_slots if s["status"] == "AVAILABLE")
     occ_count = sum(1 for s in analyzed_slots if s["status"] == "OCCUPIED")
@@ -3470,6 +3413,7 @@ async def analyze_live_frame(request: Request):
         "success": True,
         "status_code": final_decision,
         "final_decision": final_decision,
+        "detailed_status": decision_eval.get("detailed_status", "UNCERTAIN" if final_decision == DecisionState.UNCERTAIN else ("SUITABLE" if final_decision == DecisionState.SUITABLE else "NOT SUITABLE")),
         "decision_color": decision_color,
         "decision_icon": decision_icon,
         "headline": headline,
@@ -3839,9 +3783,9 @@ async def scan_multiframe_endpoint(request: Request):
     if final_decision != DecisionState.SUITABLE:
         recommended_slot = None
 
-    # Construct AR slots for candidate spaces (strictly only if verified SUITABLE)
+    # Construct AR slots for candidate spaces (displays suitable, unmarked ground, or blocked spaces)
     ar_slots = []
-    display_slots = (ranked_spaces if ranked_spaces else latest_slots) if (final_decision == DecisionState.SUITABLE and recommended_slot) else []
+    display_slots = (ranked_spaces if ranked_spaces else latest_slots)
     h_best, w_best = best_img.shape[:2]
     for s in display_slots:
         norm_poly = [[round(pt[0] / w_best, 4), round(pt[1] / h_best, 4)] for pt in s["polygon"]]
@@ -3886,11 +3830,11 @@ async def scan_multiframe_endpoint(request: Request):
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     elif final_decision == DecisionState.UNCERTAIN:
-        speech_text = "No parking space detected. Please point camera at an authorized parking bay or road surface."
-        guidance_banner = f"🟡 NO PARKING SPACE DETECTED • {reason}"
+        speech_text = decision_eval.get("speech_text") or f"{headline}. {reason}"
+        guidance_banner = decision_eval.get("guidance_banner") or f"🟡 {headline} • {reason}"
     else:
-        speech_text = f"Not suitable for parking. {reason}"
-        guidance_banner = f"🔴 NOT SUITABLE FOR PARKING • {reason}"
+        speech_text = decision_eval.get("speech_text") or f"{headline}. {reason}"
+        guidance_banner = decision_eval.get("guidance_banner") or f"🔴 {headline} • {reason}"
 
     # Annotate frame
     annotated_frame = ParkingVisualizer.annotate_frame(
@@ -3907,6 +3851,7 @@ async def scan_multiframe_endpoint(request: Request):
         "success": True,
         "status_code": final_decision,
         "final_decision": final_decision,
+        "detailed_status": decision_eval.get("detailed_status", "UNCERTAIN" if final_decision == DecisionState.UNCERTAIN else ("SUITABLE" if final_decision == DecisionState.SUITABLE else "NOT SUITABLE")),
         "decision_color": decision_color,
         "decision_icon": decision_icon,
         "headline": headline,
