@@ -58,20 +58,45 @@ export default function handler(req, res) {
 
     const analysis = analyzeImageBuffer(firstB64, clientFeatures);
     const entities = analysis.detectedEntities || [];
-    const hasPerson = entities.some(e => e.is_person);
-    const hasHazard = entities.some(e => e.is_obstacle);
+    const pList = entities.filter(e => e.is_person && !e.is_obstacle);
+    const oList = entities.filter(e => e.is_obstacle || (!e.is_person && !e.is_vehicle));
+    const hasPerson = pList.length > 0;
+    const hasHazard = oList.length > 0;
     const hasVehicles = entities.some(e => e.is_vehicle) || analysis.vehiclesCount > 0;
 
     // PRIORITY 1: OBSTACLE OR PEDESTRIAN DETECTED IN CAMERA VIEW
     if (hasPerson || hasHazard || (entities.length > 0 && !hasVehicles)) {
-      const obsLabel = hasPerson ? 'PEDESTRIAN' : (hasHazard ? 'GROUND OBSTACLE' : (entities[0].class_name || 'OBSTACLE'));
+      let obsLabel = 'GROUND OBSTACLE';
+      let headline = 'SPACE BLOCKED BY OBSTACLE';
+      let bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is blocked by an obstacle';
+      let voiceText = 'Not suitable for parking. Space is blocked by an obstacle.';
+
+      if (hasPerson && hasHazard) {
+        obsLabel = 'OBSTACLES & PEDESTRIANS';
+        headline = 'SPACE BLOCKED BY OBSTACLES & PEDESTRIANS';
+        bannerText = '🔴 NOT SUITABLE FOR PARKING • Area has obstacles and pedestrians';
+        voiceText = 'Not suitable for parking. Space is obstructed by obstacles and pedestrians.';
+      } else if (hasPerson) {
+        obsLabel = 'PEDESTRIAN';
+        headline = 'SPACE BLOCKED BY PEDESTRIAN';
+        bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is blocked by pedestrian';
+        voiceText = 'Not suitable for parking. Space is blocked by a pedestrian.';
+      } else {
+        const topObs = oList[0] || entities[0];
+        const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
+        obsLabel = rawName === 'CONE' ? 'TRAFFIC CONE' : (rawName === 'BICYCLE' ? 'BICYCLE' : (rawName === 'CAR' ? 'VEHICLE' : 'GROUND OBSTACLE'));
+        headline = `SPACE BLOCKED BY ${obsLabel}`;
+        bannerText = `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`;
+        voiceText = `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`;
+      }
+
       return res.status(200).json({
         success: true,
         status_code: 'NOT_SUITABLE',
         final_decision: 'NOT_SUITABLE',
         decision_color: 'red',
         decision_icon: '🔴',
-        headline: `SPACE BLOCKED BY ${obsLabel.toUpperCase()}`,
+        headline: headline,
         reason: `Obstacle or hazard (${obsLabel}) detected in the camera view. Area is not clear for parking.`,
         can_recommend: false,
         is_parking_scene: true,
@@ -79,8 +104,8 @@ export default function handler(req, res) {
         ar_slots: [],
         detections: entities,
         vehicles_count: analysis.vehiclesCount || 0,
-        persons_count: hasPerson ? 1 : 0,
-        obstacles_count: (hasHazard || !hasPerson) ? entities.length : 0,
+        persons_count: pList.length,
+        obstacles_count: oList.length > 0 ? oList.length : 1,
         confidence_score: 0.94,
         confidence_percent: 94,
         checklist: {
@@ -97,8 +122,8 @@ export default function handler(req, res) {
           vehicle_fit: 0.10,
           permission: 0.40
         },
-        guidance_banner: `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`,
-        speech_text: `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`
+        guidance_banner: bannerText,
+        speech_text: voiceText
       });
     }
 

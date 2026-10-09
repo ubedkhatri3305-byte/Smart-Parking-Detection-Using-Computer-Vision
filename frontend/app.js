@@ -2132,8 +2132,11 @@ async function captureAndScanFrame(isManual = false) {
     const cFeats = (typeof tempCanvas !== 'undefined') ? extractClientImageFeatures(tempCanvas) : { is_wall_or_screen: false, detected_entities: [] };
     const entList = cFeats.detected_entities || [];
     if (entList.length > 0) {
-      const hasPers = entList.some(e => e.is_person);
-      const obsLbl = hasPers ? 'PEDESTRIAN' : 'OBSTACLE';
+      const pList = entList.filter(e => e.is_person && !e.is_obstacle);
+      const oList = entList.filter(e => e.is_obstacle || (!e.is_person && !e.is_vehicle));
+      const hasPers = pList.length > 0;
+      const topObs = oList[0] || entList[0];
+      const obsLbl = hasPers ? 'PEDESTRIAN' : ((topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE');
       renderLiveScanResults({
         success: true,
         status_code: 'NOT_SUITABLE',
@@ -2144,8 +2147,8 @@ async function captureAndScanFrame(isManual = false) {
         ar_slots: [],
         detections: entList,
         vehicles_count: cFeats.vehicles_count || 0,
-        obstacles_count: entList.filter(e => e.is_obstacle).length,
-        persons_count: hasPers ? 1 : 0,
+        obstacles_count: oList.length > 0 ? oList.length : (hasPers ? 0 : 1),
+        persons_count: pList.length,
         guidance_banner: `🔴 NOT SUITABLE • Blocked by ${obsLbl.toLowerCase()}`
       });
     } else if (cFeats.is_wall_or_screen) {
@@ -2338,7 +2341,7 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bh = hNorm * ch;
 
       const cNameUpper = (det.class_name || '').toUpperCase();
-      const isPerson = det.is_person || cNameUpper === 'PERSON' || cNameUpper === 'PEDESTRIAN';
+      const isPerson = (det.is_person === true) || (cNameUpper === 'PERSON' && !det.is_obstacle) || cNameUpper === 'PEDESTRIAN';
 
       // Filter out ego-vehicle interior dashboard only if an ultra-wide vehicle detection spans across the bottom
       const isVeh = det.is_vehicle || ['CAR', 'TRUCK', 'BUS', 'VAN'].includes(cNameUpper);
@@ -5474,8 +5477,8 @@ function extractClientImageFeatures(canvas) {
         const sat = maxC - minC;
         satSum += sat;
 
-        // Human skin tone detection (face, hands, arms, body in front of lens)
-        if (red > 80 && green > 35 && blue > 20 && red > green && red > blue && (red - green >= 10) && sat >= 15) {
+        // Human skin chromaticity (strict Kovac/Peer skin color locus - face/neck/hands)
+        if (red > 95 && green > 40 && blue > 20 && red > green && green > blue && (red - green >= 15) && (red - blue >= 20) && (green - blue >= 5) && sat >= 20 && sat <= 115) {
           skinTonePoints++;
         }
 
@@ -5541,17 +5544,79 @@ function extractClientImageFeatures(canvas) {
     }
 
     const clusterRatio = clusterPoints / sampleCount;
-    const hasSkin = skinRatio > 0.035;
+    const hasCluster = clusterRatio > 0.02 && (maxRow - minRow) >= 2 && (maxCol - minCol) >= 2;
 
-    // If person or major entity in camera view
-    if (hasSkin || (clusterRatio > 0.02 && (maxRow - minRow) >= 2 && (maxCol - minCol) >= 2)) {
+    // Analyze contrasting foreground object if present in camera view
+    if (hasCluster) {
       const bx = Math.max(0.06, (minCol * stepX) / cw);
       const by = Math.max(0.10, (minRow * stepY) / ch);
       const bw = Math.min(0.88 - bx, ((maxCol - minCol + 1) * stepX) / cw);
       const bh = Math.min(0.85 - by, ((maxRow - minRow + 1) * stepY) / ch);
       const aspect = bh / Math.max(0.01, bw);
 
-      if (hasSkin || aspect >= 1.0) {
+      // Detailed pixel inspection within the detected entity bounding box
+      let clusterTotal = 0;
+      let clusterSkinCount = 0;
+      let clusterHeadSkinCount = 0;
+      let clusterHeadTotal = 0;
+      let clusterConeCount = 0;
+      const headRowBoundary = minRow + Math.max(1, Math.round((maxRow - minRow) * 0.35));
+
+      for (let cr = minRow; cr <= maxRow; cr++) {
+        for (let cc = minCol; cc <= maxCol; cc++) {
+          const cx = cc * stepX;
+          const cy = cr * stepY;
+          const cidx = (cy * cw + cx) * 4;
+          const cr_red = imgData[cidx];
+          const cr_green = imgData[cidx + 1];
+          const cr_blue = imgData[cidx + 2];
+          const cr_max = Math.max(cr_red, cr_green, cr_blue);
+          const cr_min = Math.min(cr_red, cr_green, cr_blue);
+          const cr_sat = cr_max - cr_min;
+
+          clusterTotal++;
+
+          // Human face/neck skin chromaticity
+          const isSkin = cr_red > 95 && cr_green > 40 && cr_blue > 20 &&
+                         cr_red > cr_green && cr_green > cr_blue &&
+                         (cr_red - cr_green >= 15) && (cr_red - cr_blue >= 20) &&
+                         (cr_green - cr_blue >= 5) &&
+                         cr_sat >= 20 && cr_sat <= 115;
+
+          if (isSkin) {
+            clusterSkinCount++;
+            if (cr <= headRowBoundary) {
+              clusterHeadSkinCount++;
+            }
+          }
+          if (cr <= headRowBoundary) {
+            clusterHeadTotal++;
+          }
+
+          // Traffic cone bright orange detection
+          const isConeOrange = cr_red > 175 && cr_green > 65 && cr_green < 165 && cr_blue < 70 &&
+                               (cr_red - cr_green >= 35) && (cr_red - cr_blue >= 110) &&
+                               cr_sat >= 75;
+          if (isConeOrange) {
+            clusterConeCount++;
+          }
+        }
+      }
+
+      const clusterSkinRatio = clusterSkinCount / Math.max(1, clusterTotal);
+      const headSkinRatio = clusterHeadSkinCount / Math.max(1, clusterHeadTotal);
+      const coneOrangeRatio = clusterConeCount / Math.max(1, clusterTotal);
+
+      // Person requires tall upright human aspect ratio AND concentrated facial skin tone in the upper segment
+      const isPersonEntity = (aspect >= 1.40) && (headSkinRatio >= 0.22) && (clusterSkinRatio >= 0.08);
+
+      // Traffic cone has characteristic bright orange color
+      const isConeEntity = !isPersonEntity && (coneOrangeRatio >= 0.20 && aspect >= 0.85);
+
+      // Vehicle: Wide aspect ratio on asphalt roadway
+      const isVehicleEntity = !isPersonEntity && !isConeEntity && (aspect <= 0.85 && bw > 0.28 && asphaltRatio > 0.25);
+
+      if (isPersonEntity) {
         detectedEntities.push({
           class_name: 'PERSON',
           confidence: 0.94,
@@ -5560,7 +5625,16 @@ function extractClientImageFeatures(canvas) {
           is_obstacle: false,
           normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
         });
-      } else if (aspect <= 0.85 && bw > 0.28 && asphaltRatio > 0.25) {
+      } else if (isConeEntity) {
+        detectedEntities.push({
+          class_name: 'CONE',
+          confidence: 0.91,
+          is_obstacle: true,
+          is_person: false,
+          is_vehicle: false,
+          normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+        });
+      } else if (isVehicleEntity) {
         detectedEntities.push({
           class_name: 'CAR',
           confidence: 0.89,
@@ -5570,9 +5644,10 @@ function extractClientImageFeatures(canvas) {
           normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
         });
       } else {
+        // Physical ground obstacle / hazard (boxes, chairs, bags, debris, bottles, barriers, bicycles, etc.)
         detectedEntities.push({
           class_name: 'OBSTACLE',
-          confidence: 0.86,
+          confidence: 0.88,
           is_obstacle: true,
           is_person: false,
           is_vehicle: false,
@@ -5674,27 +5749,52 @@ function wzFallbackClientScan(video, tmpCanvas) {
   // Extract dynamic visual features from live canvas
   const feats = extractClientImageFeatures(tmpCanvas);
   const entities = feats.detected_entities || [];
-  const hasPerson = entities.some(e => e.is_person);
-  const hasHazard = entities.some(e => e.is_obstacle);
+  const pList = entities.filter(e => e.is_person && !e.is_obstacle);
+  const oList = entities.filter(e => e.is_obstacle || (!e.is_person && !e.is_vehicle));
+  const hasPerson = pList.length > 0;
+  const hasHazard = oList.length > 0;
 
   // A. OBSTACLES OR PERSONS IN CAMERA VIEW
   if (hasPerson || hasHazard || entities.length > 0) {
-    const obsLabel = hasPerson ? 'PERSON / PEDESTRIAN' : 'GROUND OBSTACLE';
+    let obsLabel = 'GROUND OBSTACLE';
+    let headline = 'SPACE BLOCKED BY OBSTACLE';
+    let bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is blocked by an obstacle';
+    let voiceText = 'Not suitable for parking. Space is blocked by an obstacle.';
+
+    if (hasPerson && hasHazard) {
+      obsLabel = 'OBSTACLES & PEDESTRIANS';
+      headline = 'SPACE BLOCKED BY OBSTACLES & PEDESTRIANS';
+      bannerText = '🔴 NOT SUITABLE FOR PARKING • Area has obstacles and pedestrians';
+      voiceText = 'Not suitable for parking. Space is obstructed by obstacles and pedestrians.';
+    } else if (hasPerson) {
+      obsLabel = 'PEDESTRIAN';
+      headline = 'SPACE BLOCKED BY PEDESTRIAN';
+      bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is blocked by pedestrian';
+      voiceText = 'Not suitable for parking. Space is blocked by a pedestrian.';
+    } else {
+      const topObs = oList[0] || entities[0];
+      const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
+      obsLabel = rawName === 'CONE' ? 'TRAFFIC CONE' : (rawName === 'BICYCLE' ? 'BICYCLE' : (rawName === 'CAR' ? 'VEHICLE' : 'GROUND OBSTACLE'));
+      headline = `SPACE BLOCKED BY ${obsLabel}`;
+      bannerText = `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`;
+      voiceText = `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`;
+    }
+
     const resultData = {
       success: true,
       status_code: 'NOT_SUITABLE',
       final_decision: 'NOT_SUITABLE',
       decision_color: 'red',
       decision_icon: '🔴',
-      headline: `SPACE BLOCKED BY ${obsLabel}`,
+      headline: headline,
       reason: `${obsLabel} detected in the camera view. Area is not clear for parking.`,
       can_recommend: false,
       recommended_slot: null,
       ar_slots: [],
       detections: entities,
       vehicles_count: feats.vehicles_count || 0,
-      persons_count: hasPerson ? 1 : 0,
-      obstacles_count: hasHazard ? 1 : 0,
+      persons_count: pList.length,
+      obstacles_count: oList.length > 0 ? oList.length : (hasHazard ? 1 : 0),
       confidence_score: 0.94,
       confidence_percent: 94,
       checklist: {
@@ -5711,8 +5811,8 @@ function wzFallbackClientScan(video, tmpCanvas) {
         vehicle_fit: 0.10,
         permission: 0.40
       },
-      guidance_banner: `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`,
-      speech_text: `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`
+      guidance_banner: bannerText,
+      speech_text: voiceText
     };
     wzRenderScanResults(resultData);
     return;
@@ -6205,7 +6305,7 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
       const bh = hNorm * ch;
 
       const cNameUpper = (det.class_name || '').toUpperCase();
-      const isPerson = det.is_person || cNameUpper === 'PERSON' || cNameUpper === 'PEDESTRIAN';
+      const isPerson = (det.is_person === true) || (cNameUpper === 'PERSON' && !det.is_obstacle) || cNameUpper === 'PEDESTRIAN';
 
       // Filter out ego-vehicle interior dashboard only if an ultra-wide vehicle detection spans across the bottom
       const isVeh = det.is_vehicle || ['CAR', 'TRUCK', 'BUS', 'VAN'].includes(cNameUpper);
@@ -6299,8 +6399,8 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
 
   // 2. Draw Top Canvas HUD
   const vCount = (data && data.vehicles_count !== undefined) ? data.vehicles_count : (detections ? detections.filter(d => d.is_vehicle).length : 0);
-  const pCount = (data && data.persons_count !== undefined) ? data.persons_count : (detections ? detections.filter(d => d.is_person || (d.class_name && d.class_name.toUpperCase() === 'PERSON')).length : 0);
-  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => (d.is_obstacle || d.is_indoor) && !d.is_person && (d.class_name && d.class_name.toUpperCase() !== 'PERSON')).length : 0);
+  const pCount = (data && data.persons_count !== undefined) ? data.persons_count : (detections ? detections.filter(d => (d.is_person || (d.class_name && d.class_name.toUpperCase() === 'PERSON')) && !d.is_obstacle).length : 0);
+  const oCount = (data && data.obstacles_count !== undefined) ? data.obstacles_count : (detections ? detections.filter(d => (d.is_obstacle || d.is_indoor || (!d.is_person && !d.is_vehicle)) && !d.is_person && (d.class_name && d.class_name.toUpperCase() !== 'PERSON')).length : 0);
 
   let hudText = `⚡ YOLOv8 Neural Active • 🚗 ${vCount} Vehicles • 🚶 ${pCount} Persons • ⚠️ ${oCount} Hazards`;
   let hudBg = 'rgba(11, 19, 41, 0.90)';
