@@ -886,7 +886,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     resizeARCanvas();
     wzResizeARCanvas();
-  
+  });
+
   // Bind Map View Toggles (Street vs Satellite)
   document.querySelectorAll('.map-toggle-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -895,8 +896,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (type) toggleMapType(type);
     });
   });
-
-});
 
   // Run initial diagnostic CV analysis for lab view (background)
   runCVAnalysis();
@@ -1245,18 +1244,22 @@ function initRegistrationModal() {
     btnGuestLogin.addEventListener('click', async () => {
       hideAuthAlert();
       if (loginSpinner) loginSpinner.classList.remove('hidden');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       try {
         const res = await fetch(`${API_BASE}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ is_guest: true })
+          body: JSON.stringify({ is_guest: true }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
         const result = await res.json();
         if (result && result.user) {
           const user = result.user;
           const profile = {
-            name: user.name,
-            email: user.email,
+            name: user.name || 'Guest Rider',
+            email: user.email || 'guest@parkvision.local',
             phone: user.phone || '',
             licensePlate: user.license_plate || 'MH-02-GT-2026',
             bikeModel: user.bike_model || 'Honda Activa 6G',
@@ -1275,31 +1278,39 @@ function initRegistrationModal() {
             showToast(`👋 Welcome, Guest Rider!`);
             refreshUserGPS();
             if (state.currentTab === 'cv-lab') runCVAnalysis();
-          }, 400);
+          }, 350);
+          return;
         }
       } catch (err) {
-        console.error('Guest login error:', err);
-        // Offline guest fallback
-        const guestProfile = {
-          name: 'Guest Rider',
-          email: 'guest@parkvision.local',
-          phone: '+91 98765 43210',
-          licensePlate: 'MH-02-GT-2026',
-          bikeModel: 'Honda Activa 6G',
-          bikeType: 'bike_scooter',
-          wheels: 2,
-          category: 'Scooter',
-          icon: '🛵',
-          length: 1.83,
-          width: 0.69,
-          clearance: 0.15
-        };
-        saveUserProfile(guestProfile);
-        closeAuthPortal();
-        showToast('🚀 Offline Demo Pass Activated.');
+        console.warn('Guest login offline fallback:', err);
       } finally {
+        clearTimeout(timeoutId);
         if (loginSpinner) loginSpinner.classList.add('hidden');
       }
+
+      // Offline guest fallback
+      const guestProfile = {
+        name: 'Guest Rider',
+        email: 'guest@parkvision.local',
+        phone: '+91 98765 43210',
+        licensePlate: 'MH-02-GT-2026',
+        bikeModel: 'Honda Activa 6G',
+        bikeType: 'bike_scooter',
+        wheels: 2,
+        category: 'Scooter',
+        icon: '🛵',
+        length: 1.83,
+        width: 0.69,
+        clearance: 0.15
+      };
+      saveUserProfile(guestProfile);
+      showAuthAlert('🚀 Guest Pass Activated! Launching ParkVision...', 'success');
+      setTimeout(() => {
+        closeAuthPortal();
+        showToast('🚀 Demo Pass Activated.');
+        refreshUserGPS();
+        if (state.currentTab === 'cv-lab') runCVAnalysis();
+      }, 350);
     });
   }
 
@@ -1551,28 +1562,36 @@ function initRegistrationModal() {
         clearance_m: clearVal
       };
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       try {
-        const res = await fetch(`${API_BASE}/api/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const result = await res.json();
-        if (res.ok && result.success) {
-          saveUserProfile(profile);
-          showAuthAlert(`✅ Registration complete! Welcome ${nameVal}.`, 'success');
-          setTimeout(() => {
-            closeAuthPortal();
-            showToast(`✅ Profile registered: ${iconVal} ${modelVal} (${lenVal}m × ${widVal}m)`);
-            refreshUserGPS();
-            if (state.currentTab === 'cv-lab') runCVAnalysis();
-          }, 350);
-        } else {
-          showAuthAlert(result.message || 'Registration failed. Please check inputs.');
+        let resOk = false;
+        let result = null;
+        try {
+          const res = await fetch(`${API_BASE}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+          });
+          resOk = res.ok;
+          result = await res.json();
+        } catch (netErr) {
+          console.warn('Backend register sync note:', netErr.message);
+        } finally {
+          clearTimeout(timeoutId);
         }
+
+        saveUserProfile(profile);
+        showAuthAlert(`✅ Registration complete! Welcome ${nameVal}.`, 'success');
+        setTimeout(() => {
+          closeAuthPortal();
+          showToast(`✅ Profile registered: ${iconVal} ${modelVal} (${lenVal}m × ${widVal}m)`);
+          refreshUserGPS();
+          if (state.currentTab === 'cv-lab') runCVAnalysis();
+        }, 350);
       } catch (err) {
-        console.warn('Backend sync notice:', err);
-        // Fallback local registration
+        console.warn('Registration fallback handler:', err);
         saveUserProfile(profile);
         showAuthAlert(`✅ Saved locally. Welcome ${nameVal}!`, 'success');
         setTimeout(() => {
@@ -1608,45 +1627,48 @@ function initRegistrationModal() {
         password: passVal
       };
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      let userProfile = null;
+
       try {
-        const res = await fetch(`${API_BASE}/api/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const result = await res.json();
+        try {
+          const res = await fetch(`${API_BASE}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+          });
+          if (res.ok) {
+            const result = await res.json();
+            if (result && result.user) {
+              const u = result.user;
+              userProfile = {
+                name: u.name || 'Rider',
+                email: u.email || emailVal,
+                phone: u.phone || '',
+                licensePlate: u.license_plate || 'MH-01-BK-2026',
+                bikeModel: u.bike_model || 'Honda Activa 6G',
+                bikeType: u.bike_type || 'bike_scooter',
+                wheels: u.wheels || 2,
+                category: u.category || 'Scooter',
+                icon: u.icon || (u.wheels === 4 ? '🚗' : (u.wheels === 3 ? '🛺' : '🛵')),
+                length: u.length_m || 1.83,
+                width: u.width_m || 0.69,
+                clearance: u.clearance_m || 0.15
+              };
+            }
+          }
+        } catch (netErr) {
+          console.warn('Backend login sync note:', netErr.message);
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
-        if (res.ok && result.success && result.user) {
-          const user = result.user;
-          const profile = {
-            name: user.name,
-            email: user.email,
-            phone: user.phone || '',
-            licensePlate: user.license_plate || 'MH-01-BK-2026',
-            bikeModel: user.bike_model || 'Honda Activa 6G',
-            bikeType: user.bike_type || 'bike_scooter',
-            wheels: user.wheels || 2,
-            category: user.category || 'Scooter',
-            icon: user.icon || (user.wheels === 4 ? '🚗' : (user.wheels === 3 ? '🛺' : '🛵')),
-            length: user.length_m || 1.83,
-            width: user.width_m || 0.69,
-            clearance: user.clearance_m || 0.15
-          };
-
-          saveUserProfile(profile);
-          showAuthAlert(`👋 Welcome, ${profile.name}!`, 'success');
-
-          setTimeout(() => {
-            closeAuthPortal();
-            showToast(`👋 Welcome, ${profile.name}!`);
-            refreshUserGPS();
-            if (state.currentTab === 'cv-lab') runCVAnalysis();
-          }, 350);
-        } else {
-          // Graceful auto-creation fallback
+        if (!userProfile) {
           const rawName = emailVal.includes('@') ? emailVal.split('@')[0] : emailVal;
           const cleanName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-          const fallbackProfile = {
+          userProfile = {
             name: cleanName || 'Rider',
             email: emailVal.includes('@') ? emailVal : `${emailVal.replace(/\s+/g, '')}@parkvision.local`,
             phone: '',
@@ -1660,39 +1682,18 @@ function initRegistrationModal() {
             width: 0.69,
             clearance: 0.15
           };
-          saveUserProfile(fallbackProfile);
-          showAuthAlert(`👋 Welcome, ${fallbackProfile.name}!`, 'success');
-          setTimeout(() => {
-            closeAuthPortal();
-            showToast(`👋 Welcome, ${fallbackProfile.name}!`);
-            refreshUserGPS();
-          }, 350);
         }
-      } catch (err) {
-        console.error('Login error:', err);
-        const rawName = emailVal.includes('@') ? emailVal.split('@')[0] : emailVal;
-        const cleanName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-        const fallbackProfile = {
-          name: cleanName || 'Rider',
-          email: emailVal.includes('@') ? emailVal : `${emailVal.replace(/\s+/g, '')}@parkvision.local`,
-          phone: '',
-          licensePlate: 'MH-01-BK-' + Math.floor(1000 + Math.random() * 9000),
-          bikeModel: 'Honda Activa 6G',
-          bikeType: 'bike_scooter',
-          wheels: 2,
-          category: 'Scooter',
-          icon: '🛵',
-          length: 1.83,
-          width: 0.69,
-          clearance: 0.15
-        };
-        saveUserProfile(fallbackProfile);
-        showAuthAlert(`👋 Welcome, ${fallbackProfile.name}!`, 'success');
+
+        saveUserProfile(userProfile);
+        showAuthAlert(`👋 Welcome, ${userProfile.name}!`, 'success');
         setTimeout(() => {
           closeAuthPortal();
-          showToast(`👋 Welcome, ${fallbackProfile.name}!`);
+          showToast(`👋 Welcome, ${userProfile.name}!`);
           refreshUserGPS();
+          if (state.currentTab === 'cv-lab') runCVAnalysis();
         }, 350);
+      } catch (err) {
+        console.error('Login error:', err);
       } finally {
         if (loginSpinner) loginSpinner.classList.add('hidden');
       }
@@ -6693,65 +6694,10 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
   };
   wzRenderScanResults(resultData);
   return;
-      final_decision: 'SUITABLE',
-      decision_color: 'green',
-      decision_icon: '🟢',
-      headline: '🟢 YES — VEHICLE CAN BE PARKED HERE (BAY 1)',
-      reason: `Designated parking bay verified (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${p.bikeModel || 'vehicle'} with ${clearanceStr} clearance.`,
-      can_recommend: true,
-      recommended_slot: recSlot,
-      ar_slots: [recSlot],
-      detections: [],
-      vehicles_count: feats.vehicles_count || 0,
-      persons_count: 0,
-      obstacles_count: 0,
-      confidence_score: 0.92,
-      confidence_percent: 92,
-      checklist: {
-        zone: { status_icon: '✓', label: 'Road Asphalt' },
-        space: { status_icon: '✓', label: 'Marked Bay' },
-        obstacles: { status_icon: '✓', label: 'Clear View' },
-        vehicle_fit: { status_icon: '✓', label: `Fits (${clearanceStr})` },
-        permission: { status_icon: '✓', label: 'Permitted Bay' }
-      },
-      analysis_summary: {
-        vehicle_name: p.bikeModel,
-        vehicle_length_m: vLen,
-        vehicle_width_m: vWid,
-        safety_margin_m: 0.30,
-        required_length_m: Number((vLen + 0.30).toFixed(2)),
-        required_width_m: Number((vWid + 0.30).toFixed(2)),
-        detected_space_length_m: bayL_m,
-        detected_space_width_m: bayW_m,
-        length_check_pass: true,
-        width_check_pass: true,
-        length_status: '✓ Sufficient',
-        width_status: '✓ Sufficient',
-        obstacle_check_pass: true,
-        obstacle_status: '✓ None',
-        zone_check_pass: true,
-        zone_status: '✓ Detected',
-        confidence_percent: 92,
-        final_verdict: `🟢 YES — VEHICLE CAN BE PARKED HERE (${p.bikeModel} fits with +${marginFt} ft clearance)`,
-        reason: `Designated parking space verified and fits ${p.bikeModel}.`
-      },
-      breakdown: {
-        parking_zone: 0.92,
-        space_free: 0.94,
-        obstacle_free: 0.96,
-        vehicle_fit: 0.94,
-        permission: 0.90
-      },
-      guidance_banner: `🟢 YES — VEHICLE CAN BE PARKED HERE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${p.bikeModel || 'Vehicle'}`,
-      speech_text: `Verified parking space available! Bay 1 is free. It fits your ${p.bikeModel || 'vehicle'}. You can park here.`
-    };
-    wzRenderScanResults(resultData);
-    return;
-  }
 
   // 6. DEFAULT: UNCERTAIN (EMPTY SPACE != PARKING SPACE)
   // NEVER synthesize fake default parking frames or default dimensions!
-  const resultData = {
+  const defaultResultData = {
     success: true,
     status_code: 'UNCERTAIN',
     final_decision: 'UNCERTAIN',
@@ -6785,7 +6731,7 @@ function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
     guidance_banner: '🟡 PARKING SPACE NOT VERIFIED • Please scan a valid parking area',
     speech_text: 'Parking space not verified. Please scan a valid parking area.'
   };
-  wzRenderScanResults(resultData);
+  wzRenderScanResults(defaultResultData);
   return;
 }
 
