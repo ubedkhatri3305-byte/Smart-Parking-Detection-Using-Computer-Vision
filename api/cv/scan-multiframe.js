@@ -102,7 +102,39 @@ export default function handler(req, res) {
       });
     }
 
-    // PRIORITY 2: WALL OR COMPUTER SCREEN (Only if zero entities)
+    // PRIORITY 2: WALL, WINDOW, COMPUTER SCREEN, OR TREE/VEGETATION
+    if (analysis.isVegetation) {
+      return res.status(200).json({
+        success: true,
+        status_code: 'NOT_SUITABLE',
+        final_decision: 'NOT_SUITABLE',
+        decision_color: 'red',
+        decision_icon: '🔴',
+        headline: 'TREE OR VEGETATION DETECTED',
+        reason: 'Tree foliage, garden landscape, or green vegetation detected. Parking on vegetation or green spaces is prohibited.',
+        can_recommend: false,
+        is_parking_scene: false,
+        recommended_slot: null,
+        ar_slots: [],
+        detections: [],
+        vehicles_count: 0,
+        persons_count: 0,
+        obstacles_count: 0,
+        confidence_score: 0.92,
+        confidence_percent: 92,
+        checklist: {
+          zone: { status_icon: '✗', label: 'Tree / Garden Detected' },
+          space: { status_icon: '✗', label: 'Vegetation Surface' },
+          obstacles: { status_icon: '✓', label: 'Evaluated' },
+          vehicle_fit: { status_icon: '✗', label: 'Not a Parking Bay' },
+          permission: { status_icon: '✗', label: 'Green Belt / Prohibited' }
+        },
+        breakdown: { parking_zone: 0.05, space_free: 0.10, obstacle_free: 0.85, vehicle_fit: 0.05, permission: 0.05 },
+        guidance_banner: '🔴 NOT SUITABLE • Tree or vegetation detected (Parking prohibited on green spaces)',
+        speech_text: 'Tree or vegetation detected. Parking on green spaces is prohibited. Please point camera at an authorized roadway bay.'
+      });
+    }
+
     if (analysis.isWallOrScreen && entities.length === 0) {
       return res.status(200).json({
         success: true,
@@ -110,8 +142,8 @@ export default function handler(req, res) {
         final_decision: 'NOT_SUITABLE',
         decision_color: 'red',
         decision_icon: '🔴',
-        headline: 'WALL OR COMPUTER SCREEN DETECTED',
-        reason: 'Vertical wall, computer display, or plain indoor surface detected. Point camera outdoors at an authentic parking space.',
+        headline: 'WALL, WINDOW OR BUILDING DETECTED',
+        reason: 'Vertical wall, window, building facade, or indoor surface detected. Point camera outdoors at an authentic parking space.',
         can_recommend: false,
         is_parking_scene: false,
         is_indoor: true,
@@ -124,21 +156,48 @@ export default function handler(req, res) {
         confidence_score: 0.15,
         confidence_percent: 15,
         checklist: {
-          zone: { status_icon: '✗', label: 'Wall / Screen Detected' },
+          zone: { status_icon: '✗', label: 'Wall / Window Detected' },
           space: { status_icon: '✗', label: 'No Ground Surface' },
           obstacles: { status_icon: '✓', label: 'Clear of Roadway' },
           vehicle_fit: { status_icon: '✗', label: 'Not a Parking Area' },
           permission: { status_icon: '✗', label: 'Non-Vehicular Surface' }
         },
-        breakdown: {
-          parking_zone: 0.05,
-          space_free: 0.10,
-          obstacle_free: 0.90,
-          vehicle_fit: 0.05,
-          permission: 0.05
+        breakdown: { parking_zone: 0.05, space_free: 0.10, obstacle_free: 0.90, vehicle_fit: 0.05, permission: 0.05 },
+        guidance_banner: '🔴 NOT SUITABLE • Wall, window or building facade detected (Point camera at a parking area)',
+        speech_text: 'Wall, window, or building detected. Please point camera outside at an authorized parking bay or roadway.'
+      });
+    }
+
+    if (analysis.isIndoor && entities.length === 0) {
+      return res.status(200).json({
+        success: true,
+        status_code: 'NOT_SUITABLE',
+        final_decision: 'NOT_SUITABLE',
+        decision_color: 'red',
+        decision_icon: '🔴',
+        headline: 'INDOOR / HOUSE FLOOR DETECTED',
+        reason: 'Indoor domestic room, bed, furniture, or domestic flooring detected. Point camera outdoors at an authentic parking space or roadway.',
+        can_recommend: false,
+        is_parking_scene: false,
+        is_indoor: true,
+        recommended_slot: null,
+        ar_slots: [],
+        detections: [],
+        vehicles_count: 0,
+        persons_count: 0,
+        obstacles_count: 0,
+        confidence_score: 0.20,
+        confidence_percent: 20,
+        checklist: {
+          zone: { status_icon: '✗', label: 'Domestic Indoor Floor' },
+          space: { status_icon: '✗', label: 'Not Parking Ground' },
+          obstacles: { status_icon: '✓', label: 'Evaluated' },
+          vehicle_fit: { status_icon: '✗', label: 'Not a Parking Bay' },
+          permission: { status_icon: '✗', label: 'Private Indoor' }
         },
-        guidance_banner: '🔴 NOT SUITABLE • Wall or computer display detected (Point camera at a parking area)',
-        speech_text: 'Wall or computer screen detected. Please point camera outside at an authorized parking bay or roadway.'
+        breakdown: { parking_zone: 0.10, space_free: 0.20, obstacle_free: 0.80, vehicle_fit: 0.10, permission: 0.10 },
+        guidance_banner: '🔴 NOT SUITABLE FOR PARKING • Indoor domestic setting detected',
+        speech_text: 'Indoor domestic area detected. Please point camera outside at an authorized parking area.'
       });
     }
 
@@ -165,8 +224,9 @@ export default function handler(req, res) {
         }
       }
     }
-    // If no genuine markings or inter-vehicle corridor detected and not in a mapped lot
-    if (!dynPoly && !mapIsKnown) {
+
+    // If no genuine physical markings or inter-vehicle corridor detected, NEVER fabricate fake slots!
+    if (!dynPoly) {
       return res.status(200).json({
         success: true,
         status_code: 'UNCERTAIN',
@@ -174,7 +234,7 @@ export default function handler(req, res) {
         decision_color: 'yellow',
         decision_icon: '🟡',
         headline: 'NO PARKING SPACE DETECTED',
-        reason: 'Area lacks designated parking demarcations, striping, or parked vehicle corridors.',
+        reason: 'Camera view does not contain marked parking bays, demarcated boundaries, or parked vehicle corridors. Area is unverified.',
         can_recommend: false,
         recommended_slot: null,
         ar_slots: [],
@@ -182,8 +242,8 @@ export default function handler(req, res) {
         vehicles_count: analysis.vehiclesCount || 0,
         persons_count: 0,
         obstacles_count: 0,
-        confidence_score: 0.50,
-        confidence_percent: 50,
+        confidence_score: 0.45,
+        confidence_percent: 45,
         checklist: {
           zone: { status_icon: '?', label: 'Unverified Surface' },
           space: { status_icon: '?', label: 'No Marked Bay' },
@@ -192,19 +252,15 @@ export default function handler(req, res) {
           permission: { status_icon: '?', label: 'Unverified Location' }
         },
         breakdown: {
-          parking_zone: 0.40,
-          space_free: 0.50,
-          obstacle_free: 0.95,
-          vehicle_fit: 0.50,
-          permission: 0.40
+          parking_zone: 0.35,
+          space_free: 0.45,
+          obstacle_free: 0.90,
+          vehicle_fit: 0.40,
+          permission: 0.35
         },
         guidance_banner: '🟡 NO PARKING SPACE DETECTED • Align camera with designated parking bays',
         speech_text: 'No parking space detected. Please point camera at an authorized parking bay or road surface.'
       });
-    }
-
-    if (!dynPoly) {
-      dynPoly = [[0.28, 0.42], [0.72, 0.42], [0.86, 0.88], [0.14, 0.88]];
     }
 
     if (!isFit) {
@@ -312,26 +368,27 @@ export default function handler(req, res) {
 // ----------------------------------------------------------------------------
 function analyzeImageBuffer(base64Str, clientFeatures = {}) {
   const clientEntities = (clientFeatures && clientFeatures.detected_entities) || [];
-  const hasEntities = clientEntities.length > 0;
 
-  // 1. If client detected entities, it is NEVER a wall or indoor screen
-  if (hasEntities) {
+  // 1. Trust explicit client canvas features if computed
+  if (clientFeatures && (typeof clientFeatures.is_wall_or_screen === 'boolean' || typeof clientFeatures.is_indoor === 'boolean' || typeof clientFeatures.is_vegetation === 'boolean')) {
     return {
-      isWallOrScreen: false,
-      isIndoor: false,
-      hasMarkings: clientFeatures.has_road_markings || false,
+      isWallOrScreen: Boolean(clientFeatures.is_wall_or_screen),
+      isIndoor: Boolean(clientFeatures.is_indoor),
+      isVegetation: Boolean(clientFeatures.is_vegetation),
+      hasMarkings: Boolean(clientFeatures.has_road_markings),
       vehiclesCount: clientFeatures.vehicles_count || clientEntities.filter(e => e.is_vehicle).length,
       detectedEntities: clientEntities
     };
   }
 
-  // 2. Trust explicit client canvas features if computed
-  if (clientFeatures && typeof clientFeatures.is_wall_or_screen === 'boolean') {
+  // 2. If client detected entities
+  if (clientEntities.length > 0) {
     return {
-      isWallOrScreen: clientFeatures.is_wall_or_screen,
+      isWallOrScreen: false,
       isIndoor: clientFeatures.is_indoor || false,
+      isVegetation: clientFeatures.is_vegetation || false,
       hasMarkings: clientFeatures.has_road_markings || false,
-      vehiclesCount: clientFeatures.vehicles_count || 0,
+      vehiclesCount: clientFeatures.vehicles_count || clientEntities.filter(e => e.is_vehicle).length,
       detectedEntities: clientEntities
     };
   }

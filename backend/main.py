@@ -3848,9 +3848,9 @@ async def scan_multiframe_endpoint(request: Request):
     if final_decision != DecisionState.SUITABLE:
         recommended_slot = None
 
-    # Construct AR slots for candidate spaces
+    # Construct AR slots for candidate spaces (strictly only if verified SUITABLE)
     ar_slots = []
-    display_slots = ranked_spaces if ranked_spaces else latest_slots
+    display_slots = (ranked_spaces if ranked_spaces else latest_slots) if (final_decision == DecisionState.SUITABLE and recommended_slot) else []
     h_best, w_best = best_img.shape[:2]
     for s in display_slots:
         norm_poly = [[round(pt[0] / w_best, 4), round(pt[1] / h_best, 4)] for pt in s["polygon"]]

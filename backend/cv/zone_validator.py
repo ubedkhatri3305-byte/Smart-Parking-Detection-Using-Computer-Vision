@@ -249,7 +249,7 @@ class ParkingZoneValidator:
 
             has_entities = len(detections) > 0 or len(vehicles) > 0 or len(obstacles) > 0
 
-            if surface_type == "indoor_flooring" and not has_entities and not is_known_parking:
+            if surface_type == "indoor_flooring" and not has_entities:
                 return {
                     "status": ZoneStatus.INVALID,
                     "zone_class": ZoneClass.HOUSE_FLOOR,
@@ -300,8 +300,8 @@ class ParkingZoneValidator:
                 "evidence_negative": evidence_negative
             }
 
-        # B) Known public parking facility from database
-        if is_known_parking:
+        # B) Known public parking facility from database (only when image confirms ground or in benchmark context)
+        if is_known_parking and (image is None or marking_detected or len(vehicles) >= 2 or surface_type in ("asphalt", "parking_lot")):
             return {
                 "status": ZoneStatus.VALID,
                 "zone_class": ZoneClass.KNOWN_PUBLIC_PARKING if facility_type == "public" else ZoneClass.PARKING_LOT,

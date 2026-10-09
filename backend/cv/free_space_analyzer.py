@@ -271,26 +271,7 @@ class FreeSpaceAnalyzer:
         vehicles = [d for d in detections if d.get("is_vehicle") or d.get("category") == "vehicle"]
         if len(vehicles) >= 2:
             return self._detect_inter_vehicle_gaps(w, h, y_top, y_bot, vehicles, [])
-
-        # Forward parking bay in front of vehicle / camera
-        cx = w / 2.0
-        stall_w = w * 0.55
-        top_w = stall_w * 0.80
-        poly = [
-            [int(max(0.04 * w, cx - top_w / 2.0)), y_top],
-            [int(min(0.96 * w, cx + top_w / 2.0)), y_top],
-            [int(min(0.96 * w, cx + stall_w / 2.0)), y_bot],
-            [int(max(0.04 * w, cx - stall_w / 2.0)), y_bot]
-        ]
-        return [{
-            "id": "Forward Bay",
-            "label": "Forward Parking Bay",
-            "source": "ground_corridor",
-            "polygon": poly,
-            "status": "AVAILABLE",
-            "blocked_reason": None,
-            "rule_zone": "registered"
-        }]
+        return []
 
     def _polygons_overlap(self, poly1: List[List[int]], poly2: List[List[int]], threshold: float = 0.35) -> bool:
         """Check if two polygon regions significantly overlap."""
