@@ -69,13 +69,11 @@ export default function handler(req, res) {
     // PRIORITY 1: SCENE VALIDATION (Indoor / Bedroom / Wall / Vegetation)
     // Always validate the environment BEFORE attempting obstacle or fit logic.
     // -------------------------------------------------------------
-    const isIndoorScene = analysis.isIndoor || Boolean(clientFeatures.is_indoor) ||
-      clientFeatures.scene_type === 'INDOOR_BEDROOM_OR_DOMESTIC' ||
-      Boolean(clientFeatures.has_textile) ||
-      Boolean(clientFeatures.has_skin) ||
-      entities.some(e => e.is_indoor || ['BED', 'CHAIR', 'COUCH', 'SOFA', 'TV', 'LAPTOP'].includes((e.class_name || '').toUpperCase()));
+    const hasGenuineIndoor = entities.some(e => ['BED', 'COUCH', 'SOFA', 'TOILET', 'REFRIGERATOR'].includes((e.class_name || '').toUpperCase()) && (e.confidence || 0.8) >= 0.65);
+    const isIndoorScene = !hasVehicles && !analysis.hasMarkings && !clientFeatures.is_road_asphalt && !clientFeatures.is_open_paved_ground && analysis.isIndoor && hasGenuineIndoor;
 
     if (isIndoorScene) {
+      const indoorConf = 0.82;
       return res.status(200).json({
         success: true,
         status_code: 'NOT_SUITABLE',
@@ -93,8 +91,8 @@ export default function handler(req, res) {
         vehicles_count: 0,
         persons_count: pList.length,
         obstacles_count: oList.length,
-        confidence_score: 0.95,
-        confidence_percent: 95,
+        confidence_score: indoorConf,
+        confidence_percent: Math.round(indoorConf * 100),
         checklist: {
           zone: { status_icon: '✗', label: 'Domestic Indoor Setting' },
           space: { status_icon: '✗', label: 'Not Parking Ground' },
@@ -103,7 +101,7 @@ export default function handler(req, res) {
           permission: { status_icon: '✗', label: 'Private Indoor' }
         },
         analysis_summary: makeAnalysisSummary(
-          bikeModel, vLen, vWid, 0.30, 0.0, 0.0, false, false, true, false, 95,
+          bikeModel, vLen, vWid, 0.30, 0.0, 0.0, false, false, true, false, Math.round(indoorConf * 100),
           '🔴 VEHICLE CANNOT BE PARKED HERE (INDOOR AREA DETECTED)',
           'Indoor domestic room, bed, furniture, or domestic flooring detected.'
         ),
@@ -439,13 +437,13 @@ export default function handler(req, res) {
     };
 
     if (isUnmarkedGround) {
-      const headline = 'PHYSICALLY SUITABLE — PARKING PERMISSION UNVERIFIED';
-      const reason = `Open ground area appears physically suitable (${bayLenFt} ft × ${bayWidFt} ft) and fits your ${bikeModel} with ${clearanceStr} clearance, but legal parking permission or municipal lot registration is unverified.`;
+      const headline = 'UNCERTAIN — FIT/PERMISSION NOT VERIFIED';
+      const reason = `Open area detected (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${bikeModel} with ${clearanceStr} clearance, but legal parking permission is not verified.`;
       return res.status(200).json({
         success: true,
         status_code: 'UNCERTAIN',
         final_decision: 'UNCERTAIN',
-        detailed_status: 'VEHICLE FIT VERIFIED',
+        detailed_status: 'OPEN AREA DETECTED',
         decision_color: 'yellow',
         decision_icon: '🟡',
         headline: headline,
@@ -457,17 +455,17 @@ export default function handler(req, res) {
         vehicles_count: analysis.vehiclesCount || 0,
         persons_count: pList.length,
         obstacles_count: 0,
-        confidence_score: 0.78,
-        confidence_percent: 78,
+        confidence_score: 0.76,
+        confidence_percent: 76,
         checklist: {
-          zone: { status_icon: '✓', label: 'Open Paved Ground' },
+          zone: { status_icon: '✓', label: 'Open Area Detected' },
           space: { status_icon: '✓', label: 'Ground Clear' },
           obstacles: { status_icon: '✓', label: 'Clear View' },
           vehicle_fit: { status_icon: '✓', label: `Fits (${clearanceStr})` },
-          permission: { status_icon: '🟡', label: 'Permission Unverified' }
+          permission: { status_icon: '🟡', label: 'Permission Not Verified' }
         },
         analysis_summary: makeAnalysisSummary(
-          bikeModel, vLen, vWid, safetyMargin, bayL_m, bayW_m, true, true, true, true, 78,
+          bikeModel, vLen, vWid, safetyMargin, bayL_m, bayW_m, true, true, true, true, 76,
           `🟡 ${headline}`,
           reason
         ),
@@ -478,8 +476,8 @@ export default function handler(req, res) {
           vehicle_fit: 0.90,
           permission: 0.45
         },
-        guidance_banner: `🟡 PHYSICALLY SUITABLE • Parking permission unverified • Clearance: ${clearanceStr}`,
-        speech_text: `Space is physically suitable for your ${bikeModel}, but parking permission is unverified.`
+        guidance_banner: `🟡 OPEN AREA DETECTED • Fit/Permission not verified • Clearance: ${clearanceStr}`,
+        speech_text: `Open area detected. Fit or permission not verified.`
       });
     }
 
