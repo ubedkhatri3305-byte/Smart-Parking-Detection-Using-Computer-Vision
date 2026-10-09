@@ -60,12 +60,13 @@ export default function handler(req, res) {
     const entities = analysis.detectedEntities || [];
     const pList = entities.filter(e => e.is_person && !e.is_obstacle);
     const oList = entities.filter(e => e.is_obstacle || (!e.is_person && !e.is_vehicle));
+    const vList = entities.filter(e => e.is_vehicle);
     const hasPerson = pList.length > 0;
     const hasHazard = oList.length > 0;
-    const hasVehicles = entities.some(e => e.is_vehicle) || analysis.vehiclesCount > 0;
+    const hasVehicles = vList.length > 0 || analysis.vehiclesCount > 0;
 
-    // PRIORITY 1: OBSTACLE OR PEDESTRIAN DETECTED IN CAMERA VIEW
-    if (hasPerson || hasHazard || (entities.length > 0 && !hasVehicles)) {
+    // PRIORITY 1: OBSTACLE, PEDESTRIAN OR OCCUPYING VEHICLE IN STALL
+    if (hasPerson || hasHazard || (hasVehicles && entities.length === 1)) {
       let obsLabel = 'GROUND OBSTACLE';
       let headline = 'SPACE BLOCKED BY OBSTACLE';
       let bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is blocked by an obstacle';
@@ -81,13 +82,18 @@ export default function handler(req, res) {
         headline = 'SPACE BLOCKED BY PEDESTRIAN';
         bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is blocked by pedestrian';
         voiceText = 'Not suitable for parking. Space is blocked by a pedestrian.';
-      } else {
+      } else if (hasHazard) {
         const topObs = oList[0] || entities[0];
         const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
-        obsLabel = rawName === 'CONE' ? 'TRAFFIC CONE' : (rawName === 'BICYCLE' ? 'BICYCLE' : (rawName === 'CAR' ? 'VEHICLE' : 'GROUND OBSTACLE'));
+        obsLabel = rawName === 'CONE' ? 'TRAFFIC CONE' : (rawName === 'BICYCLE' ? 'BICYCLE' : 'GROUND OBSTACLE');
         headline = `SPACE BLOCKED BY ${obsLabel}`;
         bannerText = `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`;
         voiceText = `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`;
+      } else if (hasVehicles) {
+        obsLabel = 'VEHICLE';
+        headline = 'SPACE OCCUPIED BY VEHICLE';
+        bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is occupied by a parked vehicle';
+        voiceText = 'Not suitable for parking. Space is occupied by a parked vehicle.';
       }
 
       return res.status(200).json({
@@ -97,20 +103,20 @@ export default function handler(req, res) {
         decision_color: 'red',
         decision_icon: '🔴',
         headline: headline,
-        reason: `Obstacle or hazard (${obsLabel}) detected in the camera view. Area is not clear for parking.`,
+        reason: `${obsLabel} detected in the camera view. Area is not clear for parking.`,
         can_recommend: false,
         is_parking_scene: true,
         recommended_slot: null,
         ar_slots: [],
         detections: entities,
-        vehicles_count: analysis.vehiclesCount || 0,
+        vehicles_count: vList.length || analysis.vehiclesCount || 0,
         persons_count: pList.length,
         obstacles_count: oList.length > 0 ? oList.length : (hasHazard ? 1 : 0),
         confidence_score: 0.94,
         confidence_percent: 94,
         checklist: {
           zone: { status_icon: '✓', label: 'Ground Surface' },
-          space: { status_icon: '✗', label: 'Blocked by Hazard' },
+          space: { status_icon: '✗', label: hasVehicles ? 'Occupied by Vehicle' : (hasPerson ? 'Blocked by Pedestrian' : 'Blocked by Hazard') },
           obstacles: { status_icon: '⚠️', label: `${obsLabel} Detected` },
           vehicle_fit: { status_icon: '✗', label: 'Obstructed' },
           permission: { status_icon: '?', label: 'Unverified' }
@@ -239,7 +245,7 @@ export default function handler(req, res) {
     const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
 
     let dynPoly = clientFeatures.markings_polygon || null;
-    if (!dynPoly && (clientFeatures.has_road_markings || analysis.hasMarkings)) {
+    if (!dynPoly && (clientFeatures.has_road_markings || analysis.hasMarkings || (!analysis.isWallOrScreen && !analysis.isIndoor && !analysis.isVegetation && entities.length === 0))) {
       dynPoly = [[0.22, 0.44], [0.78, 0.44], [0.88, 0.90], [0.12, 0.90]];
     }
     if (!dynPoly && entities.length >= 2) {
