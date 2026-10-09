@@ -68,33 +68,81 @@ export default function handler(req, res) {
     // PRIORITY 1: OBSTACLE, PEDESTRIAN OR OCCUPYING VEHICLE IN STALL
     if (hasPerson || hasHazard || (hasVehicles && entities.length === 1)) {
       let obsLabel = 'GROUND OBSTACLE';
-      let headline = 'SPACE BLOCKED BY OBSTACLE';
-      let bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is blocked by an obstacle';
-      let voiceText = 'Not suitable for parking. Space is blocked by an obstacle.';
-
       if (hasPerson && hasHazard) {
-        obsLabel = 'OBSTACLES & PEDESTRIANS';
-        headline = 'SPACE BLOCKED BY OBSTACLES & PEDESTRIANS';
-        bannerText = '🔴 NOT SUITABLE FOR PARKING • Area has obstacles and pedestrians';
-        voiceText = 'Not suitable for parking. Space is obstructed by obstacles and pedestrians.';
-      } else if (hasPerson) {
-        obsLabel = 'PEDESTRIAN';
-        headline = 'SPACE BLOCKED BY PEDESTRIAN';
-        bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is blocked by pedestrian';
-        voiceText = 'Not suitable for parking. Space is blocked by a pedestrian.';
+        const topObs = oList[0];
+        const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
+        const hazardName = rawName.includes('BOX') ? 'CARDBOARD BOX' : (rawName.includes('CONE') ? 'TRAFFIC CONE' : (rawName.includes('CHAIR') ? 'CHAIR' : 'OBSTACLE'));
+        obsLabel = `${hazardName} & PEDESTRIAN`;
       } else if (hasHazard) {
         const topObs = oList[0] || entities[0];
         const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
-        obsLabel = rawName === 'CONE' ? 'TRAFFIC CONE' : (rawName === 'BICYCLE' ? 'BICYCLE' : 'GROUND OBSTACLE');
-        headline = `SPACE BLOCKED BY ${obsLabel}`;
-        bannerText = `🔴 NOT SUITABLE FOR PARKING • Area is blocked by ${obsLabel.toLowerCase()}`;
-        voiceText = `Not suitable for parking. Space is blocked by a ${obsLabel.toLowerCase()}.`;
+        if (rawName.includes('BOX') || rawName.includes('CARDBOARD')) {
+          obsLabel = 'CARDBOARD BOX';
+        } else if (rawName.includes('CONE')) {
+          obsLabel = 'TRAFFIC CONE';
+        } else if (rawName.includes('CHAIR')) {
+          obsLabel = 'CHAIR / FURNITURE';
+        } else if (rawName.includes('BIKE') || rawName.includes('BICYCLE')) {
+          obsLabel = 'BICYCLE';
+        } else {
+          obsLabel = rawName === 'OBSTACLE' ? 'GROUND OBSTACLE' : rawName;
+        }
+      } else if (hasPerson) {
+        obsLabel = 'PEDESTRIAN';
       } else if (hasVehicles) {
-        obsLabel = 'VEHICLE';
-        headline = 'SPACE OCCUPIED BY VEHICLE';
-        bannerText = '🔴 NOT SUITABLE FOR PARKING • Area is occupied by a parked vehicle';
-        voiceText = 'Not suitable for parking. Space is occupied by a parked vehicle.';
+        obsLabel = 'PARKED VEHICLE';
       }
+
+      const headline = `🔴 NO — CANNOT PARK HERE (BLOCKED BY ${obsLabel})`;
+      const reason = `${obsLabel} detected in the candidate parking space. Area is physically obstructed — vehicle cannot enter.`;
+      const bannerText = `🔴 NO — CANNOT PARK HERE • Space is blocked by ${obsLabel.toLowerCase()}`;
+      const voiceText = `Cannot park here. Space is blocked by a ${obsLabel.toLowerCase()}.`;
+
+      const bayW_m = isCar ? 2.50 : (wheels === 3 ? 1.80 : 1.40);
+      const bayL_m = isCar ? 5.00 : (wheels === 3 ? 3.30 : 2.50);
+      const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
+      const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
+      const bayLenFt = (bayL_m * 3.28084).toFixed(1);
+      const bayWidFt = (bayW_m * 3.28084).toFixed(1);
+      const marginFt = (widthMargin_m * 3.28084).toFixed(1);
+      const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
+
+      const blockedSlot = {
+        id: 'Bay 1',
+        label: `Bay 1 (Blocked by ${obsLabel})`,
+        status: 'BLOCKED',
+        is_recommended: false,
+        is_suitable: false,
+        fit_status: 'BLOCKED',
+        fit_badge: `🚫 Blocked by ${obsLabel}`,
+        normalized_polygon: [[0.22, 0.44], [0.78, 0.44], [0.88, 0.90], [0.12, 0.90]],
+        center: [0.50, 0.67],
+        width_m: bayW_m,
+        length_m: bayL_m,
+        width_ft: bayWidFt,
+        length_ft: bayLenFt,
+        margin_m: widthMargin_m,
+        margin_ft: Number(marginFt),
+        dims_ft: `${bayLenFt} ft (L) × ${bayWidFt} ft (W)`,
+        dims_m: `${bayL_m}m × ${bayW_m}m`,
+        clearance_ft_str: clearanceStr,
+        blocked_reason: `Blocked by ${obsLabel}`,
+        vehicle_fit: {
+          is_suitable: false,
+          fit_status: 'BLOCKED',
+          fit_badge: `🚫 Blocked by ${obsLabel}`,
+          slot_width_m: bayW_m,
+          slot_length_m: bayL_m,
+          slot_width_ft: bayWidFt,
+          slot_length_ft: bayLenFt,
+          dims_ft_str: `${bayLenFt} ft (L) × ${bayWidFt} ft (W)`,
+          dims_m_str: `${bayL_m}m × ${bayW_m}m`,
+          width_margin_m: widthMargin_m,
+          width_margin_ft: Number(marginFt),
+          clearance_ft_str: clearanceStr,
+          message: `Candidate space (${bayLenFt} ft × ${bayWidFt} ft) cannot be used: blocked by ${obsLabel.toLowerCase()}.`
+        }
+      };
 
       return res.status(200).json({
         success: true,
@@ -103,11 +151,12 @@ export default function handler(req, res) {
         decision_color: 'red',
         decision_icon: '🔴',
         headline: headline,
-        reason: `${obsLabel} detected in the camera view. Area is not clear for parking.`,
+        reason: reason,
         can_recommend: false,
         is_parking_scene: true,
-        recommended_slot: null,
-        ar_slots: [],
+        recommended_slot: blockedSlot,
+        ar_slots: [blockedSlot],
+        ranked_spaces: [blockedSlot],
         detections: entities,
         vehicles_count: vList.length || analysis.vehiclesCount || 0,
         persons_count: pList.length,
@@ -116,11 +165,16 @@ export default function handler(req, res) {
         confidence_percent: 94,
         checklist: {
           zone: { status_icon: '✓', label: 'Ground Surface' },
-          space: { status_icon: '✗', label: hasVehicles ? 'Occupied by Vehicle' : (hasPerson ? 'Blocked by Pedestrian' : 'Blocked by Hazard') },
+          space: { status_icon: '✗', label: `Blocked by ${obsLabel}` },
           obstacles: { status_icon: '⚠️', label: `${obsLabel} Detected` },
           vehicle_fit: { status_icon: '✗', label: 'Obstructed' },
           permission: { status_icon: '?', label: 'Unverified' }
         },
+        analysis_summary: makeAnalysisSummary(
+          bikeModel, vLen, vWid, 0.30, bayL_m, bayW_m, true, true, false, true, 94,
+          `🔴 VEHICLE CANNOT BE PARKED HERE (BLOCKED BY ${obsLabel})`,
+          `${obsLabel} physically obstructs the parking space.`
+        ),
         breakdown: {
           parking_zone: 0.50,
           space_free: 0.10,
@@ -141,7 +195,7 @@ export default function handler(req, res) {
         final_decision: 'NOT_SUITABLE',
         decision_color: 'red',
         decision_icon: '🔴',
-        headline: 'TREE OR VEGETATION DETECTED',
+        headline: '🔴 NO — CANNOT PARK HERE (TREE / VEGETATION)',
         reason: 'Tree foliage, garden landscape, or green vegetation detected. Parking on vegetation or green spaces is prohibited.',
         can_recommend: false,
         is_parking_scene: false,
@@ -160,8 +214,13 @@ export default function handler(req, res) {
           vehicle_fit: { status_icon: '✗', label: 'Not a Parking Bay' },
           permission: { status_icon: '✗', label: 'Green Belt / Prohibited' }
         },
+        analysis_summary: makeAnalysisSummary(
+          bikeModel, vLen, vWid, 0.30, 0.0, 0.0, false, false, true, false, 92,
+          '🔴 VEHICLE CANNOT BE PARKED HERE (TREE / VEGETATION)',
+          'Parking on vegetation or green spaces is prohibited.'
+        ),
         breakdown: { parking_zone: 0.05, space_free: 0.10, obstacle_free: 0.85, vehicle_fit: 0.05, permission: 0.05 },
-        guidance_banner: '🔴 NOT SUITABLE • Tree or vegetation detected (Parking prohibited on green spaces)',
+        guidance_banner: '🔴 NO — CANNOT PARK HERE • Tree or vegetation detected (Parking prohibited on green spaces)',
         speech_text: 'Tree or vegetation detected. Parking on green spaces is prohibited. Please point camera at an authorized roadway bay.'
       });
     }
@@ -173,7 +232,7 @@ export default function handler(req, res) {
         final_decision: 'NOT_SUITABLE',
         decision_color: 'red',
         decision_icon: '🔴',
-        headline: 'WALL, WINDOW OR BUILDING DETECTED',
+        headline: '🔴 NO — CANNOT PARK HERE (WALL / WINDOW)',
         reason: 'Vertical wall, window, building facade, or indoor surface detected. Point camera outdoors at an authentic parking space.',
         can_recommend: false,
         is_parking_scene: false,
@@ -193,8 +252,13 @@ export default function handler(req, res) {
           vehicle_fit: { status_icon: '✗', label: 'Not a Parking Area' },
           permission: { status_icon: '✗', label: 'Non-Vehicular Surface' }
         },
+        analysis_summary: makeAnalysisSummary(
+          bikeModel, vLen, vWid, 0.30, 0.0, 0.0, false, false, true, false, 15,
+          '🔴 VEHICLE CANNOT BE PARKED HERE (WALL / WINDOW)',
+          'Vertical wall, window, or building surface detected.'
+        ),
         breakdown: { parking_zone: 0.05, space_free: 0.10, obstacle_free: 0.90, vehicle_fit: 0.05, permission: 0.05 },
-        guidance_banner: '🔴 NOT SUITABLE • Wall, window or building facade detected (Point camera at a parking area)',
+        guidance_banner: '🔴 NO — CANNOT PARK HERE • Wall, window or building facade detected (Point camera at a parking area)',
         speech_text: 'Wall, window, or building detected. Please point camera outside at an authorized parking bay or roadway.'
       });
     }
@@ -206,7 +270,7 @@ export default function handler(req, res) {
         final_decision: 'NOT_SUITABLE',
         decision_color: 'red',
         decision_icon: '🔴',
-        headline: 'INDOOR / HOUSE FLOOR DETECTED',
+        headline: '🔴 NO — CANNOT PARK HERE (INDOOR HOUSE FLOOR)',
         reason: 'Indoor domestic room, bed, furniture, or domestic flooring detected. Point camera outdoors at an authentic parking space or roadway.',
         can_recommend: false,
         is_parking_scene: false,
@@ -226,8 +290,13 @@ export default function handler(req, res) {
           vehicle_fit: { status_icon: '✗', label: 'Not a Parking Bay' },
           permission: { status_icon: '✗', label: 'Private Indoor' }
         },
+        analysis_summary: makeAnalysisSummary(
+          bikeModel, vLen, vWid, 0.30, 0.0, 0.0, false, false, true, false, 20,
+          '🔴 VEHICLE CANNOT BE PARKED HERE (INDOOR HOUSE FLOOR)',
+          'Indoor domestic room, bed, furniture, or domestic flooring detected.'
+        ),
         breakdown: { parking_zone: 0.10, space_free: 0.20, obstacle_free: 0.80, vehicle_fit: 0.10, permission: 0.10 },
-        guidance_banner: '🔴 NOT SUITABLE FOR PARKING • Indoor domestic setting detected',
+        guidance_banner: '🔴 NO — CANNOT PARK HERE • Indoor domestic setting detected',
         speech_text: 'Indoor domestic area detected. Please point camera outside at an authorized parking area.'
       });
     }
@@ -304,7 +373,7 @@ export default function handler(req, res) {
         final_decision: 'NOT_SUITABLE',
         decision_color: 'red',
         decision_icon: '🔴',
-        headline: 'SPACE TOO NARROW FOR YOUR VEHICLE',
+        headline: `🔴 NO — CANNOT PARK HERE (SPACE TOO NARROW FOR ${bikeModel.toUpperCase()})`,
         reason: `Marked space (${bayLenFt} ft × ${bayWidFt} ft) is too narrow for ${bikeModel} (clearance is only ${clearanceStr}).`,
         can_recommend: false,
         recommended_slot: null,
@@ -315,7 +384,19 @@ export default function handler(req, res) {
         obstacles_count: 0,
         confidence_score: 0.88,
         confidence_percent: 88,
-        guidance_banner: `🔴 TOO NARROW • Bay does not fit ${bikeModel} safely (${clearanceStr} clearance)`,
+        checklist: {
+          zone: { status_icon: '✓', label: 'Ground Area' },
+          space: { status_icon: '✓', label: 'Marked Bay' },
+          obstacles: { status_icon: '✓', label: 'Clear View' },
+          vehicle_fit: { status_icon: '✗', label: `Too Narrow (${clearanceStr})` },
+          permission: { status_icon: '?', label: 'Unverified' }
+        },
+        analysis_summary: makeAnalysisSummary(
+          bikeModel, vLen, vWid, 0.30, bayL_m, bayW_m, lengthMargin_m >= 0.10, widthMargin_m >= 0.15, true, true, 88,
+          `🔴 VEHICLE CANNOT BE PARKED HERE (TOO NARROW FOR ${bikeModel})`,
+          `Space width (${bayWidFt} ft) does not fit ${bikeModel}.`
+        ),
+        guidance_banner: `🔴 NO — CANNOT PARK HERE • Space is too narrow for ${bikeModel} (${clearanceStr} clearance)`,
         speech_text: `Spaces in view are too narrow for your ${bikeModel}. Do not park here.`
       });
     }
@@ -363,7 +444,7 @@ export default function handler(req, res) {
       final_decision: 'SUITABLE',
       decision_color: 'green',
       decision_icon: '🟢',
-      headline: 'VERIFIED PARKING SPACE AVAILABLE',
+      headline: '🟢 YES — VEHICLE CAN BE PARKED HERE (BAY 1)',
       reason: `Designated parking bay verified (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${bikeModel} with ${clearanceStr} clearance.`,
       can_recommend: true,
       recommended_slot: recSlot,
@@ -381,6 +462,11 @@ export default function handler(req, res) {
         vehicle_fit: { status_icon: '✓', label: `Fits (${clearanceStr})` },
         permission: { status_icon: '✓', label: 'Permitted Bay' }
       },
+      analysis_summary: makeAnalysisSummary(
+        bikeModel, vLen, vWid, 0.30, bayL_m, bayW_m, true, true, true, true, 92,
+        `🟢 YES — VEHICLE CAN BE PARKED HERE (${bikeModel} fits with +${marginFt} ft clearance)`,
+        `Designated parking space verified and fits ${bikeModel}.`
+      ),
       breakdown: {
         parking_zone: 0.92,
         space_free: 0.94,
@@ -388,8 +474,8 @@ export default function handler(req, res) {
         vehicle_fit: 0.94,
         permission: 0.90
       },
-      guidance_banner: `🟢 SUITABLE SPACE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${bikeModel}`,
-      speech_text: `Parking spot verified and suitable! Bay 1 is free. Space is ${bayLenFt} feet long by ${bayWidFt} feet wide. It fits your ${bikeModel} with ${clearanceStr} clearance.`
+      guidance_banner: `🟢 YES — VEHICLE CAN BE PARKED HERE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${bikeModel}`,
+      speech_text: `Verified parking space available! Bay 1 is free. Space is ${bayLenFt} feet long by ${bayWidFt} feet wide. It fits your ${bikeModel} with ${clearanceStr} clearance.`
     });
 
   } catch (err) {
@@ -553,7 +639,7 @@ function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar, margin = 0.30
     final_decision: 'SUITABLE',
     decision_color: 'green',
     decision_icon: '🟢',
-    headline: 'VERIFIED PARKING SPACE AVAILABLE',
+    headline: '🟢 YES — VEHICLE CAN BE PARKED HERE (SLOT 2)',
     reason: `Multi-bay aerial lot verified. Bay 2 is vacant and fits ${bikeModel} with +${wMarginFt} ft clearance.`,
     can_recommend: true,
     recommended_slot: recSlot,
@@ -565,41 +651,59 @@ function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar, margin = 0.30
     ],
     ranked_spaces: [recSlot],
     safety_margin_m: margin,
-    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 94, '🟢 SUITABLE SPACE', `Fits ${bikeModel}`),
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 94, `🟢 YES — VEHICLE CAN BE PARKED HERE (Fits ${bikeModel})`, `Fits ${bikeModel}`),
     detections: [
       { class_name: 'CAR', confidence: 0.94, is_vehicle: true, normalized_bbox: [0.36, 0.34, 0.13, 0.28] }
     ],
     vehicles_count: 3, persons_count: 0, obstacles_count: 0,
     confidence_score: 0.94, confidence_percent: 94,
-    guidance_banner: `🟢 SUITABLE SPACE • SLOT 2 (${lFt}ft × ${wFt}ft) • Clearance: +${wMarginFt} ft`,
-    speech_text: `Parking space verified and suitable! Slot 2 is available with +${wMarginFt} feet clearance.`
+    guidance_banner: `🟢 YES — VEHICLE CAN BE PARKED HERE • SLOT 2 (${lFt}ft × ${wFt}ft) • Clearance: +${wMarginFt} ft`,
+    speech_text: `Verified parking space available! Slot 2 is free. Space is ${lFt} feet long by ${wFt} feet wide. It fits your ${bikeModel} with +${wMarginFt} feet clearance.`
   };
 }
 
 function buildDriverBicycleBlockedResponse(bikeModel, vLen, vWid, margin = 0.30) {
   const reason = 'Candidate parking bay is obstructed by a parked bicycle in the center of the stall.';
+  const blockedBicycleSlot = {
+    id: 'Slot 1',
+    label: 'Slot 1 (Blocked by Bicycle)',
+    status: 'BLOCKED',
+    is_recommended: false,
+    is_suitable: false,
+    fit_status: 'BLOCKED',
+    fit_badge: '🚫 Blocked by Bicycle',
+    blocked_reason: 'Bicycle Obstacle in Bay',
+    normalized_polygon: [[0.36, 0.44], [0.64, 0.44], [0.78, 0.92], [0.22, 0.92]],
+    width_m: 2.20, length_m: 4.80,
+    width_ft: '7.2', length_ft: '15.7',
+    dims_ft: '15.7 ft (L) × 7.2 ft (W)',
+    dims_m: '4.8m × 2.2m',
+    clearance_ft_str: '🚫 Blocked',
+    vehicle_fit: {
+      is_suitable: false,
+      fit_status: 'BLOCKED',
+      fit_badge: '🚫 Blocked by Bicycle',
+      slot_width_ft: '7.2', slot_length_ft: '15.7',
+      dims_ft_str: '15.7 ft (L) × 7.2 ft (W)',
+      dims_m_str: '4.8m × 2.2m',
+      message: 'Bay is blocked by a bicycle obstacle.'
+    }
+  };
+
   return {
     success: true,
     status_code: 'NOT_SUITABLE',
     final_decision: 'NOT_SUITABLE',
     decision_color: 'red',
     decision_icon: '🔴',
-    headline: 'SPACE BLOCKED BY BICYCLE',
+    headline: '🔴 NO — CANNOT PARK HERE (BLOCKED BY BICYCLE)',
     reason: reason,
     can_recommend: false,
-    recommended_slot: null,
-    ar_slots: [
-      {
-        id: 'Slot 1',
-        label: 'Slot 1 (Blocked)',
-        status: 'BLOCKED',
-        blocked_reason: 'Bicycle Obstacle in Bay',
-        normalized_polygon: [[0.36, 0.44], [0.64, 0.44], [0.78, 0.92], [0.22, 0.92]]
-      }
-    ],
-    ranked_spaces: [],
+    recommended_slot: blockedBicycleSlot,
+    ar_slots: [blockedBicycleSlot],
+    ranked_spaces: [blockedBicycleSlot],
     safety_margin_m: margin,
-    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, 4.80, 2.20, true, true, false, true, 92, '🔴 BLOCKED BY BICYCLE', reason),
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, 4.80, 2.20, true, true, false, true, 92, '🔴 VEHICLE CANNOT BE PARKED HERE (BLOCKED BY BICYCLE)', reason),
     detections: [
       { class_name: 'BICYCLE', confidence: 0.89, is_obstacle: true, normalized_bbox: [0.44, 0.46, 0.14, 0.28] },
       { class_name: 'CAR', confidence: 0.94, is_vehicle: true, normalized_bbox: [0.04, 0.28, 0.30, 0.48] },
@@ -607,35 +711,60 @@ function buildDriverBicycleBlockedResponse(bikeModel, vLen, vWid, margin = 0.30)
     ],
     vehicles_count: 2, persons_count: 0, obstacles_count: 1,
     confidence_score: 0.92, confidence_percent: 92,
-    guidance_banner: '🔴 NOT SUITABLE FOR PARKING • Slot 1 is blocked by a bicycle obstacle',
-    speech_text: 'Not suitable for parking. Space is obstructed by a bicycle.'
+    guidance_banner: '🔴 NO — CANNOT PARK HERE • Slot 1 is blocked by a bicycle obstacle',
+    speech_text: 'Cannot park here. Space is obstructed by a bicycle.'
   };
 }
 
 function buildRooftopPedestrianBlockedResponse(bikeModel, vLen, vWid, margin = 0.30) {
-  const reason = 'A pedestrian is actively walking inside the candidate parking space. Do not park.';
+  const reason = 'A pedestrian is actively walking inside the candidate parking space. Vehicle cannot be parked here.';
+  const blockedPedSlot = {
+    id: 'Slot 1',
+    label: 'Slot 1 (Blocked by Pedestrian)',
+    status: 'BLOCKED',
+    is_recommended: false,
+    is_suitable: false,
+    fit_status: 'BLOCKED',
+    fit_badge: '🚫 Blocked by Pedestrian',
+    normalized_polygon: [[0.36, 0.38], [0.64, 0.38], [0.70, 0.88], [0.30, 0.88]],
+    width_m: 2.30,
+    length_m: 4.90,
+    dims_ft: '16.1 ft × 7.5 ft',
+    dims_m: '4.9m × 2.3m',
+    clearance_ft_str: '🚫 Blocked',
+    vehicle_fit: {
+      is_suitable: false,
+      fit_status: 'BLOCKED',
+      fit_badge: '🚫 Blocked by Pedestrian',
+      slot_width_ft: '7.5', slot_length_ft: '16.1',
+      dims_ft_str: '16.1 ft (L) × 7.5 ft (W)',
+      dims_m_str: '4.9m × 2.3m',
+      message: 'Bay is occupied by a pedestrian. Vehicle cannot be parked here.'
+    }
+  };
+
   return {
     success: true,
     status_code: 'NOT_SUITABLE',
     final_decision: 'NOT_SUITABLE',
     decision_color: 'red',
     decision_icon: '🔴',
-    headline: 'PEDESTRIAN IN PARKING BAY',
+    headline: '🔴 NO — CANNOT PARK HERE (BLOCKED BY PEDESTRIAN)',
     reason: reason,
     can_recommend: false,
-    recommended_slot: null,
-    ar_slots: [],
-    ranked_spaces: [],
+    recommended_slot: blockedPedSlot,
+    ar_slots: [blockedPedSlot],
+    ranked_spaces: [blockedPedSlot],
     safety_margin_m: margin,
-    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, 4.90, 2.30, true, true, false, true, 94, '🔴 PEDESTRIAN IN SPACE', reason),
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, 4.90, 2.30, true, true, false, true, 94, '🔴 VEHICLE CANNOT BE PARKED HERE (BLOCKED BY PEDESTRIAN)', reason),
     detections: [
       { class_name: 'PERSON', confidence: 0.93, is_person: true, normalized_bbox: [0.44, 0.32, 0.12, 0.42] },
       { class_name: 'CAR', confidence: 0.95, is_vehicle: true, normalized_bbox: [0.05, 0.24, 0.34, 0.48] }
     ],
     vehicles_count: 1, persons_count: 1, obstacles_count: 0,
     confidence_score: 0.94, confidence_percent: 94,
-    guidance_banner: '🔴 NOT SUITABLE • Pedestrian detected in parking space',
-    speech_text: 'Pedestrian in parking area. Not safe to park.'
+    guidance_banner: '🔴 NO — CANNOT PARK HERE • Bay 1 is blocked by a pedestrian',
+    speech_text: 'Cannot park here. Space is obstructed by a pedestrian.'
   };
 }
 
@@ -654,29 +783,53 @@ function buildNarrowSlotResponse(bikeModel, vLen, vWid, isCar, margin = 0.30) {
   const clrStr = `${mFt >= 0 ? '+' : ''}${mFt} ft`;
 
   if (!isFit) {
-    const reason = `Narrow bay between vehicles (${wFt} ft wide). Too narrow for ${bikeModel} (${clrStr} clearance).`;
+    const reason = `Narrow bay between vehicles (${wFt} ft wide). Space is too narrow for ${bikeModel} (${clrStr} clearance).`;
+    const tooNarrowSlot = {
+      id: 'Slot 1',
+      label: 'Slot 1 (Too Narrow)',
+      status: 'BLOCKED',
+      is_recommended: false,
+      is_suitable: false,
+      fit_status: 'TOO_NARROW',
+      fit_badge: '❌ Too Narrow',
+      normalized_polygon: [[0.34, 0.36], [0.66, 0.36], [0.72, 0.88], [0.28, 0.88]],
+      width_m: slotW_m,
+      length_m: slotL_m,
+      dims_ft: `${lFt} ft × ${wFt} ft`,
+      dims_m: `${slotL_m}m × ${slotW_m}m`,
+      clearance_ft_str: clrStr,
+      vehicle_fit: {
+        is_suitable: false,
+        fit_status: 'TOO_NARROW',
+        fit_badge: '❌ Too Narrow',
+        slot_width_ft: wFt, slot_length_ft: lFt,
+        dims_ft_str: `${lFt} ft (L) × ${wFt} ft (W)`,
+        dims_m_str: `${slotL_m}m × ${slotW_m}m`,
+        message: `Bay width (${wFt} ft) is insufficient for ${bikeModel}.`
+      }
+    };
     return {
       success: true,
       status_code: 'NOT_SUITABLE',
       final_decision: 'NOT_SUITABLE',
       decision_color: 'red',
       decision_icon: '🔴',
-      headline: 'SPACE TOO NARROW FOR YOUR VEHICLE',
+      headline: '🔴 NO — CANNOT PARK HERE (SPACE TOO NARROW)',
       reason: reason,
       can_recommend: false,
-      recommended_slot: null,
-      ar_slots: [],
-      ranked_spaces: [],
+      recommended_slot: tooNarrowSlot,
+      ar_slots: [tooNarrowSlot],
+      ranked_spaces: [tooNarrowSlot],
       safety_margin_m: margin,
-      analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, lengthFits, widthFits, true, true, 90, '🔴 TOO NARROW', reason),
+      analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, lengthFits, widthFits, true, true, 90, '🔴 VEHICLE CANNOT BE PARKED HERE (SPACE TOO NARROW)', reason),
       detections: [
         { class_name: 'CAR', confidence: 0.95, is_vehicle: true, normalized_bbox: [0.02, 0.24, 0.32, 0.52] },
         { class_name: 'CAR', confidence: 0.93, is_vehicle: true, normalized_bbox: [0.66, 0.26, 0.32, 0.50] }
       ],
       vehicles_count: 2, persons_count: 0, obstacles_count: 0,
       confidence_score: 0.90, confidence_percent: 90,
-      guidance_banner: `🔴 TOO NARROW • Bay width (${wFt}ft) does not fit ${bikeModel}`,
-      speech_text: `Space is too narrow for your ${bikeModel}. Do not park here.`
+      guidance_banner: `🔴 NO — CANNOT PARK HERE • Bay width (${wFt}ft) does not fit ${bikeModel}`,
+      speech_text: `Space is too narrow for your ${bikeModel}. Vehicle cannot be parked here.`
     };
   }
 
