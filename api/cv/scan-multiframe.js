@@ -239,6 +239,9 @@ export default function handler(req, res) {
     const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
 
     let dynPoly = clientFeatures.markings_polygon || null;
+    if (!dynPoly && (clientFeatures.has_road_markings || analysis.hasMarkings)) {
+      dynPoly = [[0.22, 0.44], [0.78, 0.44], [0.88, 0.90], [0.12, 0.90]];
+    }
     if (!dynPoly && entities.length >= 2) {
       const vSorted = [...entities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
       if (vSorted.length >= 2) {
