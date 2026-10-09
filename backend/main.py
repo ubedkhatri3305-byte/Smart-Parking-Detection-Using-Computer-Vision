@@ -3337,7 +3337,7 @@ async def analyze_live_frame(request: Request):
         for d in detections
     )
 
-    if recommended_slot and not any_obstacle_in_scene:
+    if recommended_slot:
         occ_status = "AVAILABLE"
         has_obs = False
         fit_data = recommended_slot["vehicle_fit"]
@@ -3346,23 +3346,18 @@ async def analyze_live_frame(request: Request):
     elif analyzed_slots:
         any_blocked = any(s["status"] == "BLOCKED" for s in analyzed_slots)
         any_occupied = any(s["status"] == "OCCUPIED" for s in analyzed_slots)
-        has_obs = any_blocked or any_obstacle_in_scene
+        has_obs = any_blocked
         occ_status = "BLOCKED" if has_obs else ("OCCUPIED" if any_occupied else "AVAILABLE")
         fit_data = analyzed_slots[0]["vehicle_fit"]
         perm_data = {"can_park_legally": analyzed_slots[0]["rules"]["can_park_legally"], "is_unknown": False}
         if any_blocked:
             first_blk = next(s for s in analyzed_slots if s["status"] == "BLOCKED")
             blocked_msg = first_blk.get("blocked_reason") or "Space is obstructed."
-        elif any_obstacle_in_scene:
-            first_obs = next(
-                d for d in detections
-                if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))
-                and not d.get("is_vehicle", False)
-            )
-            obs_n = first_obs.get("class_name", "Obstacle").capitalize()
-            blocked_msg = f"Obstacle ({obs_n}) detected in parking area."
+        elif any_occupied:
+            first_occ = next(s for s in analyzed_slots if s["status"] == "OCCUPIED")
+            blocked_msg = first_occ.get("occupied_by") or "Space is occupied by a vehicle."
         else:
-            blocked_msg = "Space is occupied or obstructed."
+            blocked_msg = analyzed_slots[0].get("vehicle_fit", {}).get("message") or "Space dimensions do not fit vehicle."
     else:
         occ_status = "BLOCKED" if any_obstacle_in_scene else "AVAILABLE"
         has_obs = any_obstacle_in_scene
@@ -3434,13 +3429,14 @@ async def analyze_live_frame(request: Request):
     if final_decision == DecisionState.SUITABLE and recommended_slot:
         rec_label = recommended_slot["label"]
         rec_fit = recommended_slot["vehicle_fit"]
+        headline = "YES — YOU CAN PARK YOUR VEHICLE HERE"
         speech_text = (
-            f"Parking spot verified and suitable! {rec_label} is verified and free. "
+            f"Yes, you can park your vehicle here! {rec_label} is verified and free. "
             f"Space is {rec_fit['slot_length_ft']} feet long by {rec_fit['slot_width_ft']} feet wide. "
             f"It fits your {bike_display_name} with {rec_fit['clearance_ft_str']} clearance."
         )
         guidance_banner = (
-            f"🟢 SUITABLE SPACE • {rec_label.upper()} ({rec_fit['dims_ft_str']}) "
+            f"🟢 YES — YOU CAN PARK YOUR VEHICLE HERE • {rec_label.upper()} ({rec_fit['dims_ft_str']}) "
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     elif final_decision == DecisionState.UNCERTAIN:
@@ -3746,21 +3742,14 @@ async def scan_multiframe_endpoint(request: Request):
                 rule_zone = s.get("rule_zone", "registered")
                 s["rules"] = RuleEngine.verify_slot_legality({"status": s["status"], "rule_zone": rule_zone})
 
-            any_obs_in_scene = any(
-                (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))
-                and not d.get("is_vehicle", False)
-                for d in detections
-            )
+            rec_slot = None
+            for s in analyzed_slots:
+                if s["status"] == "AVAILABLE" and s.get("vehicle_fit", {}).get("is_suitable", False) and s.get("rules", {}).get("can_park_legally", True):
+                    rec_slot = s
+                    break
+
             any_b = any(s["status"] == "BLOCKED" for s in analyzed_slots)
             any_o = any(s["status"] == "OCCUPIED" for s in analyzed_slots)
-            obs_d = any_b or any_obs_in_scene
-
-            rec_slot = None
-            if not obs_d:
-                for s in analyzed_slots:
-                    if s["status"] == "AVAILABLE" and s["vehicle_fit"]["is_suitable"] and s["rules"]["can_park_legally"]:
-                        rec_slot = s
-                        break
 
             if rec_slot:
                 occ_s = "AVAILABLE"
@@ -3769,23 +3758,25 @@ async def scan_multiframe_endpoint(request: Request):
                 p_data = {"can_park_legally": True, "is_unknown": False}
                 b_reason = None
             elif analyzed_slots:
-                occ_s = "BLOCKED" if obs_d else ("OCCUPIED" if any_o else "AVAILABLE")
+                obs_d = any_b
+                occ_s = "BLOCKED" if any_b else ("OCCUPIED" if any_o else "AVAILABLE")
                 f_data = analyzed_slots[0]["vehicle_fit"]
                 p_data = {"can_park_legally": analyzed_slots[0]["rules"]["can_park_legally"], "is_unknown": False}
                 if any_b:
                     first_blk = next(s for s in analyzed_slots if s["status"] == "BLOCKED")
                     b_reason = first_blk.get("blocked_reason") or "Parking space obstructed."
-                elif any_obs_in_scene:
-                    first_obs = next(
-                        d for d in detections
-                        if (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))
-                        and not d.get("is_vehicle", False)
-                    )
-                    obs_n = first_obs.get("class_name", "Obstacle").capitalize()
-                    b_reason = f"Obstacle ({obs_n}) detected in parking area."
+                elif any_o:
+                    first_occ = next(s for s in analyzed_slots if s["status"] == "OCCUPIED")
+                    b_reason = first_occ.get("occupied_by") or "Space is occupied by a vehicle."
                 else:
-                    b_reason = "Space is occupied or obstructed."
+                    b_reason = analyzed_slots[0].get("vehicle_fit", {}).get("message") or "Space dimensions do not fit vehicle."
             else:
+                any_obs_in_scene = any(
+                    (d.get("is_obstacle") or d.get("is_person") or d.get("category") in ("obstacle", "person", "hazard"))
+                    and not d.get("is_vehicle", False)
+                    for d in detections
+                )
+                obs_d = any_obs_in_scene
                 occ_s = "BLOCKED" if obs_d else "AVAILABLE"
                 f_data = {"is_suitable": False, "message": "No delineated slots found."}
                 p_data = {"can_park_legally": True, "is_unknown": False}
@@ -3891,7 +3882,7 @@ async def scan_multiframe_endpoint(request: Request):
             f"Space is {rec_fit['slot_length_ft']} ft by {rec_fit['slot_width_ft']} ft, fitting your {bike_display_name}."
         )
         guidance_banner = (
-            f"🟢 SUITABLE SPACE • {recommended_slot['label'].upper()} ({rec_fit['dims_ft_str']}) "
+            f"🟢 YES — YOU CAN PARK YOUR VEHICLE HERE • {recommended_slot['label'].upper()} ({rec_fit['dims_ft_str']}) "
             f"• Clearance: {rec_fit['clearance_ft_str']} • Fits {bike_display_name}"
         )
     elif final_decision == DecisionState.UNCERTAIN:

@@ -189,33 +189,62 @@ export default function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // PRIORITY 2: OBSTACLE, PEDESTRIAN OR OCCUPYING VEHICLE IN OUTDOOR AREA
+    // PRIORITY 2: DISCOVER AUTHENTIC CANDIDATE PARKING BAYS
     // -------------------------------------------------------------
-    if (hasPerson || hasHazard || (hasVehicles && entities.length === 1)) {
-      let obsLabel = 'GROUND OBSTACLE';
-      if (hasPerson && hasHazard) {
-        const topObs = oList[0];
-        const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
-        const hazardName = rawName.includes('BOX') ? 'CARDBOARD BOX' : (rawName.includes('CONE') ? 'TRAFFIC CONE' : (rawName.includes('CHAIR') ? 'CHAIR' : 'OBSTACLE'));
-        obsLabel = `${hazardName} & PEDESTRIAN`;
-      } else if (hasHazard) {
-        const topObs = oList[0] || entities[0];
-        const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
-        if (rawName.includes('BOX') || rawName.includes('CARDBOARD')) {
-          obsLabel = 'CARDBOARD BOX';
-        } else if (rawName.includes('CONE')) {
-          obsLabel = 'TRAFFIC CONE';
-        } else if (rawName.includes('CHAIR')) {
-          obsLabel = 'CHAIR / FURNITURE';
-        } else if (rawName.includes('BIKE') || rawName.includes('BICYCLE')) {
-          obsLabel = 'BICYCLE';
-        } else {
-          obsLabel = rawName === 'OBSTACLE' ? 'GROUND OBSTACLE' : rawName;
+    const bayW_m = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
+    const bayL_m = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
+    const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
+    const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
+    const isFit = (widthMargin_m >= 0.15) && (lengthMargin_m >= 0.10);
+
+    const bayLenFt = (bayL_m * 3.28084).toFixed(1);
+    const bayWidFt = (bayW_m * 3.28084).toFixed(1);
+    const marginFt = (widthMargin_m * 3.28084).toFixed(1);
+    const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
+
+    // Only accept dynamic polygon from REAL verified road markings on asphalt or vehicle corridors
+    let dynPoly = (clientFeatures.has_road_markings && clientFeatures.is_road_asphalt && clientFeatures.markings_polygon) ? clientFeatures.markings_polygon : null;
+    if (!dynPoly && entities.length >= 2) {
+      const vSorted = [...entities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
+      if (vSorted.length >= 2) {
+        const x1 = vSorted[0].normalized_bbox[0] + vSorted[0].normalized_bbox[2];
+        const x2 = vSorted[1].normalized_bbox[0];
+        if (x2 - x1 > 0.15) {
+          dynPoly = [[x1, 0.44], [x2, 0.44], [Math.min(0.95, x2 + 0.05), 0.90], [Math.max(0.05, x1 - 0.05), 0.90]];
         }
-      } else if (hasPerson) {
-        obsLabel = 'PEDESTRIAN';
-      } else if (hasVehicles) {
+      }
+    }
+
+    // Check if an obstacle, person, or vehicle intersects this candidate bay
+    let intersectingEntity = null;
+    if (dynPoly) {
+      for (const ent of entities) {
+        if (ent.normalized_bbox && bboxIntersectsPolygon(ent.normalized_bbox, dynPoly)) {
+          intersectingEntity = ent;
+          break;
+        }
+      }
+    }
+
+    // If candidate bay is physically blocked OR (no candidate bay exists AND scene has obstacles/vehicles)
+    if (intersectingEntity || (!dynPoly && (hasPerson || hasHazard || (hasVehicles && entities.length === 1)))) {
+      const blocking = intersectingEntity || (hasPerson ? pList[0] : (hasHazard ? oList[0] : (hasVehicles ? vList[0] : entities[0])));
+      let obsLabel = 'GROUND OBSTACLE';
+      const cUpper = ((blocking && blocking.class_name) || '').toUpperCase();
+      if (blocking && blocking.is_vehicle) {
         obsLabel = 'PARKED VEHICLE';
+      } else if (blocking && (blocking.is_person || cUpper === 'PERSON')) {
+        obsLabel = 'PEDESTRIAN';
+      } else if (cUpper.includes('CONE')) {
+        obsLabel = 'TRAFFIC CONE';
+      } else if (cUpper.includes('BOX') || cUpper.includes('CARDBOARD')) {
+        obsLabel = 'CARDBOARD BOX';
+      } else if (cUpper.includes('CHAIR')) {
+        obsLabel = 'CHAIR / FURNITURE';
+      } else if (cUpper.includes('BIKE') || cUpper.includes('BICYCLE')) {
+        obsLabel = 'BICYCLE';
+      } else {
+        obsLabel = cUpper || 'GROUND OBSTACLE';
       }
 
       const headline = `🔴 NO — CANNOT PARK HERE (BLOCKED BY ${obsLabel})`;
@@ -234,7 +263,13 @@ export default function handler(req, res) {
         can_recommend: false,
         is_parking_scene: false,
         recommended_slot: null,
-        ar_slots: [],
+        ar_slots: dynPoly ? [{
+          id: 'Bay 1',
+          label: 'Bay 1 (Blocked)',
+          status: 'BLOCKED',
+          blocked_reason: `Blocked by ${obsLabel}`,
+          normalized_polygon: dynPoly
+        }] : [],
         ranked_spaces: [],
         detections: entities,
         vehicles_count: vList.length || analysis.vehiclesCount || 0,
@@ -264,33 +299,6 @@ export default function handler(req, res) {
         guidance_banner: bannerText,
         speech_text: voiceText
       });
-    }
-
-    // -------------------------------------------------------------
-    // PRIORITY 3: AUTHENTIC PARKING BAY CONFIRMED ON ROAD / GROUND SURFACE
-    // -------------------------------------------------------------
-    const bayW_m = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
-    const bayL_m = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
-    const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
-    const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
-    const isFit = (widthMargin_m >= 0.15) && (lengthMargin_m >= 0.10);
-
-    const bayLenFt = (bayL_m * 3.28084).toFixed(1);
-    const bayWidFt = (bayW_m * 3.28084).toFixed(1);
-    const marginFt = (widthMargin_m * 3.28084).toFixed(1);
-    const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
-
-    // Only accept dynamic polygon from REAL verified road markings on asphalt or vehicle corridors
-    let dynPoly = (clientFeatures.has_road_markings && clientFeatures.is_road_asphalt && clientFeatures.markings_polygon) ? clientFeatures.markings_polygon : null;
-    if (!dynPoly && entities.length >= 2) {
-      const vSorted = [...entities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
-      if (vSorted.length >= 2) {
-        const x1 = vSorted[0].normalized_bbox[0] + vSorted[0].normalized_bbox[2];
-        const x2 = vSorted[1].normalized_bbox[0];
-        if (x2 - x1 > 0.15) {
-          dynPoly = [[x1, 0.44], [x2, 0.44], [Math.min(0.95, x2 + 0.05), 0.90], [Math.max(0.05, x1 - 0.05), 0.90]];
-        }
-      }
     }
 
     // If no genuine physical markings or inter-vehicle corridor detected, NEVER fabricate fake slots!
@@ -409,14 +417,14 @@ export default function handler(req, res) {
       final_decision: 'SUITABLE',
       decision_color: 'green',
       decision_icon: '🟢',
-      headline: '🟢 YES — VEHICLE CAN BE PARKED HERE (BAY 1)',
+      headline: 'YES — YOU CAN PARK YOUR VEHICLE HERE',
       reason: `Designated parking bay verified (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${bikeModel} with ${clearanceStr} clearance.`,
       can_recommend: true,
       recommended_slot: recSlot,
       ar_slots: [recSlot],
       detections: entities,
       vehicles_count: analysis.vehiclesCount || 0,
-      persons_count: 0,
+      persons_count: pList.length,
       obstacles_count: 0,
       confidence_score: 0.92,
       confidence_percent: 92,
@@ -429,7 +437,7 @@ export default function handler(req, res) {
       },
       analysis_summary: makeAnalysisSummary(
         bikeModel, vLen, vWid, 0.30, bayL_m, bayW_m, true, true, true, true, 92,
-        `🟢 YES — VEHICLE CAN BE PARKED HERE (${bikeModel} fits with +${marginFt} ft clearance)`,
+        `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE (${bikeModel} fits with +${marginFt} ft clearance)`,
         `Designated parking space verified and fits ${bikeModel}.`
       ),
       breakdown: {
@@ -439,7 +447,7 @@ export default function handler(req, res) {
         vehicle_fit: 0.94,
         permission: 0.90
       },
-      guidance_banner: `🟢 YES — VEHICLE CAN BE PARKED HERE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${bikeModel}`,
+      guidance_banner: `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${bikeModel}`,
       speech_text: `Verified parking space available! Bay 1 is free. Space is ${bayLenFt} feet long by ${bayWidFt} feet wide. It fits your ${bikeModel} with ${clearanceStr} clearance.`
     });
 
@@ -604,7 +612,7 @@ function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar, margin = 0.30
     final_decision: 'SUITABLE',
     decision_color: 'green',
     decision_icon: '🟢',
-    headline: '🟢 YES — VEHICLE CAN BE PARKED HERE (SLOT 2)',
+    headline: 'YES — YOU CAN PARK YOUR VEHICLE HERE',
     reason: `Multi-bay aerial lot verified. Bay 2 is vacant and fits ${bikeModel} with +${wMarginFt} ft clearance.`,
     can_recommend: true,
     recommended_slot: recSlot,
@@ -616,14 +624,14 @@ function buildAerialScenarioResponse(bikeModel, vLen, vWid, isCar, margin = 0.30
     ],
     ranked_spaces: [recSlot],
     safety_margin_m: margin,
-    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 94, `🟢 YES — VEHICLE CAN BE PARKED HERE (Fits ${bikeModel})`, `Fits ${bikeModel}`),
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 94, `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE (Fits ${bikeModel})`, `Fits ${bikeModel}`),
     detections: [
       { class_name: 'CAR', confidence: 0.94, is_vehicle: true, normalized_bbox: [0.36, 0.34, 0.13, 0.28] }
     ],
     vehicles_count: 3, persons_count: 0, obstacles_count: 0,
     confidence_score: 0.94, confidence_percent: 94,
-    guidance_banner: `🟢 YES — VEHICLE CAN BE PARKED HERE • SLOT 2 (${lFt}ft × ${wFt}ft) • Clearance: +${wMarginFt} ft`,
-    speech_text: `Verified parking space available! Slot 2 is free. Space is ${lFt} feet long by ${wFt} feet wide. It fits your ${bikeModel} with +${wMarginFt} feet clearance.`
+    guidance_banner: `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE • SLOT 2 (${lFt}ft × ${wFt}ft) • Clearance: +${wMarginFt} ft`,
+    speech_text: `Yes, you can park your vehicle here! Slot 2 is free. Space is ${lFt} feet long by ${wFt} feet wide. It fits your ${bikeModel} with +${wMarginFt} feet clearance.`
   };
 }
 
@@ -827,21 +835,77 @@ function buildNarrowSlotResponse(bikeModel, vLen, vWid, isCar, margin = 0.30) {
     final_decision: 'SUITABLE',
     decision_color: 'green',
     decision_icon: '🟢',
-    headline: 'VERIFIED PARKING SPACE AVAILABLE',
+    headline: 'YES — YOU CAN PARK YOUR VEHICLE HERE',
     reason: `Narrow bay fits ${bikeModel} safely with ${clrStr} clearance.`,
     can_recommend: true,
     recommended_slot: recSlot,
     ar_slots: [recSlot],
     ranked_spaces: [recSlot],
     safety_margin_m: margin,
-    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 86, '🟢 SUITABLE SPACE', `Fits ${bikeModel} (${clrStr})`),
+    analysis_summary: makeAnalysisSummary(bikeModel, vLen, vWid, margin, slotL_m, slotW_m, true, true, true, true, 86, '🟢 YES — YOU CAN PARK YOUR VEHICLE HERE', `Fits ${bikeModel} (${clrStr})`),
     detections: [
       { class_name: 'CAR', confidence: 0.95, is_vehicle: true, normalized_bbox: [0.02, 0.24, 0.32, 0.52] },
       { class_name: 'CAR', confidence: 0.93, is_vehicle: true, normalized_bbox: [0.66, 0.26, 0.32, 0.50] }
     ],
     vehicles_count: 2, persons_count: 0, obstacles_count: 0,
     confidence_score: 0.86, confidence_percent: 86,
-    guidance_banner: `🟢 SUITABLE SPACE • TIGHT FIT (${lFt}ft × ${wFt}ft) • Clearance: ${clrStr}`,
-    speech_text: `Space fits your ${bikeModel}, but clearance is tight. Park carefully.`
+    guidance_banner: `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE • TIGHT FIT (${lFt}ft × ${wFt}ft) • Clearance: ${clrStr}`,
+    speech_text: `Yes, you can park your vehicle here. Space fits your ${bikeModel}, but clearance is tight. Park carefully.`
   };
 }
+
+// ----------------------------------------------------------------------------
+// GEOMETRIC INTERSECTION HELPERS
+// ----------------------------------------------------------------------------
+function bboxIntersectsPolygon(bbox, poly) {
+  if (!bbox || !poly || poly.length < 3) return false;
+  const [bx, by, bw, bh] = bbox;
+  const bx2 = bx + bw;
+  const by2 = by + bh;
+  const bCenter = [bx + bw / 2, by + bh / 2];
+  const bBottom = [bx + bw / 2, by2];
+
+  const pxs = poly.map(p => p[0]);
+  const pys = poly.map(p => p[1]);
+  const minPX = Math.min(...pxs);
+  const maxPX = Math.max(...pxs);
+  const minPY = Math.min(...pys);
+  const maxPY = Math.max(...pys);
+
+  // AABB disjoint check
+  if (bx2 < minPX || bx > maxPX || by2 < minPY || by > maxPY) {
+    return false;
+  }
+
+  // Point in polygon for ground contact or center point
+  if (pointInPolygon(bBottom, poly) || pointInPolygon(bCenter, poly)) {
+    return true;
+  }
+
+  // Check if any polygon vertex is inside bbox
+  for (const pt of poly) {
+    if (pt[0] >= bx && pt[0] <= bx2 && pt[1] >= by && pt[1] <= by2) {
+      return true;
+    }
+  }
+
+  // Significant intersection area
+  const interW = Math.max(0, Math.min(bx2, maxPX) - Math.max(bx, minPX));
+  const interH = Math.max(0, Math.min(by2, maxPY) - Math.max(by, minPY));
+  const interArea = interW * interH;
+  const bArea = Math.max(0.0001, bw * bh);
+  return (interArea / bArea) > 0.15;
+}
+
+function pointInPolygon(point, vs) {
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+

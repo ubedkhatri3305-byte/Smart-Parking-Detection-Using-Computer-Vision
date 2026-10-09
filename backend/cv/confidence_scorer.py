@@ -180,7 +180,7 @@ class ParkingConfidenceScorer:
             decision = DecisionState.SUITABLE
             decision_color = "green"
             decision_icon = "🟢"
-            headline = "VERIFIED PARKING SPACE AVAILABLE"
+            headline = "YES — YOU CAN PARK YOUR VEHICLE HERE"
             summary_reason = "Designated parking space verified, currently unobstructed, and fits your vehicle."
         else:
             decision = DecisionState.UNCERTAIN

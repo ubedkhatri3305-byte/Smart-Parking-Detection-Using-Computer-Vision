@@ -11,10 +11,10 @@ from ultralytics import YOLO
 
 class ParkingYOLODetector:
     # Target vehicle classes
-    VEHICLE_CLASSES = {"car", "motorcycle", "bus", "truck", "train", "bicycle"}
+    VEHICLE_CLASSES = {"car", "motorcycle", "bus", "truck", "train", "bicycle", "auto-rickshaw", "auto", "rickshaw", "scooter"}
     
     # Outdoor street and traffic infrastructure
-    OUTDOOR_ROAD_OBJECTS = {"traffic light", "fire hydrant", "stop sign", "parking meter", "bench"}
+    OUTDOOR_ROAD_OBJECTS = {"traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "pole"}
 
     # Common indoor furniture, home appliances, and domestic items from COCO
     INDOOR_CLASSES = {
@@ -28,7 +28,7 @@ class ParkingYOLODetector:
     # Physical road obstacles on pavement/street
     ROAD_OBSTACLE_CLASSES = {
         "person", "dog", "cat", "horse", "sheep", "cow", "backpack", "umbrella", "handbag",
-        "suitcase", "sports ball", "skateboard", "debris", "box"
+        "suitcase", "sports ball", "skateboard", "debris", "box", "traffic cone", "cone", "barrier", "pole"
     }
 
     def __init__(self, model_name: str = "yolov8n.pt", conf_threshold: float = 0.18):
@@ -209,11 +209,25 @@ class ParkingYOLODetector:
             if not overlaps:
                 cx = (abs_x1 + abs_x2) / 2.0
                 cy = (abs_y1 + abs_y2) / 2.0
+                aspect = float(rh) / max(1.0, float(rw))
+                patch = ground_roi[ry:ry+rh, rx:rx+rw]
+                h_name = "Ground Obstacle"
+                if patch.size > 0:
+                    mean_b = float(np.mean(patch[:, :, 0]))
+                    mean_g = float(np.mean(patch[:, :, 1]))
+                    mean_r = float(np.mean(patch[:, :, 2]))
+                    if mean_r > 150 and mean_r > mean_b * 1.6 and aspect >= 0.95:
+                        h_name = "Traffic Cone"
+                    elif mean_r > 100 and mean_g > 70 and mean_b < 70 and (mean_r - mean_b > 30):
+                        h_name = "Cardboard Box"
+                    elif rw > rh * 1.8:
+                        h_name = "Barrier"
+
                 hazards.append({
                     "class_id": 999,
-                    "class_name": "Ground Obstacle",
+                    "class_name": h_name,
                     "category": "obstacle",
-                    "confidence": 0.82,
+                    "confidence": 0.84,
                     "is_vehicle": False,
                     "is_obstacle": True,
                     "is_indoor": False,

@@ -2094,7 +2094,11 @@ async function captureAndScanFrame(isManual = false) {
     }
 
     const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.70);
-    const clientFeats = extractClientImageFeatures(tempCanvas);
+    let neuralDets = [];
+    try {
+      neuralDets = await runCocoSsdInference(tempCanvas);
+    } catch (_) {}
+    const clientFeats = extractClientImageFeatures(tempCanvas, neuralDets);
 
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
     const payload = {
@@ -2129,7 +2133,7 @@ async function captureAndScanFrame(isManual = false) {
     renderLiveScanResults(data);
   } catch (err) {
     console.warn('Tab 1 scan notice:', err.message);
-    const cFeats = (typeof tempCanvas !== 'undefined') ? extractClientImageFeatures(tempCanvas) : { is_wall_or_screen: false, detected_entities: [] };
+    const cFeats = (typeof tempCanvas !== 'undefined') ? extractClientImageFeatures(tempCanvas, neuralDets) : { is_wall_or_screen: false, detected_entities: [] };
     const entList = cFeats.detected_entities || [];
     if (entList.length > 0) {
       const pList = entList.filter(e => e.is_person && !e.is_obstacle);
@@ -2327,7 +2331,7 @@ function renderLiveScanResults(data) {
     if (recDims) recDims.innerHTML = '<span style="color:#ef4444;font-weight:600;">Domestic Space</span>';
     if (recClearance) recClearance.innerHTML = '<span style="color:#ef4444;font-weight:600;">0.0 ft</span>';
     if (recMsg) recMsg.textContent = data.guidance_banner || data.scene_reason || 'Indoor domestic setting detected. Please point camera outside at a road or parking lot.';
-    drawLiveAROverlay([], null, data.detections || [], data);
+    drawAROverlay([], null, data.detections || [], data);
     return;
   }
 
@@ -2340,14 +2344,16 @@ function renderLiveScanResults(data) {
     const marginFt = rec.vehicle_fit?.width_margin_ft !== undefined ? rec.vehicle_fit.width_margin_ft : (marginM * 3.28084).toFixed(1);
     const clearanceStr = rec.vehicle_fit?.clearance_ft_str || `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
 
-    recTitle.textContent = rec.label || `Bay ${rec.id}`;
     if (rec.vehicle_fit?.is_suitable) {
-      recStatus.textContent = `🟢 Available & Fits Vehicle (+${marginFt} ft)`;
+      recTitle.textContent = data.headline || 'YES — YOU CAN PARK YOUR VEHICLE HERE';
+      recStatus.textContent = `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE (+${marginFt} ft)`;
       recStatus.style.color = '#10b981';
     } else if (rec.blocked_reason) {
+      recTitle.textContent = rec.label || `Bay ${rec.id}`;
       recStatus.textContent = `⚠️ ${rec.blocked_reason}`;
       recStatus.style.color = '#ef4444';
     } else {
+      recTitle.textContent = rec.label || `Bay ${rec.id}`;
       recStatus.textContent = `❌ Too Narrow for Vehicle`;
       recStatus.style.color = '#ef4444';
     }
@@ -2530,7 +2536,12 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.fillStyle = 'rgba(239, 68, 68, 0.16)';
         ctx.fillRect(bx, by, bw, bh);
 
-        const label = `⚠️ ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
+        let obsIcon = '⚠️';
+        if (cNameUpper.includes('BARRIER')) obsIcon = '🚧';
+        else if (cNameUpper.includes('POLE')) obsIcon = '💈';
+        else if (cNameUpper.includes('BOX')) obsIcon = '📦';
+        else if (cNameUpper.includes('CONE')) obsIcon = '⚠️';
+        const label = `${obsIcon} ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = '#ef4444';
@@ -2538,7 +2549,7 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.fillStyle = '#ffffff';
         ctx.fillText(label, bx + 4, Math.max(13, by - 4));
       } else {
-        // Vehicle Bounding Box
+        // Multi-Class Vehicle Bounding Box
         ctx.strokeStyle = '#06b6d4';
         ctx.lineWidth = 2;
         ctx.strokeRect(bx, by, bw, bh);
@@ -2549,7 +2560,14 @@ function drawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.beginPath(); ctx.moveTo(bx, by + clen); ctx.lineTo(bx, by); ctx.lineTo(bx + clen, by); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(bx + bw - clen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + clen); ctx.stroke();
 
-        const label = `🚗 ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
+        let vIcon = '🚗';
+        if (cNameUpper.includes('MOTORCYCLE')) vIcon = '🏍️';
+        else if (cNameUpper.includes('SCOOTER')) vIcon = '🛵';
+        else if (cNameUpper.includes('AUTO') || cNameUpper.includes('RICKSHAW')) vIcon = '🛺';
+        else if (cNameUpper.includes('BUS')) vIcon = '🚌';
+        else if (cNameUpper.includes('TRUCK')) vIcon = '🚚';
+        else if (cNameUpper.includes('BICYCLE') || cNameUpper.includes('BIKE')) vIcon = '🚲';
+        const label = `${vIcon} ${det.class_name.toUpperCase()} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = 'rgba(6, 182, 212, 0.9)';
@@ -5492,11 +5510,17 @@ async function wzCaptureAndScan(isManual = false) {
     const b64 = tmpCanvas.toDataURL('image/jpeg', 0.80);
     const frames = [b64];
 
-    if (spinnerText) spinnerText.textContent = 'Evaluating vehicle fit & clearance...';
-    if (statusEl) statusEl.textContent = '🤖 Neural scan • Checking vehicle fit & space validity...';
+    if (spinnerText) spinnerText.textContent = 'Evaluating multi-class objects & vehicle fit...';
+    if (statusEl) statusEl.textContent = '🤖 Neural scan • Detecting vehicles, persons, obstacles & space...';
 
-    // Dynamically extract client-side visual features from live frame canvas
-    const clientFeats = extractClientImageFeatures(tmpCanvas);
+    // 1. Run client-side neural multi-class detection (COCO-SSD)
+    let neuralDets = [];
+    try {
+      neuralDets = await runCocoSsdInference(tmpCanvas);
+    } catch (_) {}
+
+    // 2. Extract visual features & integrate neural detections
+    const clientFeats = extractClientImageFeatures(tmpCanvas, neuralDets);
 
     const p = state.userProfile || { bikeType: 'bike_cruiser', length: 2.14, width: 0.84, bikeModel: 'Vehicle' };
     const payload = {
@@ -5529,7 +5553,7 @@ async function wzCaptureAndScan(isManual = false) {
     wzRenderScanResults(data);
   } catch (err) {
     console.warn('Real-time scan note (activating resilient local CV engine):', err.message);
-    wzFallbackClientScan(video, tmpCanvas);
+    wzFallbackClientScan(video, tmpCanvas, neuralDets);
   } finally {
     clearTimeout(scanSafety);
     wz.cam.isScanningNow = false;
@@ -5566,8 +5590,129 @@ window.wzSpeakGuidance = function() {
   speakGuidance(msg, true);
 };
 
+// ============================================================================
+// TENSORFLOW.JS COCO-SSD MULTI-CLASS OBJECT DETECTOR
+// ============================================================================
+let cocoSsdModel = null;
+let isCocoLoading = false;
+
+async function initCocoSsd() {
+  if (cocoSsdModel) return cocoSsdModel;
+  if (isCocoLoading) return null;
+  if (typeof cocoSsd === 'undefined') {
+    return null;
+  }
+  try {
+    isCocoLoading = true;
+    cocoSsdModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+    console.log('✅ ParkVision AI: COCO-SSD Multi-Class Neural Detector loaded successfully (80 COCO Classes).');
+    return cocoSsdModel;
+  } catch (err) {
+    console.warn('COCO-SSD model initialization note:', err.message);
+    return null;
+  } finally {
+    isCocoLoading = false;
+  }
+}
+
+async function runCocoSsdInference(sourceCanvasOrVideo) {
+  if (!sourceCanvasOrVideo) return [];
+  const model = await initCocoSsd();
+  if (!model) return [];
+  try {
+    const predictions = await model.detect(sourceCanvasOrVideo);
+    if (!predictions || predictions.length === 0) return [];
+    const srcW = sourceCanvasOrVideo.width || sourceCanvasOrVideo.videoWidth || 640;
+    const srcH = sourceCanvasOrVideo.height || sourceCanvasOrVideo.videoHeight || 480;
+
+    return predictions.map(p => {
+      const [bx, by, bw, bh] = p.bbox;
+      const cName = (p.class || '').toLowerCase();
+      const conf = Math.round((p.score || 0.85) * 100) / 100;
+      const isPerson = cName === 'person';
+      const isVeh = ['car', 'motorcycle', 'bus', 'truck', 'bicycle', 'train'].includes(cName);
+      const isObstacle = ['traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'chair', 'couch', 'bed', 'potted plant', 'backpack', 'umbrella', 'handbag', 'suitcase', 'sports ball', 'bottle'].includes(cName) || (!isVeh && !isPerson);
+      const isIndoor = ['chair', 'couch', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator'].includes(cName);
+
+      let resolvedName = cName.toUpperCase();
+      if (isVeh && (cName === 'car' || cName === 'motorcycle')) {
+        const aspect = bw / Math.max(1, bh);
+        if (aspect >= 0.50 && aspect <= 0.85 && (bw / srcW) >= 0.14 && (bw / srcW) <= 0.45) {
+          if (state.userProfile?.wheels === 3 || (state.userProfile?.bikeType && state.userProfile.bikeType.includes('auto'))) {
+            resolvedName = 'AUTO-RICKSHAW';
+          }
+        }
+      }
+
+      return {
+        class_name: resolvedName,
+        confidence: conf,
+        is_person: isPerson,
+        is_vehicle: isVeh,
+        is_obstacle: isObstacle && !isPerson,
+        is_indoor: isIndoor,
+        normalized_bbox: [
+          Math.max(0.01, Math.min(0.98, Number((bx / srcW).toFixed(4)))),
+          Math.max(0.01, Math.min(0.98, Number((by / srcH).toFixed(4)))),
+          Math.max(0.02, Math.min(0.98, Number((bw / srcW).toFixed(4)))),
+          Math.max(0.02, Math.min(0.98, Number((bh / srcH).toFixed(4))))
+        ]
+      };
+    });
+  } catch (err) {
+    console.warn('COCO-SSD inference error:', err.message);
+    return [];
+  }
+}
+
+// Geometric polygon-bbox intersection helpers for spatial candidate validation
+function bboxIntersectsPolygon(bbox, poly) {
+  if (!bbox || !poly || poly.length < 3) return false;
+  const [bx, by, bw, bh] = bbox;
+  const bx2 = bx + bw;
+  const by2 = by + bh;
+  const bCenter = [bx + bw / 2, by + bh / 2];
+  const bBottom = [bx + bw / 2, by2];
+
+  const pxs = poly.map(p => p[0]);
+  const pys = poly.map(p => p[1]);
+  const minPX = Math.min(...pxs);
+  const maxPX = Math.max(...pxs);
+  const minPY = Math.min(...pys);
+  const maxPY = Math.max(...pys);
+
+  if (bx2 < minPX || bx > maxPX || by2 < minPY || by > maxPY) {
+    return false;
+  }
+  if (pointInPolygon(bBottom, poly) || pointInPolygon(bCenter, poly)) {
+    return true;
+  }
+  for (const pt of poly) {
+    if (pt[0] >= bx && pt[0] <= bx2 && pt[1] >= by && pt[1] <= by2) {
+      return true;
+    }
+  }
+  const interW = Math.max(0, Math.min(bx2, maxPX) - Math.max(bx, minPX));
+  const interH = Math.max(0, Math.min(by2, maxPY) - Math.max(by, minPY));
+  const interArea = interW * interH;
+  const bArea = Math.max(0.0001, bw * bh);
+  return (interArea / bArea) > 0.15;
+}
+
+function pointInPolygon(point, vs) {
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 // Client-side visual feature extractor across pixel grid with multi-stage scene validation
-function extractClientImageFeatures(canvas) {
+function extractClientImageFeatures(canvas, neuralDetections = []) {
   if (!canvas || canvas.width === 0 || canvas.height === 0) {
     return { scene_type: 'WALL_OR_SCREEN', is_wall_or_screen: true, is_indoor: false, is_vegetation: false, is_road_asphalt: false, has_road_markings: false, markings_polygon: null, vehicles_count: 0, detected_entities: [] };
   }
@@ -5734,124 +5879,140 @@ function extractClientImageFeatures(canvas) {
 
     const detectedEntities = [];
 
-    // PHYSICAL 3D CLUSTER & OBJECT ANALYSIS
-    let minRow = rows, maxRow = 0, minCol = cols, maxCol = 0;
-    let clusterPoints = 0;
-    let clusterEdgeSum = 0;
-    const clusterIndices = [];
+    // 1. Prefer Genuine Neural Model Detections (COCO-SSD) if available
+    if (Array.isArray(neuralDetections) && neuralDetections.length > 0) {
+      detectedEntities.push(...neuralDetections);
+    } else {
+      // 2. Physical 3D Cluster & Visual Geometry Extractor (Offline / Heuristic fallback)
+      let minRow = rows, maxRow = 0, minCol = cols, maxCol = 0;
+      let clusterPoints = 0;
+      let clusterEdgeSum = 0;
+      const clusterIndices = [];
 
-    for (let i = 0; i < pointAttrs.length; i++) {
-      const p = pointAttrs[i];
-      const pEdge = localEdges[i] || 0;
-      const isClusterPt = Math.abs(p.l - meanLum) > Math.max(30, stdDev * 1.6) && (p.l < 170 || Math.abs(p.l - meanLum) > 50);
-      if (isClusterPt) {
-        clusterPoints++;
-        clusterEdgeSum += pEdge;
-        clusterIndices.push(i);
-        if (p.r < minRow) minRow = p.r;
-        if (p.r > maxRow) maxRow = p.r;
-        if (p.c < minCol) minCol = p.c;
-        if (p.c > maxCol) maxCol = p.c;
-      }
-    }
-
-    const clusterRatio = clusterPoints / sampleCount;
-    const clusterAvgEdge = clusterEdgeSum / Math.max(1, clusterPoints);
-
-    if (clusterRatio >= 0.05 && (maxRow - minRow) >= 2 && (maxCol - minCol) >= 2) {
-      const bx = Math.max(0.06, (minCol * stepX) / cw);
-      const by = Math.max(0.06, (minRow * stepY) / ch);
-      const bw = Math.min(0.88 - bx, ((maxCol - minCol + 1) * stepX) / cw);
-      const bh = Math.min(0.88 - by, ((maxRow - minRow + 1) * stepY) / ch);
-      const aspect = bh / Math.max(0.01, bw);
-
-      let clSkin = 0;
-      let clBox = 0;
-      let clCone = 0;
-
-      for (let idx of clusterIndices) {
-        const p = pointAttrs[idx];
-        if (p.isSkin) clSkin++;
-        if (p.isBox) clBox++;
-        if (p.isCone) clCone++;
+      for (let i = 0; i < pointAttrs.length; i++) {
+        const p = pointAttrs[i];
+        const pEdge = localEdges[i] || 0;
+        const isClusterPt = Math.abs(p.l - meanLum) > Math.max(30, stdDev * 1.6) && (p.l < 170 || Math.abs(p.l - meanLum) > 50);
+        if (isClusterPt) {
+          clusterPoints++;
+          clusterEdgeSum += pEdge;
+          clusterIndices.push(i);
+          if (p.r < minRow) minRow = p.r;
+          if (p.r > maxRow) maxRow = p.r;
+          if (p.c < minCol) minCol = p.c;
+          if (p.c > maxCol) maxCol = p.c;
+        }
       }
 
-      const isVehicle = (aspect <= 0.85 && bw >= 0.28 && bh >= 0.18 && clusterRatio >= 0.12 && asphaltRatio >= 0.20);
-      const isConeObj = (clCone >= 5 || coneOrangePoints >= 8 || coneRatio >= 0.02);
-      const isPersonObj = (clSkin >= 4 || skinTonePoints >= 8) && (by <= 0.60);
+      const clusterRatio = clusterPoints / sampleCount;
+      const clusterAvgEdge = clusterEdgeSum / Math.max(1, clusterPoints);
 
-      if (isVehicle) {
-        detectedEntities.push({
-          class_name: 'CAR',
-          confidence: 0.93,
-          is_vehicle: true,
-          is_person: false,
-          is_obstacle: false,
-          normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
-        });
-      } else if (isPersonObj) {
+      if (clusterRatio >= 0.05 && (maxRow - minRow) >= 2 && (maxCol - minCol) >= 2) {
+        const bx = Math.max(0.06, (minCol * stepX) / cw);
+        const by = Math.max(0.06, (minRow * stepY) / ch);
+        const bw = Math.min(0.88 - bx, ((maxCol - minCol + 1) * stepX) / cw);
+        const bh = Math.min(0.88 - by, ((maxRow - minRow + 1) * stepY) / ch);
+        const aspect = bh / Math.max(0.01, bw);
+
+        let clSkin = 0;
+        let clBox = 0;
+        let clCone = 0;
+
+        for (let idx of clusterIndices) {
+          const p = pointAttrs[idx];
+          if (p.isSkin) clSkin++;
+          if (p.isBox) clBox++;
+          if (p.isCone) clCone++;
+        }
+
+        const isConeObj = (clCone >= 5 || coneOrangePoints >= 8 || coneRatio >= 0.02);
+        const isCarObj = (aspect <= 0.88 && bw >= 0.22 && bh >= 0.16 && clusterRatio >= 0.08 && !isConeObj);
+        const isBikeObj = (aspect >= 0.80 && aspect <= 2.4 && bw >= 0.08 && bw <= 0.38 && bh >= 0.16 && bh <= 0.70 && !isConeObj);
+        const isPersonObj = (clSkin >= 6 || skinTonePoints >= 18) && (by <= 0.55) && !isConeObj && !isCarObj && !isBikeObj;
+
+        if (isConeObj) {
+          detectedEntities.push({
+            class_name: 'TRAFFIC CONE',
+            confidence: 0.93,
+            is_obstacle: true,
+            is_person: false,
+            is_vehicle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        } else if (isCarObj) {
+          detectedEntities.push({
+            class_name: 'CAR',
+            confidence: 0.93,
+            is_vehicle: true,
+            is_person: false,
+            is_obstacle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        } else if (isBikeObj) {
+          const is3W = state.userProfile?.wheels === 3;
+          detectedEntities.push({
+            class_name: is3W ? 'AUTO-RICKSHAW' : 'MOTORCYCLE',
+            confidence: 0.90,
+            is_vehicle: true,
+            is_person: false,
+            is_obstacle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        } else if (isPersonObj) {
+          detectedEntities.push({
+            class_name: 'PERSON',
+            confidence: 0.92,
+            is_person: true,
+            is_vehicle: false,
+            is_obstacle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        } else if (clBox >= 5 || (by >= 0.15 && aspect >= 0.40 && aspect <= 1.35 && bw <= 0.70 && bh <= 0.70)) {
+          detectedEntities.push({
+            class_name: 'CARDBOARD BOX',
+            confidence: 0.92,
+            is_obstacle: true,
+            is_person: false,
+            is_vehicle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        } else if (aspect >= 0.95 && clusterAvgEdge >= 16.0) {
+          detectedEntities.push({
+            class_name: 'CHAIR',
+            confidence: 0.89,
+            is_obstacle: true,
+            is_person: false,
+            is_vehicle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        } else if (clusterRatio <= 0.45 && bw <= 0.70 && bh <= 0.70) {
+          detectedEntities.push({
+            class_name: 'GROUND OBSTACLE',
+            confidence: 0.88,
+            is_obstacle: true,
+            is_person: false,
+            is_vehicle: false,
+            normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
+          });
+        }
+      }
+
+      // Direct person detection ONLY if genuine face/skin cluster exists in top half
+      const hasAlreadyPerson = detectedEntities.some(e => e.is_person);
+      if (!hasAlreadyPerson && skinTonePoints >= 24 && (minSkinR * stepY) / ch <= 0.50) {
+        const bx = Math.max(0.06, (minSkinC * stepX) / cw);
+        const by = Math.max(0.05, (minSkinR * stepY) / ch);
+        const bw = Math.min(0.88 - bx, Math.max(0.18, ((maxSkinC - minSkinC + 1) * stepX) / cw));
+        const bh = Math.min(0.90 - by, Math.max(0.24, ((maxSkinR - minSkinR + 1) * stepY) / ch));
         detectedEntities.push({
           class_name: 'PERSON',
-          confidence: 0.94,
+          confidence: 0.92,
           is_person: true,
           is_vehicle: false,
           is_obstacle: false,
           normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
         });
-      } else if (isConeObj) {
-        detectedEntities.push({
-          class_name: 'TRAFFIC CONE',
-          confidence: 0.93,
-          is_obstacle: true,
-          is_person: false,
-          is_vehicle: false,
-          normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
-        });
-      } else if (clBox >= 5 || (by >= 0.15 && aspect >= 0.40 && aspect <= 1.35 && bw <= 0.70 && bh <= 0.70 && asphaltRatio >= 0.15)) {
-        detectedEntities.push({
-          class_name: 'CARDBOARD BOX',
-          confidence: 0.92,
-          is_obstacle: true,
-          is_person: false,
-          is_vehicle: false,
-          normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
-        });
-      } else if (aspect >= 0.95 && clusterAvgEdge >= 16.0) {
-        detectedEntities.push({
-          class_name: 'CHAIR',
-          confidence: 0.89,
-          is_obstacle: true,
-          is_person: false,
-          is_vehicle: false,
-          normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
-        });
-      } else if (clusterRatio <= 0.45 && bw <= 0.70 && bh <= 0.70 && asphaltRatio >= 0.15) {
-        detectedEntities.push({
-          class_name: 'GROUND OBSTACLE',
-          confidence: 0.88,
-          is_obstacle: true,
-          is_person: false,
-          is_vehicle: false,
-          normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
-        });
       }
-    }
-
-    // Direct person detection if human face / skin is observed (selfie or portrait or person in room)
-    const hasAlreadyPerson = detectedEntities.some(e => e.is_person);
-    if (!hasAlreadyPerson && skinTonePoints >= 7 && (minSkinR * stepY) / ch <= 0.65) {
-      const bx = Math.max(0.06, (minSkinC * stepX) / cw);
-      const by = Math.max(0.05, (minSkinR * stepY) / ch);
-      const bw = Math.min(0.88 - bx, Math.max(0.18, ((maxSkinC - minSkinC + 1) * stepX) / cw));
-      const bh = Math.min(0.90 - by, Math.max(0.24, ((maxSkinR - minSkinR + 1) * stepY) / ch));
-      detectedEntities.push({
-        class_name: 'PERSON',
-        confidence: 0.94,
-        is_person: true,
-        is_vehicle: false,
-        is_obstacle: false,
-        normalized_bbox: [Number(bx.toFixed(2)), Number(by.toFixed(2)), Number(bw.toFixed(2)), Number(bh.toFixed(2))]
-      });
     }
 
     // SCENE VALIDATION CLASSIFICATION
@@ -5914,7 +6075,7 @@ function extractClientImageFeatures(canvas) {
 }
 
 // Resilient local Computer Vision engine: Strictly dynamic, no default/fake frame dimensions
-function wzFallbackClientScan(video, tmpCanvas) {
+function wzFallbackClientScan(video, tmpCanvas, neuralDets = []) {
   const p = state.userProfile || { bikeModel: 'Vehicle', length: 2.14, width: 0.84, wheels: 2 };
   const isSim = wz.cam.isSimulated;
 
@@ -6028,7 +6189,7 @@ function wzFallbackClientScan(video, tmpCanvas) {
   }
 
   // Extract dynamic visual features from live canvas
-  const feats = extractClientImageFeatures(tmpCanvas);
+  const feats = extractClientImageFeatures(tmpCanvas, neuralDets);
   const entities = feats.detected_entities || [];
   const pList = entities.filter(e => e.is_person && !e.is_obstacle);
   const oList = entities.filter(e => e.is_obstacle || (!e.is_person && !e.is_vehicle));
@@ -6206,32 +6367,62 @@ function wzFallbackClientScan(video, tmpCanvas) {
     return;
   }
 
-  // 4. OUTDOOR HAZARDS, PERSONS OR OCCUPYING VEHICLES
-  if (hasPerson || hasHazard || (hasVehicles && entities.length === 1)) {
-    let obsLabel = 'GROUND OBSTACLE';
-    if (hasPerson && hasHazard) {
-      const topObs = oList[0];
-      const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
-      const hazardName = rawName.includes('BOX') ? 'CARDBOARD BOX' : (rawName.includes('CONE') ? 'TRAFFIC CONE' : (rawName.includes('CHAIR') ? 'CHAIR' : 'OBSTACLE'));
-      obsLabel = `${hazardName} & PEDESTRIAN`;
-    } else if (hasHazard) {
-      const topObs = oList[0] || entities[0];
-      const rawName = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
-      if (rawName.includes('BOX') || rawName.includes('CARDBOARD')) {
-        obsLabel = 'CARDBOARD BOX';
-      } else if (rawName.includes('CONE')) {
-        obsLabel = 'TRAFFIC CONE';
-      } else if (rawName.includes('CHAIR')) {
-        obsLabel = 'CHAIR / FURNITURE';
-      } else if (rawName.includes('BIKE') || rawName.includes('BICYCLE')) {
-        obsLabel = 'BICYCLE';
-      } else {
-        obsLabel = rawName === 'OBSTACLE' ? 'GROUND OBSTACLE' : rawName;
+  // 4. DISCOVER AUTHENTIC CANDIDATE PARKING BAYS
+  const isCar = p.wheels >= 4;
+  const isAuto = p.wheels === 3;
+  const vLen = p.length || 2.14;
+  const vWid = p.width || 0.84;
+  const bayW_m = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
+  const bayL_m = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
+  const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
+  const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
+  const bayLenFt = (bayL_m * 3.28084).toFixed(1);
+  const bayWidFt = (bayW_m * 3.28084).toFixed(1);
+  const marginFt = (widthMargin_m * 3.28084).toFixed(1);
+  const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
+  const isFit = (widthMargin_m >= 0.15) && (lengthMargin_m >= 0.10);
+
+  let dynPoly = (feats.has_road_markings && feats.is_road_asphalt && feats.markings_polygon) ? feats.markings_polygon : null;
+  if (!dynPoly && entities.length >= 2) {
+    const vSorted = [...entities].filter(e => e.is_vehicle).sort((a,b) => a.normalized_bbox[0] - b.normalized_bbox[0]);
+    if (vSorted.length >= 2) {
+      const x1 = vSorted[0].normalized_bbox[0] + vSorted[0].normalized_bbox[2];
+      const x2 = vSorted[1].normalized_bbox[0];
+      if (x2 - x1 > 0.15) {
+        dynPoly = [[x1, 0.44], [x2, 0.44], [Math.min(0.95, x2 + 0.05), 0.90], [Math.max(0.05, x1 - 0.05), 0.90]];
       }
-    } else if (hasPerson) {
-      obsLabel = 'PEDESTRIAN';
-    } else if (hasVehicles) {
+    }
+  }
+
+  // 5. CHECK SPATIAL INTERSECTION WITH CANDIDATE BAY
+  let intersectingEntity = null;
+  if (dynPoly) {
+    for (const ent of entities) {
+      if (ent.normalized_bbox && bboxIntersectsPolygon(ent.normalized_bbox, dynPoly)) {
+        intersectingEntity = ent;
+        break;
+      }
+    }
+  }
+
+  if (intersectingEntity || (!dynPoly && (hasPerson || hasHazard || (hasVehicles && entities.length === 1)))) {
+    const blocking = intersectingEntity || (hasPerson ? pList[0] : (hasHazard ? oList[0] : (hasVehicles ? vList[0] : entities[0])));
+    let obsLabel = 'GROUND OBSTACLE';
+    const cUpper = ((blocking && blocking.class_name) || '').toUpperCase();
+    if (blocking && blocking.is_vehicle) {
       obsLabel = 'PARKED VEHICLE';
+    } else if (blocking && (blocking.is_person || cUpper === 'PERSON')) {
+      obsLabel = 'PEDESTRIAN';
+    } else if (cUpper.includes('CONE')) {
+      obsLabel = 'TRAFFIC CONE';
+    } else if (cUpper.includes('BOX') || cUpper.includes('CARDBOARD')) {
+      obsLabel = 'CARDBOARD BOX';
+    } else if (cUpper.includes('CHAIR')) {
+      obsLabel = 'CHAIR / FURNITURE';
+    } else if (cUpper.includes('BIKE') || cUpper.includes('BICYCLE')) {
+      obsLabel = 'BICYCLE';
+    } else {
+      obsLabel = cUpper || 'GROUND OBSTACLE';
     }
 
     const headline = `🔴 NO — CANNOT PARK HERE (BLOCKED BY ${obsLabel})`;
@@ -6248,8 +6439,15 @@ function wzFallbackClientScan(video, tmpCanvas) {
       headline: headline,
       reason: reason,
       can_recommend: false,
+      is_parking_scene: false,
       recommended_slot: null,
-      ar_slots: [],
+      ar_slots: dynPoly ? [{
+        id: 'Bay 1',
+        label: 'Bay 1 (Blocked)',
+        status: 'BLOCKED',
+        blocked_reason: `Blocked by ${obsLabel}`,
+        normalized_polygon: dynPoly
+      }] : [],
       ranked_spaces: [],
       detections: entities,
       vehicles_count: vList.length,
@@ -6266,8 +6464,8 @@ function wzFallbackClientScan(video, tmpCanvas) {
       },
       analysis_summary: {
         vehicle_name: p.bikeModel,
-        vehicle_length_m: p.length || 2.14,
-        vehicle_width_m: p.width || 0.84,
+        vehicle_length_m: vLen,
+        vehicle_width_m: vWid,
         safety_margin_m: 0.30,
         required_length_m: Number(((p.length || 2.14) + 0.30).toFixed(2)),
         required_width_m: Number(((p.width || 0.84) + 0.30).toFixed(2)),
@@ -6299,62 +6497,202 @@ function wzFallbackClientScan(video, tmpCanvas) {
     return;
   }
 
-  // 5. AUTHENTIC PARKING BAY CONFIRMED ON ROAD / ASPHALT
-  // Strictly requires confirmed asphalt and road markings polygon
-  if (feats.has_road_markings && feats.is_road_asphalt && feats.markings_polygon) {
-    const isCar = p.wheels >= 4;
-    const isAuto = p.wheels === 3;
-    const vLen = p.length || 2.14;
-    const vWid = p.width || 0.84;
-    const bayW_m = isCar ? 2.50 : (isAuto ? 1.80 : 1.40);
-    const bayL_m = isCar ? 5.00 : (isAuto ? 3.30 : 2.50);
-    const widthMargin_m = Number((bayW_m - vWid).toFixed(2));
-    const lengthMargin_m = Number((bayL_m - vLen).toFixed(2));
-    const bayLenFt = (bayL_m * 3.28084).toFixed(1);
-    const bayWidFt = (bayW_m * 3.28084).toFixed(1);
-    const marginFt = (widthMargin_m * 3.28084).toFixed(1);
-    const clearanceStr = `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
+  // 6. IF NO CANDIDATE BAY DETECTED
+  if (!dynPoly) {
+    const resultData = {
+      success: true,
+      status_code: 'UNCERTAIN',
+      final_decision: 'UNCERTAIN',
+      decision_color: 'yellow',
+      decision_icon: '🟡',
+      headline: 'PARKING SPACE NOT VERIFIED',
+      reason: 'No suitable parking candidate detected. Valid parking space not verified. Please scan a valid parking area with clear road or bay markings.',
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [],
+      detections: entities,
+      vehicles_count: feats.vehicles_count || 0,
+      persons_count: 0,
+      obstacles_count: 0,
+      confidence_score: 0.45,
+      confidence_percent: 45,
+      checklist: {
+        zone: { status_icon: '?', label: 'Unverified Surface' },
+        space: { status_icon: '?', label: 'No Marked Bay' },
+        obstacles: { status_icon: '✓', label: 'Clear View' },
+        vehicle_fit: { status_icon: '?', label: 'Awaiting Parking Bay' },
+        permission: { status_icon: '?', label: 'Unverified Location' }
+      },
+      breakdown: {
+        parking_zone: 0.35,
+        space_free: 0.45,
+        obstacle_free: 0.90,
+        vehicle_fit: 0.40,
+        permission: 0.35
+      },
+      guidance_banner: '🟡 PARKING SPACE NOT VERIFIED • Please scan a valid parking area',
+      speech_text: 'Parking space not verified. Please scan a valid parking area.'
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
 
-    const recSlot = {
-      id: 'Bay 1',
-      label: 'Bay 1 (Verified Bay)',
-      status: 'AVAILABLE',
-      is_recommended: true,
+  // 7. CHECK FIT
+  if (!isFit) {
+    const resultData = {
+      success: true,
+      status_code: 'NOT_SUITABLE',
+      final_decision: 'NOT_SUITABLE',
+      decision_color: 'red',
+      decision_icon: '🔴',
+      headline: `🔴 NO — CANNOT PARK HERE (SPACE TOO NARROW FOR ${p.bikeModel.toUpperCase()})`,
+      reason: `Marked space (${bayLenFt} ft × ${bayWidFt} ft) is too narrow for ${p.bikeModel} (clearance is only ${clearanceStr}).`,
+      can_recommend: false,
+      recommended_slot: null,
+      ar_slots: [],
+      detections: entities,
+      vehicles_count: feats.vehicles_count || 0,
+      persons_count: 0,
+      obstacles_count: 0,
+      confidence_score: 0.88,
+      confidence_percent: 88,
+      checklist: {
+        zone: { status_icon: '✓', label: 'Ground Area' },
+        space: { status_icon: '✓', label: 'Marked Bay' },
+        obstacles: { status_icon: '✓', label: 'Clear View' },
+        vehicle_fit: { status_icon: '✗', label: `Too Narrow (${clearanceStr})` },
+        permission: { status_icon: '?', label: 'Unverified' }
+      },
+      analysis_summary: {
+        vehicle_name: p.bikeModel,
+        vehicle_length_m: vLen,
+        vehicle_width_m: vWid,
+        safety_margin_m: 0.30,
+        required_length_m: Number((vLen + 0.30).toFixed(2)),
+        required_width_m: Number((vWid + 0.30).toFixed(2)),
+        detected_space_length_m: bayL_m,
+        detected_space_width_m: bayW_m,
+        length_check_pass: lengthMargin_m >= 0.10,
+        width_check_pass: widthMargin_m >= 0.15,
+        length_status: lengthMargin_m >= 0.10 ? '✓ Sufficient' : '✗ Insufficient',
+        width_status: widthMargin_m >= 0.15 ? '✓ Sufficient' : '✗ Insufficient',
+        obstacle_check_pass: true,
+        obstacle_status: '✓ None',
+        zone_check_pass: true,
+        zone_status: '✓ Ground Area',
+        confidence_percent: 88,
+        final_verdict: `🔴 VEHICLE CANNOT BE PARKED HERE (TOO NARROW FOR ${p.bikeModel})`,
+        reason: `Space width (${bayWidFt} ft) does not fit ${p.bikeModel}.`
+      },
+      breakdown: {
+        parking_zone: 0.90,
+        space_free: 0.90,
+        obstacle_free: 0.95,
+        vehicle_fit: 0.20,
+        permission: 0.85
+      },
+      guidance_banner: `🔴 NO — CANNOT PARK HERE • Space is too narrow for ${p.bikeModel} (${clearanceStr} clearance)`,
+      speech_text: `Spaces in view are too narrow for your ${p.bikeModel}. Do not park here.`
+    };
+    wzRenderScanResults(resultData);
+    return;
+  }
+
+  // 8. SUITABLE: MANDATORY POSITIVE RECOMMENDATION
+  const recSlot = {
+    id: 'Bay 1',
+    label: 'Bay 1 (Verified Bay)',
+    status: 'AVAILABLE',
+    is_recommended: true,
+    is_suitable: true,
+    fit_status: 'OPTIMAL',
+    fit_badge: '🟢 Fits Vehicle',
+    normalized_polygon: dynPoly,
+    center: [0.50, 0.67],
+    width_m: bayW_m,
+    length_m: bayL_m,
+    width_ft: bayWidFt,
+    length_ft: bayLenFt,
+    margin_m: widthMargin_m,
+    margin_ft: Number(marginFt),
+    dims_ft: `${bayLenFt} ft (L) × ${bayWidFt} ft (W)`,
+    dims_m: `${bayL_m}m × ${bayW_m}m`,
+    clearance_ft_str: clearanceStr,
+    blocked_reason: null,
+    vehicle_fit: {
       is_suitable: true,
       fit_status: 'OPTIMAL',
       fit_badge: '🟢 Fits Vehicle',
-      normalized_polygon: feats.markings_polygon,
-      center: [0.50, 0.67],
-      width_m: bayW_m,
-      length_m: bayL_m,
-      width_ft: bayWidFt,
-      length_ft: bayLenFt,
-      margin_m: widthMargin_m,
-      margin_ft: Number(marginFt),
-      dims_ft: `${bayLenFt} ft (L) × ${bayWidFt} ft (W)`,
-      dims_m: `${bayL_m}m × ${bayW_m}m`,
+      slot_width_m: bayW_m,
+      slot_length_m: bayL_m,
+      slot_width_ft: bayWidFt,
+      slot_length_ft: bayLenFt,
+      dims_ft_str: `${bayLenFt} ft (L) × ${bayWidFt} ft (W)`,
+      dims_m_str: `${bayL_m}m × ${bayW_m}m`,
+      width_margin_m: widthMargin_m,
+      width_margin_ft: Number(marginFt),
       clearance_ft_str: clearanceStr,
-      blocked_reason: null,
-      vehicle_fit: {
-        is_suitable: true,
-        fit_status: 'OPTIMAL',
-        fit_badge: '🟢 Fits Vehicle',
-        slot_width_m: bayW_m,
-        slot_length_m: bayL_m,
-        slot_width_ft: bayWidFt,
-        slot_length_ft: bayLenFt,
-        dims_ft_str: `${bayLenFt} ft (L) × ${bayWidFt} ft (W)`,
-        dims_m_str: `${bayL_m}m × ${bayW_m}m`,
-        width_margin_m: widthMargin_m,
-        width_margin_ft: Number(marginFt),
-        clearance_ft_str: clearanceStr,
-        message: `Designated parking space verified and fits your ${p.bikeModel || 'vehicle'}.`
-      }
-    };
+      message: `Designated parking space verified and fits your ${p.bikeModel || 'vehicle'}.`
+    }
+  };
 
-    const resultData = {
-      success: true,
-      status_code: 'SUITABLE',
+  const resultData = {
+    success: true,
+    status_code: 'SUITABLE',
+    final_decision: 'SUITABLE',
+    decision_color: 'green',
+    decision_icon: '🟢',
+    headline: 'YES — YOU CAN PARK YOUR VEHICLE HERE',
+    reason: `Designated parking bay verified (${bayLenFt} ft × ${bayWidFt} ft). Fits your ${p.bikeModel || 'vehicle'} with ${clearanceStr} clearance.`,
+    can_recommend: true,
+    recommended_slot: recSlot,
+    ar_slots: [recSlot],
+    detections: entities,
+    vehicles_count: feats.vehicles_count || 0,
+    persons_count: pList.length,
+    obstacles_count: 0,
+    confidence_score: 0.92,
+    confidence_percent: 92,
+    checklist: {
+      zone: { status_icon: '✓', label: 'Road Asphalt' },
+      space: { status_icon: '✓', label: 'Marked Bay' },
+      obstacles: { status_icon: '✓', label: 'Clear View' },
+      vehicle_fit: { status_icon: '✓', label: `Fits (${clearanceStr})` },
+      permission: { status_icon: '✓', label: 'Permitted Bay' }
+    },
+    analysis_summary: {
+      vehicle_name: p.bikeModel,
+      vehicle_length_m: vLen,
+      vehicle_width_m: vWid,
+      safety_margin_m: 0.30,
+      required_length_m: Number((vLen + 0.30).toFixed(2)),
+      required_width_m: Number((vWid + 0.30).toFixed(2)),
+      detected_space_length_m: bayL_m,
+      detected_space_width_m: bayW_m,
+      length_check_pass: true,
+      width_check_pass: true,
+      length_status: '✓ Sufficient',
+      width_status: '✓ Sufficient',
+      obstacle_check_pass: true,
+      obstacle_status: '✓ None inside bay',
+      zone_check_pass: true,
+      zone_status: '✓ Detected',
+      confidence_percent: 92,
+      final_verdict: `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE (${p.bikeModel} fits with +${marginFt} ft clearance)`,
+      reason: `Designated parking space verified and fits ${p.bikeModel}.`
+    },
+    breakdown: {
+      parking_zone: 0.92,
+      space_free: 0.94,
+      obstacle_free: 0.96,
+      vehicle_fit: 0.94,
+      permission: 0.90
+    },
+    guidance_banner: `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE • BAY 1 (${bayLenFt}ft × ${bayWidFt}ft) • Clearance: ${clearanceStr} • Fits ${p.bikeModel || 'Vehicle'}`,
+    speech_text: `Yes! You can park your vehicle here. Bay 1 is free and verified. It fits your ${p.bikeModel || 'vehicle'}.`
+  };
+  wzRenderScanResults(resultData);
+  return;
       final_decision: 'SUITABLE',
       decision_color: 'green',
       decision_icon: '🟢',
@@ -6470,9 +6808,9 @@ function wzRenderScanResults(data) {
     decBadge.className = `wz-rec-decision-badge state-${decision === 'SUITABLE' ? 'suitable' : (decision === 'UNCERTAIN' ? 'uncertain' : 'not-suitable')}`;
   }
   if (decIcon) decIcon.textContent = data.decision_icon || (decision === 'SUITABLE' ? '🟢' : (decision === 'UNCERTAIN' ? '🟡' : '🔴'));
-  if (decText) decText.textContent = data.headline || (decision === 'SUITABLE' ? 'VERIFIED PARKING SPACE AVAILABLE' : (decision === 'UNCERTAIN' ? 'NO PARKING SPACE DETECTED' : 'NOT SUITABLE FOR PARKING'));
+  if (decText) decText.textContent = data.headline || (decision === 'SUITABLE' ? 'YES — YOU CAN PARK YOUR VEHICLE HERE' : (decision === 'UNCERTAIN' ? 'NO PARKING SPACE DETECTED' : 'NOT SUITABLE FOR PARKING'));
 
-  if (titleEl) titleEl.textContent = data.headline || (decision === 'SUITABLE' ? 'Verified Parking Space Available' : 'No Parking Space Detected');
+  if (titleEl) titleEl.textContent = data.headline || (decision === 'SUITABLE' ? 'YES — YOU CAN PARK YOUR VEHICLE HERE' : 'No Parking Space Detected');
   if (reasonEl) reasonEl.textContent = data.reason || 'Point camera toward marked parking spaces or designated roadside parking.';
 
   // 2. Update Section 16 Checklist Grid
@@ -6540,7 +6878,7 @@ function wzRenderScanResults(data) {
     const clearanceStr = rec.vehicle_fit?.clearance_ft_str || `${marginFt >= 0 ? '+' : ''}${marginFt} ft`;
 
     if (statusEl) {
-      statusEl.textContent = `🟢 Available & Fits Your ${vehKind}`;
+      statusEl.textContent = `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE`;
       statusEl.style.color = '#059669';
     }
     if (dimsEl) {
@@ -6657,7 +6995,7 @@ function wzRenderScanResults(data) {
   if (anVerdict && anVerdictText) {
     if (decision === 'SUITABLE' && rec) {
       anVerdict.className = 'wz-analysis-verdict state-pass';
-      anVerdictText.textContent = `🟢 VEHICLE FITS HERE (${p.bikeModel} fits with +${marginM}m safety clearance)`;
+      anVerdictText.textContent = `🟢 YES — YOU CAN PARK YOUR VEHICLE HERE (${p.bikeModel} fits with +${marginM}m safety clearance)`;
     } else if (decision === 'UNCERTAIN') {
       anVerdict.className = 'wz-analysis-verdict state-warn';
       anVerdictText.textContent = `🟡 PARKING SPACE UNCERTAIN (${data.reason || 'Surface lacks verified parking markings'})`;
@@ -6865,7 +7203,13 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
         ctx.fillRect(bx, by, bw, bh);
 
-        const label = `⚠️ ${cNameUpper} ${(det.confidence * 100).toFixed(0)}%`;
+        let obsIcon = '⚠️';
+        if (cNameUpper.includes('BARRIER')) obsIcon = '🚧';
+        else if (cNameUpper.includes('POLE')) obsIcon = '💈';
+        else if (cNameUpper.includes('BOX')) obsIcon = '📦';
+        else if (cNameUpper.includes('CONE')) obsIcon = '⚠️';
+
+        const label = `${obsIcon} ${cNameUpper} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = '#ef4444';
@@ -6886,8 +7230,13 @@ function wzDrawAROverlay(arSlots, recommendedSlot, detections = [], data = {}) {
         ctx.beginPath(); ctx.moveTo(bx, by + bh - clen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + clen, by + bh); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(bx + bw - clen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - clen); ctx.stroke();
 
-        const isBikeOrMoto = cNameUpper.includes('MOTORCYCLE') || cNameUpper.includes('BICYCLE') || cNameUpper.includes('SCOOTER');
-        const vIcon = isBikeOrMoto ? '🏍️' : '🚗';
+        let vIcon = '🚗';
+        if (cNameUpper.includes('MOTORCYCLE')) vIcon = '🏍️';
+        else if (cNameUpper.includes('SCOOTER')) vIcon = '🛵';
+        else if (cNameUpper.includes('AUTO') || cNameUpper.includes('RICKSHAW')) vIcon = '🛺';
+        else if (cNameUpper.includes('BUS')) vIcon = '🚌';
+        else if (cNameUpper.includes('TRUCK')) vIcon = '🚚';
+        else if (cNameUpper.includes('BICYCLE') || cNameUpper.includes('BIKE')) vIcon = '🚲';
         const label = `${vIcon} ${cNameUpper} ${(det.confidence * 100).toFixed(0)}%`;
         ctx.font = 'bold 11px sans-serif';
         const tw = ctx.measureText(label).width;

@@ -93,8 +93,8 @@ class ParkingDecisionEngine:
             and not d.get("is_vehicle", False)
         ]
 
-        # OBSTACLE HAZARD PRIORITY: If an active person or obstacle is in the camera view
-        if frame_obstacles and (not candidate_spaces or any(s.get("status") == "BLOCKED" for s in candidate_spaces)):
+        # OBSTACLE HAZARD PRIORITY: Only if NO candidate spaces exist, OR if ALL candidate spaces are blocked!
+        if frame_obstacles and (not candidate_spaces or all(s.get("status") == "BLOCKED" for s in candidate_spaces)):
             first_obs = frame_obstacles[0]
             obs_name = first_obs.get("class_name", "Obstacle").capitalize()
             obs_conf = first_obs.get("confidence", 0.85)
@@ -326,8 +326,8 @@ class ParkingDecisionEngine:
 
         evaluated_candidates = []
         for space in candidate_spaces:
-            s_len = float(space.get("length_m", 0.0))
-            s_wid = float(space.get("width_m", 0.0))
+            s_len = float(space.get("length_m", 0.0) or space.get("metrics", {}).get("length_m", 0.0))
+            s_wid = float(space.get("width_m", 0.0) or space.get("metrics", {}).get("width_m", 0.0))
             s_status = space.get("status", "AVAILABLE")
             blocked_reason = space.get("blocked_reason")
 
@@ -409,8 +409,8 @@ class ParkingDecisionEngine:
         # ---------------------------------------------------------------------
         # SYNTHESIZE FINAL DECISION
         # ---------------------------------------------------------------------
-        s_len_ft = round(best_space.get("length_m", 0) * 3.28084, 1)
-        s_wid_ft = round(best_space.get("width_m", 0) * 3.28084, 1)
+        s_len_ft = round(float(best_space.get("length_m", 0) or best_space.get("metrics", {}).get("length_m", 0)) * 3.28084, 1)
+        s_wid_ft = round(float(best_space.get("width_m", 0) or best_space.get("metrics", {}).get("width_m", 0)) * 3.28084, 1)
         v_len_ft = round(v_len * 3.28084, 1)
         v_wid_ft = round(v_wid * 3.28084, 1)
 
@@ -425,9 +425,10 @@ class ParkingDecisionEngine:
 
         if suitable_candidates:
             # 🟢 SUITABLE
-            headline = "VERIFIED PARKING SPACE AVAILABLE"
+            headline = "YES — YOU CAN PARK YOUR VEHICLE HERE"
+            slot_name = best_space.get('label', f"Candidate {best_space.get('rank', 1)}")
             reason = (
-                f"{best_space.get('label', 'Candidate space')} verified ({s_len_ft} ft × {s_wid_ft} ft). "
+                f"{slot_name} verified ({s_len_ft} ft × {s_wid_ft} ft). "
                 f"Fits your {v_name} with {clr_str} clearance margin."
             )
             return {
@@ -476,17 +477,17 @@ class ParkingDecisionEngine:
                     "confidence": "92%"
                 },
                 "speech_text": (
-                    f"Parking spot verified and suitable! {best_space.get('label', 'Space')} is free. "
+                    f"Yes! You can park your vehicle here. {best_space.get('label', 'Space')} is free and verified. "
                     f"It fits your {v_name} with {clr_str} clearance."
                 ),
-                "guidance_banner": f"🟢 SUITABLE SPACE • {best_space.get('label', '').upper()} • Clearance: {clr_str} • Fits {v_name}"
+                "guidance_banner": f"🟢 YES — YOU CAN PARK YOUR VEHICLE HERE • {best_space.get('label', '').upper()} • Clearance: {clr_str} • Fits {v_name}"
             }
 
         # Check if rejected due to obstacle/person blocker
         if best_candidate_eval["is_blocked"]:
             # 🔴 BLOCKED
             blocked_msg = best_candidate_eval["blocked_reason"] or "Obstacle or person in candidate space"
-            headline = f"SPACE BLOCKED: {blocked_msg.upper()}"
+            headline = f"NO — THIS SPACE IS NOT SUITABLE (BLOCKED BY {blocked_msg.upper()})"
             reason = f"Candidate parking region is obstructed by {blocked_msg}. Space is not clear for parking."
             return {
                 "decision": DecisionState.NOT_SUITABLE,
