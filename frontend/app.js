@@ -2135,8 +2135,16 @@ async function captureAndScanFrame(isManual = false) {
       const pList = entList.filter(e => e.is_person && !e.is_obstacle);
       const oList = entList.filter(e => e.is_obstacle || (!e.is_person && !e.is_vehicle));
       const hasPers = pList.length > 0;
+      const hasObs = oList.length > 0;
       const topObs = oList[0] || entList[0];
-      const obsLbl = hasPers ? 'PEDESTRIAN' : ((topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE');
+      let obsLbl = 'OBSTACLE';
+      if (hasPers && hasObs) {
+        obsLbl = 'OBSTACLES & PEDESTRIANS';
+      } else if (hasPers) {
+        obsLbl = 'PEDESTRIAN';
+      } else {
+        obsLbl = (topObs && topObs.class_name) ? topObs.class_name.toUpperCase() : 'OBSTACLE';
+      }
       renderLiveScanResults({
         success: true,
         status_code: 'NOT_SUITABLE',
@@ -2147,7 +2155,7 @@ async function captureAndScanFrame(isManual = false) {
         ar_slots: [],
         detections: entList,
         vehicles_count: cFeats.vehicles_count || 0,
-        obstacles_count: oList.length > 0 ? oList.length : (hasPers ? 0 : 1),
+        obstacles_count: oList.length > 0 ? oList.length : (hasObs ? 1 : 0),
         persons_count: pList.length,
         guidance_banner: `🔴 NOT SUITABLE • Blocked by ${obsLbl.toLowerCase()}`
       });
@@ -5451,6 +5459,8 @@ function extractClientImageFeatures(canvas) {
 
     let totalLum = 0;
     let lums = [];
+    let sats = [];
+    let localEdges = [];
     let edgeDiffSum = 0;
     let satSum = 0;
     let sampleCount = 0;
@@ -5475,10 +5485,11 @@ function extractClientImageFeatures(canvas) {
         const maxC = Math.max(red, green, blue);
         const minC = Math.min(red, green, blue);
         const sat = maxC - minC;
+        sats.push(sat);
         satSum += sat;
 
-        // Human skin chromaticity (strict Kovac/Peer skin color locus - face/neck/hands)
-        if (red > 95 && green > 40 && blue > 20 && red > green && green > blue && (red - green >= 15) && (red - blue >= 20) && (green - blue >= 5) && sat >= 20 && sat <= 115) {
+        // Human skin chromaticity (facial / neck / arm skin tone under real-world webcam & mobile lighting)
+        if (red > 65 && green > 30 && blue > 15 && red > green && red > blue && (red - green >= 8) && sat >= 12 && sat <= 145) {
           skinTonePoints++;
         }
 
@@ -5498,16 +5509,19 @@ function extractClientImageFeatures(canvas) {
           markingStripePoints++;
         }
 
+        let pEdge = 0;
         if (c < cols - 1) {
           const rIdx = (y * cw + (x + stepX)) * 4;
           const rLum = 0.299 * imgData[rIdx] + 0.587 * imgData[rIdx + 1] + 0.114 * imgData[rIdx + 2];
-          edgeDiffSum += Math.abs(lum - rLum);
+          pEdge += Math.abs(lum - rLum);
         }
         if (r < rows - 1) {
           const dIdx = ((y + stepY) * cw + x) * 4;
           const dLum = 0.299 * imgData[dIdx] + 0.587 * imgData[dIdx + 1] + 0.114 * imgData[dIdx + 2];
-          edgeDiffSum += Math.abs(lum - dLum);
+          pEdge += Math.abs(lum - dLum);
         }
+        localEdges.push(pEdge);
+        edgeDiffSum += pEdge;
       }
     }
 
@@ -5532,8 +5546,14 @@ function extractClientImageFeatures(canvas) {
     let clusterPoints = 0;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        const l = lums[r * cols + c];
-        if (Math.abs(l - meanLum) > stdDev * 1.5) {
+        const pIdx = r * cols + c;
+        const l = lums[pIdx];
+        const e = localEdges[pIdx];
+        const s = sats[pIdx];
+        const isForeground = (e > Math.max(16, meanEdge * 2.0)) ||
+                             (Math.abs(l - meanLum) > Math.max(12, stdDev * 0.80)) ||
+                             (s > Math.max(45, meanSat * 2.0));
+        if (isForeground) {
           clusterPoints++;
           if (r < minRow) minRow = r;
           if (r > maxRow) maxRow = r;
@@ -5543,8 +5563,7 @@ function extractClientImageFeatures(canvas) {
       }
     }
 
-    const clusterRatio = clusterPoints / sampleCount;
-    const hasCluster = clusterRatio > 0.02 && (maxRow - minRow) >= 2 && (maxCol - minCol) >= 2;
+    const hasCluster = clusterPoints >= 8 && (maxRow - minRow) >= 2 && (maxCol - minCol) >= 2;
 
     // Analyze contrasting foreground object if present in camera view
     if (hasCluster) {
@@ -5560,7 +5579,7 @@ function extractClientImageFeatures(canvas) {
       let clusterHeadSkinCount = 0;
       let clusterHeadTotal = 0;
       let clusterConeCount = 0;
-      const headRowBoundary = minRow + Math.max(1, Math.round((maxRow - minRow) * 0.35));
+      const headRowBoundary = minRow + Math.max(1, Math.round((maxRow - minRow) * 0.40));
 
       for (let cr = minRow; cr <= maxRow; cr++) {
         for (let cc = minCol; cc <= maxCol; cc++) {
@@ -5576,12 +5595,11 @@ function extractClientImageFeatures(canvas) {
 
           clusterTotal++;
 
-          // Human face/neck skin chromaticity
-          const isSkin = cr_red > 95 && cr_green > 40 && cr_blue > 20 &&
-                         cr_red > cr_green && cr_green > cr_blue &&
-                         (cr_red - cr_green >= 15) && (cr_red - cr_blue >= 20) &&
-                         (cr_green - cr_blue >= 5) &&
-                         cr_sat >= 20 && cr_sat <= 115;
+          // Human face/neck/arm skin chromaticity
+          const isSkin = cr_red > 65 && cr_green > 30 && cr_blue > 15 &&
+                         cr_red > cr_green && cr_red > cr_blue &&
+                         (cr_red - cr_green >= 8) &&
+                         cr_sat >= 12 && cr_sat <= 145;
 
           if (isSkin) {
             clusterSkinCount++;
@@ -5593,10 +5611,10 @@ function extractClientImageFeatures(canvas) {
             clusterHeadTotal++;
           }
 
-          // Traffic cone bright orange detection
-          const isConeOrange = cr_red > 175 && cr_green > 65 && cr_green < 165 && cr_blue < 70 &&
-                               (cr_red - cr_green >= 35) && (cr_red - cr_blue >= 110) &&
-                               cr_sat >= 75;
+          // Traffic cone bright fluorescent orange detection
+          const isConeOrange = cr_red > 170 && cr_green > 60 && cr_green < 170 && cr_blue < 70 &&
+                               (cr_red - cr_blue >= 90) &&
+                               cr_sat >= 65;
           if (isConeOrange) {
             clusterConeCount++;
           }
@@ -5607,14 +5625,17 @@ function extractClientImageFeatures(canvas) {
       const headSkinRatio = clusterHeadSkinCount / Math.max(1, clusterHeadTotal);
       const coneOrangeRatio = clusterConeCount / Math.max(1, clusterTotal);
 
-      // Person requires tall upright human aspect ratio AND concentrated facial skin tone in the upper segment
-      const isPersonEntity = (aspect >= 1.40) && (headSkinRatio >= 0.22) && (clusterSkinRatio >= 0.08);
+      // Person classification:
+      // Real person in camera view: Has facial/neck skin tone in upper portion (headSkinRatio >= 0.06 && aspect >= 0.70)
+      // OR significant human skin presence in upright silhouette (clusterSkinRatio >= 0.05 && aspect >= 0.90)
+      const isPersonEntity = (headSkinRatio >= 0.06 && aspect >= 0.70) ||
+                             (clusterSkinRatio >= 0.05 && aspect >= 0.90);
 
       // Traffic cone has characteristic bright orange color
-      const isConeEntity = !isPersonEntity && (coneOrangeRatio >= 0.20 && aspect >= 0.85);
+      const isConeEntity = !isPersonEntity && (coneOrangeRatio >= 0.15 && aspect >= 0.70);
 
       // Vehicle: Wide aspect ratio on asphalt roadway
-      const isVehicleEntity = !isPersonEntity && !isConeEntity && (aspect <= 0.85 && bw > 0.28 && asphaltRatio > 0.25);
+      const isVehicleEntity = !isPersonEntity && !isConeEntity && (aspect <= 0.85 && bw > 0.28 && asphaltRatio > 0.22);
 
       if (isPersonEntity) {
         detectedEntities.push({
@@ -5628,7 +5649,7 @@ function extractClientImageFeatures(canvas) {
       } else if (isConeEntity) {
         detectedEntities.push({
           class_name: 'CONE',
-          confidence: 0.91,
+          confidence: 0.92,
           is_obstacle: true,
           is_person: false,
           is_vehicle: false,
@@ -5647,7 +5668,7 @@ function extractClientImageFeatures(canvas) {
         // Physical ground obstacle / hazard (boxes, chairs, bags, debris, bottles, barriers, bicycles, etc.)
         detectedEntities.push({
           class_name: 'OBSTACLE',
-          confidence: 0.88,
+          confidence: 0.90,
           is_obstacle: true,
           is_person: false,
           is_vehicle: false,

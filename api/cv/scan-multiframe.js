@@ -105,7 +105,7 @@ export default function handler(req, res) {
         detections: entities,
         vehicles_count: analysis.vehiclesCount || 0,
         persons_count: pList.length,
-        obstacles_count: oList.length > 0 ? oList.length : 1,
+        obstacles_count: oList.length > 0 ? oList.length : (hasHazard ? 1 : 0),
         confidence_score: 0.94,
         confidence_percent: 94,
         checklist: {
